@@ -1,0 +1,609 @@
+COMMITTENTE
+Ragione sociale
+ 
+ 
+ 
+ 
+ 
+Riferimento Ordine
+ 
+ 
+ 
+ 
+ 
+DATI IDENTIFICATIVI APPARECCHIATURA
+Produttore
+ 
+ 
+ 
+ 
+ 
+Modello
+ 
+ 
+ 
+ 
+ 
+S/N
+ 
+ 
+ 
+ 
+ 
+N.inventario
+ 
+ 
+ 
+ 
+ 
+Localizzazione/CDC
+ 
+ 
+ 
+ 
+ 
+Cod.AMS
+ 
+ 
+ 
+ 
+ 
+Accessori
+ 
+ 
+ 
+ 
+ 
+CONTROLLO VISIVO/FUNZIONALE
+ ELETTROCARDIOGRAFO
+OK
+KO
+N.A.
+Leggibilità delle serigrafie
+/etichette
+Manuale d’uso disponibile
+Integrità involucro/display
+Funzionalità tastiera/display
+Funzionalità stampante
+Verifica impostazioni di sistema (lingua, data, ora)
+Funzionalità allarmi
+ 
+(visivi/a
+c
+ustici)
+Indicazione presenza alimentazione esterna
+Funzionamento batteria
+SI
+NO
+MESSA IN FUORI USO
+VERIFICHE EFFETTUATE
+OK
+KO
+N.A.
+VERIFICA ELETTROCARDIOGRAFO
+VERIFICA SATURIMETRO
+VERIFICA NIBP
+ STATICA
+VERIFICA NIBP DINAMICA
+ESITO COMPLESSIVO DELLA PROVA
+ 
+NOTE
+ 
+ 
+ 
+ 
+ 
+ 
+Data
+ 
+ 
+ 
+ 
+ 
+ 
+Tecnico
+ 
+ 
+ 
+ 
+ 
+ 
+Firma
+VERIFICA 
+ELETTROCARDIOGRAFO
+STRUMENTAZIONE USATA PER IL CONTROLLO
+Produttore
+FLUKE
+Modello
+PS420
+S/N
+1624026
+RIFERIMENTI NORMATIVI-PROCEDURE
+Norme/Procedure:
+CEI 62-76/AMS-MOD-PROVECG1
+CONTROLLO VISIVO/FUNZIONALE
+ ELETTROCARDIOGRAFO
+OK
+KO
+N.A.
+Integrità cavo paziente
+Funzionalità filtro muscolare
+Funzionalità filtro rete 50Hz
+CONTROLLO 
+FREQUENZA CARDIACA 
+(BPM)
+FREQ IMPOSTATA 
+FREQ MISURATA 
+FREQ IMPOSTATA
+FREQ MISURATA
+30
+ 
+ 
+ 
+ 
+ 
+60
+ 
+ 
+ 
+ 
+ 
+80
+ 
+ 
+ 
+ 
+ 
+120
+ 
+ 
+ 
+ 
+ 
+180
+ 
+ 
+ 
+ 
+ 
+240
+ 
+ 
+ 
+ 
+ 
+CONTROLLO AMPIEZZA SEGNALE 
+(mV)
+AMP IMPOSTATA
+AMP MISURATA
+AMP IMPOSTATA
+AMP MISURATA
+0,5
+ 
+ 
+ 
+ 
+ 
+1
+ 
+ 
+ 
+ 
+ 
+1,5
+ 
+ 
+ 
+ 
+ 
+2
+ 
+ 
+ 
+ 
+ 
+ESITO COMPLESSIVO DELLA PROVA
+ ELETTROCARDIOGRAFO
+NOTE
+ 
+ 
+ 
+ 
+ 
+VERIFICA 
+SATURIMETRO
+STRUMENTAZIONE USATA PER IL CONTROLLO
+Produttore
+FLUKE
+Modello
+INDEX 2
+S/N
+205586
+RIFERIMENTI NORMATIVI-PROCEDURE
+Norme/Procedure:
+UNI EN ISO 80601-2-61:2011
+CONTROLLO VISIVO/FUNZIONALE
+OK
+KO
+N.A.
+Integrità 
+cavo prolunga/
+sensore
+ Spo2
+CONTROLLO LIVELLI D’OSSIGENAZIONE E FREQUENZA CARDIACA
+% 
+SpO2 impostata
+% 
+SpO2 rilevata
+HR impostato
+HR rilevato
+100
+ 
+ 
+ 
+ 
+ 
+60
+ 
+ 
+ 
+ 
+ 
+9
+8
+ 
+ 
+ 
+ 
+ 
+65
+ 
+ 
+ 
+ 
+ 
+9
+6
+ 
+ 
+ 
+ 
+ 
+7
+0
+ 
+ 
+ 
+ 
+ 
+94
+ 
+ 
+ 
+ 
+ 
+75
+ 
+ 
+ 
+ 
+ 
+92
+ 
+ 
+ 
+ 
+ 
+80
+ 
+ 
+ 
+ 
+ 
+90
+ 
+ 
+ 
+ 
+ 
+85
+ 
+ 
+ 
+ 
+ 
+86
+ 
+ 
+ 
+ 
+ 
+90
+ 
+ 
+ 
+ 
+ 
+82
+ 
+ 
+ 
+ 
+ 
+95
+ 
+ 
+ 
+ 
+ 
+78
+ 
+ 
+ 
+ 
+ 
+100
+ 
+ 
+ 
+ 
+ 
+ESITO COMPLESSIVO DELLA PROVA
+ SATURIMETRO
+NOTE
+ 
+ 
+ 
+ 
+ 
+VERIFICA 
+NIBP STATICA
+STRUMENTAZIONE USATA PER IL CONTROLLO
+Produttore
+FLUKE
+Modello
+BP PUMP
+ 
+2
+S/N
+212192
+RIFERIMENTI NORMATIVI-PROCEDURE
+Norme/Procedure
+CONTROLLO VISIVO/FUNZIONALE
+OK
+KO
+N.A.
+Test di perdita
+ NIBP
+ 
+Integrità tubo/bracciale NIBP
+VERIFICA NIBP
+N°
+IMPOSTATA 
+(mmHg)
+RILEVATA 
+(mmHg)
+ERRORE 
+(mmHg)
+1
+240
+ 
+ 
+ 
+ 
+ 
+-240
+2
+200
+ 
+ 
+ 
+ 
+ 
+-200
+3
+160
+ 
+ 
+ 
+ 
+ 
+-160
+4
+120
+ 
+ 
+ 
+ 
+ 
+-120
+5
+80
+ 
+ 
+ 
+ 
+ 
+-80
+6
+40
+ 
+ 
+ 
+ 
+ 
+-40
+ESITO
+ 
+DELLA PROVA
+ NIBP
+ STATICA
+NOTE
+ 
+ 
+ 
+ 
+ 
+VERIFICA 
+NIBP 
+DINAMICA
+STRUMENTAZIONE USATA PER IL CONTROLLO
+Produttore
+: 
+FLUKE
+Modello:
+ 
+BP PUMP 2
+S/N: 
+212192
+RIFERIMENTI NORMATIVI-PROCEDURE
+Norme/Procedure:
+CONTROLLO VISIVO/FUNZIONALE
+OK
+KO
+N.A.
+Test di perdita
+ NIBP
+ 
+Integrità tubo/bracciale NIBP
+VERIFICA NIBP
+ (mmHg)
+mmHg
+Bpm
+mmHg
+Bpm
+mmHg
+bpm
+IMPOSTATA
+120
+80
+80
+150
+100
+80
+180
+120
+80
+RILEVATA
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+--
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+--
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+--
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+--
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+--
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+--
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ESITO
+ 
+DELLA PROVA
+ NIBP
+ DINAMICA
+NOTE
+ 
+ 
+ 
+ 
+ 

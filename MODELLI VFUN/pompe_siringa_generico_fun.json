@@ -1,0 +1,362 @@
+{
+  "profile_key": "pompe_siringa_generico",
+  "name": "Pompe Siringa Generico",
+  "device_type": "POMPA SIRINGA",
+  "sections": [
+    {
+      "key": "visual_functional_control",
+      "title": "Controllo Visivo/Funzionale",
+      "section_type": "checklist",
+      "description": "Checklist da modulo AMS-MOD-POMPE GENERICO.",
+      "show_in_summary": true,
+      "fields": [],
+      "rows": [
+        {
+          "key": "serigrafie",
+          "label": "Leggibilita delle serigrafie",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "manuale_uso",
+          "label": "Manuale d'uso disponibile",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "integrita_involucro",
+          "label": "Integrita involucro",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "integrita_fissaggio",
+          "label": "Integrita sistemi di fissaggio",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "display_tastiera",
+          "label": "Funzionamento display e tastiera",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "clamp_siringa",
+          "label": "Corretto funzionamento clamp siringa con corretto riconoscimento siringhe",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "test_iniziale_automatico",
+          "label": "Esecuzione test iniziale automatico",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "allarme_occlusione",
+          "label": "Verifica corretto riconoscimento allarme occlusione",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "preallarme_fine_infusione",
+          "label": "Verifica segnalazione preallarme fine infusione",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "allarme_fine_infusione",
+          "label": "Verifica segnalazione allarme fine infusione",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "alimentazione_esterna",
+          "label": "Verifica riconoscimento connessione alimentazione",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "funzionamento_batteria",
+          "label": "Verifica funzionamento a batteria",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "control_tests",
+      "title": "Test di Controllo",
+      "section_type": "checklist",
+      "description": "Test funzionali del modulo.",
+      "show_in_summary": true,
+      "fields": [],
+      "rows": [
+        {
+          "key": "test_flusso",
+          "label": "Test di Flusso",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "test_occlusione",
+          "label": "Test di Occlusione",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "decommissioning",
+      "title": "Messa in Fuori Uso",
+      "section_type": "fields",
+      "description": "Campo dedicato alla messa in fuori uso del dispositivo.",
+      "show_in_summary": true,
+      "fields": [
+        {
+          "key": "fuori_uso",
+          "label": "Messa in Fuori Uso",
+          "field_type": "choice",
+          "required": false,
+          "unit": null,
+          "options": ["SI", "NO"],
+          "read_only": false,
+          "default": "NO",
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "overall_outcome",
+      "title": "Esito Complessivo della Prova",
+      "section_type": "fields",
+      "description": "Esito finale del profilo.",
+      "show_in_summary": true,
+      "fields": [
+        {
+          "key": "esito_complessivo",
+          "label": "Esito complessivo",
+          "field_type": "choice",
+          "required": true,
+          "unit": null,
+          "options": ["OK", "KO"],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "notes_section",
+      "title": "Note",
+      "section_type": "fields",
+      "description": "Campo note del modulo.",
+      "show_in_summary": true,
+      "fields": [
+        {
+          "key": "note",
+          "label": "Note",
+          "field_type": "multiline",
+          "required": false,
+          "unit": null,
+          "options": [],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    }
+  ]
+}

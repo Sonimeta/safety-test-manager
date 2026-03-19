@@ -1,0 +1,256 @@
+[
+  [
+    [
+      "COMMITTENTE"
+    ],
+    [
+      "Ragione sociale:",
+      ""
+    ],
+    [
+      "Riferimento:",
+      "",
+      "Tel.",
+      ""
+    ],
+    [
+      ""
+    ],
+    [
+      "DATI IDENTIFICATIVI APPARECCHIATURA"
+    ],
+    [
+      "Produttore:",
+      "",
+      "Modello:",
+      ""
+    ],
+    [
+      "S/N:",
+      "",
+      "N.inventario:",
+      ""
+    ],
+    [
+      "Localizzazione/CDC:",
+      "",
+      "Cod.AMS:",
+      ""
+    ],
+    [
+      ""
+    ],
+    [
+      "STRUMENTAZIONE USATA PER IL CONTROLLO"
+    ],
+    [
+      "Produttore: FLUKE",
+      "Modello: BP PUMP 2",
+      "S/N: 212192"
+    ],
+    [
+      ""
+    ],
+    [
+      "RIFERIMENTI NORMATIVI-PROCEDURE"
+    ],
+    [
+      "Norme/Procedure:",
+      ""
+    ],
+    [
+      ""
+    ],
+    [
+      "CONTROLLO VISIVO/FUNZIONALE"
+    ],
+    [
+      "",
+      "OK",
+      "KO",
+      "N.A."
+    ],
+    [
+      "Leggibilità delle serigrafie",
+      "",
+      "",
+      ""
+    ],
+    [
+      "Integrità involucro",
+      "",
+      "",
+      ""
+    ],
+    [
+      "Test di perdita NIBP",
+      "",
+      "",
+      ""
+    ],
+    [
+      ""
+    ],
+    [
+      "VERIFICA NIBP (mmHg)"
+    ],
+    [
+      "",
+      "mmHg",
+      "Bpm",
+      "",
+      "mmHg",
+      "Bpm",
+      "",
+      "mmHg",
+      "bpm"
+    ],
+    [
+      "IMPOSTATA",
+      "120",
+      "80",
+      "80",
+      "",
+      "150",
+      "100",
+      "80",
+      "",
+      "180",
+      "120",
+      "80"
+    ],
+    [
+      "RILEVATA",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    [
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      "",
+      ""
+    ],
+    [
+      ""
+    ],
+    [
+      "QTA",
+      "CODICE",
+      "DESCRIZIONE",
+      "PREZZO",
+      "TOTALE"
+    ],
+    [
+      "1",
+      "",
+      "TARATURA",
+      "€ 16,00",
+      "€ 16,00"
+    ],
+    [
+      "",
+      "",
+      "",
+      "",
+      "€ 0,00"
+    ],
+    [
+      "",
+      "",
+      "",
+      "",
+      "€ 0,00"
+    ],
+    [
+      "",
+      "",
+      "",
+      "",
+      "€ 0,00"
+    ],
+    [
+      "",
+      "",
+      "",
+      "",
+      "€ 0,00"
+    ],
+    [
+      "",
+      "",
+      "",
+      "",
+      "€ 0,00"
+    ],
+    [
+      "",
+      "",
+      "",
+      "",
+      "€ 0,00"
+    ],
+    [
+      "",
+      "",
+      "",
+      "NETTO",
+      "€ 16,00"
+    ],
+    [
+      "",
+      "",
+      "",
+      "TOTALE IVATO",
+      "€ 19,52"
+    ],
+    [
+      ""
+    ],
+    [
+      "ESITO DELLA PROVA NIBP",
+      ""
+    ],
+    [
+      "NOTE",
+      ""
+    ],
+    [
+      "Data:",
+      "Fare clic qui per immettere una data.",
+      "Tecnico:",
+      "",
+      "Firma:"
+    ]
+  ]
+]

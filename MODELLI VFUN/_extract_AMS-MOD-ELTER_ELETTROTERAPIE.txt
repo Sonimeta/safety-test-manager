@@ -1,0 +1,264 @@
+COMMITTENTE
+Ragione sociale
+ 
+ 
+ 
+ 
+ 
+Riferimento
+ 
+ 
+ 
+ 
+ 
+Tel.
+ 
+ 
+ 
+ 
+ 
+DATI IDENTIFICATIVI APPARECCHIATURA
+Produttore
+ 
+ 
+ 
+ 
+ 
+Modello
+ 
+ 
+ 
+ 
+ 
+S/N
+ 
+ 
+ 
+ 
+ 
+N.inventario
+ 
+ 
+ 
+ 
+ 
+Localizzazione/CDC
+ 
+ 
+ 
+ 
+ 
+Cod.AMS
+ 
+ 
+ 
+ 
+ 
+STRUMENTAZIONE USATA PER IL CONTROLLO
+Produttore
+FLUKE
+Modello
+SCOPEMETER 125
+S/N
+25740322
+CONTROLLO VISIVO/FUNZIONALE
+OK
+KO
+N.A.
+Controllo condizioni generali
+Controllo integrità involucro
+Controllo interruttori, pulsanti e manopole
+Controllo condizione cavi elettrici e connettori
+Controllo allarmi
+PROTEZIONE CONTRO ERRORI UMANI
+OK
+KO
+N.A.
+Verifica funzionamento con uscita a circuito aperto (5 minuti)
+Verifica funzionamento con uscita in cortocircuito (5 minuti)
+PRECISIONE DATI FUNZIONAMENTO - 
+VERIFICA 
+CORRENTI D’USCITA
+CANALE 1
+CANALE 2
+N°
+IMPOSTATA [mA]
+MISURATA [mA]
+N°
+IMPOSTATA [mA]
+MISURATA [mA]
+1
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+1
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+2
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+2
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+3
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+3
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+CANALE 3
+CANALE 4
+N°
+IMPOSTATA [mA]
+MISURATA [mA]
+N°
+IMPOSTATA [mA]
+MISURATA [mA]
+1
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+1
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+2
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+2
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+3
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+3
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+BLOCCO DELL’USCITA
+Uscita non aliment. se i controll
+i dell’amp. non sono stati
+ impostati al minimo
+ 
+ 
+ 
+ 
+ 
+INDICATORE DI USCITA
+Presenza indicatori di uscita (se R=1000 Ohm; corrente uscita > 10mA)
+ 
+ 
+ 
+ 
+ 
+ESITO COMPLESSIVO DELLA PROVA
+ 
+NOTE
+ 
+ 
+ 
+ 
+ 
+ 
+Data:
+ 
+ 
+ 
+ 
+ 
+ 
+Tecnico:
+ 
+Firma:

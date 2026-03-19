@@ -1,0 +1,126 @@
+/* =====================================================
+   LOGIN DIALOG — Safety Test Manager V2
+   Design premium: glassmorphism card + Indigo accent
+   ===================================================== */
+
+* {
+    font-family: 'Segoe UI', 'Inter', system-ui, sans-serif;
+}
+
+QDialog {
+    background: transparent;
+}
+
+QFrame#card {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #ffffff, stop: 1 #f8faff);
+    border-radius: 20px;
+    border: 1px solid rgba(99, 102, 241, 0.12);
+}
+
+QLabel#title {
+    font-size: 24px;
+    font-weight: 800;
+    color: #0f172a;
+    background: transparent;
+    letter-spacing: -0.5px;
+}
+
+QLabel#subtitle {
+    font-size: 13px;
+    color: #64748b;
+    background: transparent;
+    font-weight: 400;
+}
+
+QLabel {
+    color: #334155;
+    background: transparent;
+}
+
+QLineEdit#input {
+    padding: 10px 14px;
+    border: 1px solid #e0e7f1;
+    border-radius: 12px;
+    background: #ffffff;
+    color: #0f172a;
+    font-size: 14px;
+    selection-background-color: #c7d2fe;
+    min-height: 22px;
+}
+
+QLineEdit#input:focus {
+    border: 2px solid #6366f1;
+    padding: 9px 13px;
+    background: #fefeff;
+}
+
+QLineEdit#input:hover:!focus {
+    border: 1px solid #c7d2e0;
+}
+
+QLineEdit#input:disabled {
+    color: #94a3b8;
+    background: #f8fafc;
+    border-color: #e0e7f1;
+}
+
+QDialogButtonBox QPushButton {
+    padding: 10px 22px;
+    border-radius: 12px;
+    background-color: #f0f4fa;
+    border: 1px solid #e0e7f1;
+    color: #475569;
+    font-weight: 700;
+    font-size: 14px;
+    min-height: 42px;
+    min-width: 100px;
+}
+
+QDialogButtonBox QPushButton:hover {
+    background-color: #eef2ff;
+    border-color: #c7d2fe;
+    color: #334155;
+}
+
+QDialogButtonBox QPushButton:pressed {
+    background-color: #e0e7ff;
+    border-color: #a5b4fc;
+}
+
+QDialogButtonBox QPushButton:disabled {
+    background-color: #f8fafc;
+    color: #94a3b8;
+    border-color: #e0e7f1;
+}
+
+/* Pulsante primario (Login) usando :default */
+QDialogButtonBox QPushButton:default {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #818cf8, stop: 1 #6366f1);
+    color: white;
+    border: none;
+}
+
+QDialogButtonBox QPushButton:default:hover {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #6366f1, stop: 1 #4f46e5);
+}
+
+QDialogButtonBox QPushButton:default:pressed {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #4f46e5, stop: 1 #4338ca);
+}
+
+QDialogButtonBox QPushButton:default:focus {
+    outline: none;
+    border: 2px solid #a5b4fc;
+    padding: 8px 20px;
+}
+
+/* === TESTO PULSANTI SEMPRE BOLD === */
+QPushButton,
+QToolButton,
+QDialogButtonBox QPushButton {
+    font-weight: 700;
+}

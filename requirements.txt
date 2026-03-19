@@ -1,0 +1,55 @@
+PySide6
+qtawesome
+requests
+packaging
+pandas
+openpyxl
+xlsxwriter
+reportlab
+pyserial
+click
+# GUI principale
+PySide6
+qtawesome
+qt-material
+
+# Sincronizzazione e utilità varie
+requests
+python-dotenv
+python-dateutil
+pyserial
+click
+
+# Import/export dati
+pandas
+openpyxl
+XlsxWriter
+reportlab
+PyPDF2
+
+Pillow
+qrcode
+pyzbar  # Lettura barcode/QR UDI
+pylibdmtx  # Lettura DataMatrix (codici UDI)
+
+# Sicurezza e autenticazione
+argon2-cffi
+python-jose[cryptography]
+
+# Backend API
+fastapi
+uvicorn[standard]
+pydantic
+python-multipart
+
+# Database
+psycopg2-binary
+
+# Utilità sistema
+psutil
+pywin32
+
+# Packaging
+pyinstaller
+cffi
+

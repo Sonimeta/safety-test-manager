@@ -1,0 +1,54 @@
+  
+VERIFICA 
+POMPE SIRINGA 
+GENERICO 
+Servizio 
+Assistenza Tecnica 
+ 
+Sistema di Qualità Certificato       
+UNI EN ISO 9001:2008 
+ 
+ 
+ 
+ Documento: Cod.documento: Compilato: Verificato Versione Compilatore Pagina   di 
+AMS-MOD- POMPESIR VERPOMPESIR 09/2018  1.1 SAT     1          1 
+ 
+ 
+COMMITTENTE 
+Ragione sociale       
+Riferimento Ordine       
+  
+DATI IDENTIFICATIVI APPARECCHIATURA 
+Produttore       Modello       
+S/N       N.inventario       
+Localizzazione/CDC       Cod.AMS       
+Accessori       
+  
+STRUMENTAZIONE USATA PER IL CONTROLLO 
+Produttore FLUKE Modello IDA-4 Plus S/N 11421 
+  
+ 
+ CONTROLLO VISIVO/FUNZIONALE  
+ OK KO N.A. 
+Leggibilità delle serigrafie    
+Manuale d’uso disponibile    
+Integrità involucro     
+Integrità sistemi di fissaggio    
+Funzionamento display e tastiera    
+Corretto funzionamento clamp siringa con corretto riconoscimento siringhe    
+Esecuzione test iniziale automatico    
+Verifica corretto riconoscimento allarme occlusione    
+Verifica segnalazione preallarme fine infusione    
+Verifica segnalazione allarme fine infusione    
+Verifica riconoscimento connessione alimentazione    
+Verifica funzionamento a batteria    
+TEST DI CONTROLLO 
+ OK KO N.A. 
+Test di Flusso    
+Test di Occlusione    
+   
+MESSA IN FUORI USO SI  NO  
+ 
+ESITO COMPLESSIVO DELLA PROVA           
+NOTE       
+Data       Tecnico        Firma  

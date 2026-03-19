@@ -1,0 +1,108 @@
+ 
+ VERIFICA LETTI 
+ELETTRICI 
+ 
+ASSISTENZA TECNICA 
+ 
+ 
+ 
+ 
+ 
+Sistema di Qualità Certificato 
+UNI EN ISO 9001:2008 
+ 
+     _     _      _      
+ Documento: Cod.documento: Compilato: Verificato Versione Compilatore Pagina   di 
+AMS-MOD-VERLETT VERLETT 18/10/16  2.1 N.P. - SAT     1          2 
+ 
+ 
+ 
+ 
+ 
+  
+COMMITTENTE 
+Ragione sociale       
+Indrizzo       Tel.       
+Riferimento       Tel.       
+DATI IDENTIFICATIVI APPARECCHIATURA 
+Tipo apparecchio       Classe e tipo              
+Produttore       Modello       
+S/N       N.inventario       
+Localizz./Reparto       Cod.AMS       
+Accessori       
+ 
+STRUMENTAZIONE USATA PER IL CONTROLLO 
+Produttore  Modello  S/N  
+RIFERIMENTI NORMATIVI-PROCEDURE 
+Norme/procedure UNI CEI EN 60601-2-52/AMS-MOD-PROVLET1 
+  
+DETTAGLIO ESECUZIONE CONTROLLI 
+VEDERE PAGINA 2 
+  
+  
+  
+  
+  
+ESITO DELLA PROVA           
+NOTE        
+Data:        Tecnico:             Firma: 
+ 
+ 
+
+ 
+ VERIFICA LETTI 
+ELETTRICI 
+ 
+ASSISTENZA TECNICA 
+ 
+ 
+ 
+ 
+ 
+Sistema di Qualità Certificato 
+UNI EN ISO 9001:2008 
+ 
+     _     _      _      
+ Documento: Cod.documento: Compilato: Verificato Versione Compilatore Pagina   di 
+AMS-MOD-VERLETT VERLETT 18/10/16  2.1 N.P. - SAT     2          2 
+ 
+ 
+ 
+  
+CONTROLLO VISIVO 
+ OK KO N.A. 
+Leggibilità delle serigrafie    
+Manuale d’uso disponibile    
+Basamento (integrità struttura, verniciatura)    
+Piano rete (integrità struttura, verniciatura)    
+Alloggiamento per aste solleva malati e flebo (integrità, verifica aggancio)    
+Aste, sponda centrale, accessori (presenza, integrità)    
+Cavo alimentazione elett., presa, connettore ricarica (integrità, sicurezza)    
+Fermacavi/Antistrappo (integrità)    
+Contatti ad innesto (integrità)    
+Motori e trasformatori (integrità)    
+Pulsantiera involucro e cavo (integrità)    
+Pulsantiera personale involucro e cavo (integrità)    
+Traversa di sollevamento lato teste e piedi (integrità)    
+Ruote (integrità, serraggio)    
+Eventuali ruote paracolpi (integrità, serraggio)    
+Sicurezza della vite sull’elemento di regolazione dell’altezza (ove presente)    
+Tutti i cavi(integrità, lunghezza corretta, non avvolti)    
+CONTROLLO FUNZIONAMENTO 
+Sponde laterali: controllo bloccaggio/sbloccaggio    
+Sponde laterali: controllo deformazione    
+Sponde laterali: controllo usura    
+Porta coperte (ove presente)    
+Prolunga letto (ove presente)    
+CONTROLLO AZIONAMENTO CON PULSANTIERE 
+Pulsantiera/tastiera personale: basamento (azionamento fino a fine corsa)    
+Pulsantiera/tastiera personale: piano rete   (azionamento fino a fine corsa)    
+Sezione posteriore, gambe sezione cosce, gambe sezione piedi    
+Regolazione altezza, Trendelemburg, reverse Trendelemburg    
+Regolazione lunghezza (letti Vis-a-Vis)    
+Funzione CPR (ove presente)    
+Freno elettrico o meccanico – freno applicato/freno libero    
+Freni elett/mecc (letti osp S280/S 310/S 380/S 282/S 382) – pos pilotaggio    
+SOSTITUZIONI 
+Sostituzione batteria 9V (ove presente)    
+Verificare maniglione triangolare e cinghia asta solleva malati (se necess. sostituire)    

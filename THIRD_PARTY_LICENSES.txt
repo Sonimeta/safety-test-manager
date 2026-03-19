@@ -1,0 +1,276 @@
+================================================================================
+  THIRD-PARTY SOFTWARE LICENSES
+  Safety Test Manager
+================================================================================
+
+This software includes the following third-party libraries.
+Each library is listed with its license type, copyright holder, and project URL.
+
+================================================================================
+
+
+--------------------------------------------------------------------------------
+  PySide6
+--------------------------------------------------------------------------------
+License:    LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+Copyright:  The Qt Company Ltd.
+Author:     Qt for Python Team
+URL:        https://pyside.org
+
+This software uses PySide6 under the terms of the GNU Lesser General Public
+License version 3 (LGPLv3). PySide6 is dynamically linked, and users retain
+the right to replace the PySide6 libraries with a modified version.
+
+The full text of the LGPLv3 is available at:
+https://www.gnu.org/licenses/lgpl-3.0.html
+
+
+--------------------------------------------------------------------------------
+  psycopg2-binary
+--------------------------------------------------------------------------------
+License:    LGPL with exceptions
+Copyright:  Federico Di Gregorio
+URL:        https://psycopg.org/
+
+psycopg2 is released under the terms of the GNU Lesser General Public License,
+with an exception that allows linking with any non-GPL program. This library
+is dynamically linked.
+
+The full license text is available at:
+https://github.com/psycopg/psycopg2/blob/master/LICENSE
+
+
+--------------------------------------------------------------------------------
+  PyInstaller
+--------------------------------------------------------------------------------
+License:    GPLv2-or-later with a special bootloader exception
+Copyright:  Hartmut Goebel, Giovanni Bajo, David Vierra, David Cortesi,
+            Martin Zibricky
+URL:        https://pyinstaller.org
+
+PyInstaller is used as a build tool only. Its special exception clause permits
+building and distributing non-free programs (including commercial ones).
+
+The full license text is available at:
+https://github.com/pyinstaller/pyinstaller/blob/develop/COPYING.txt
+
+
+================================================================================
+  MIT Licensed Libraries
+================================================================================
+
+--------------------------------------------------------------------------------
+  qtawesome
+--------------------------------------------------------------------------------
+License:    MIT
+Copyright:  Sylvain Corlay and the Spyder Development Team
+URL:        https://github.com/spyder-ide/qtawesome
+
+--------------------------------------------------------------------------------
+  openpyxl
+--------------------------------------------------------------------------------
+License:    MIT
+Copyright:  See AUTHORS (openpyxl project)
+URL:        https://openpyxl.readthedocs.io
+
+--------------------------------------------------------------------------------
+  Pillow
+--------------------------------------------------------------------------------
+License:    MIT-CMU (Historical Permission Notice and Disclaimer)
+Copyright:  Jeffrey A. Clark and contributors
+URL:        https://github.com/python-pillow/Pillow
+
+--------------------------------------------------------------------------------
+  pyzbar
+--------------------------------------------------------------------------------
+License:    MIT
+Copyright:  Lawrence Hudson, Natural History Museum
+URL:        https://github.com/NaturalHistoryMuseum/pyzbar
+
+--------------------------------------------------------------------------------
+  pylibdmtx
+--------------------------------------------------------------------------------
+License:    MIT
+Copyright:  Lawrence Hudson, Natural History Museum
+URL:        https://github.com/NaturalHistoryMuseum/pylibdmtx
+
+--------------------------------------------------------------------------------
+  argon2-cffi
+--------------------------------------------------------------------------------
+License:    MIT
+Copyright:  Hynek Schlawack
+URL:        https://argon2-cffi.readthedocs.io
+
+--------------------------------------------------------------------------------
+  python-jose
+--------------------------------------------------------------------------------
+License:    MIT
+Copyright:  Michael Davis
+URL:        https://github.com/mpdavis/python-jose
+
+--------------------------------------------------------------------------------
+  FastAPI
+--------------------------------------------------------------------------------
+License:    MIT
+Copyright:  Sebastian Ramirez
+URL:        https://github.com/fastapi/fastapi
+
+--------------------------------------------------------------------------------
+  Pydantic
+--------------------------------------------------------------------------------
+License:    MIT
+Copyright:  Samuel Colvin and contributors
+URL:        https://github.com/pydantic/pydantic
+
+--------------------------------------------------------------------------------
+  cffi
+--------------------------------------------------------------------------------
+License:    MIT
+Copyright:  Armin Rigo, Maciej Fijalkowski
+URL:        https://cffi.readthedocs.io
+
+
+================================================================================
+  BSD Licensed Libraries
+================================================================================
+
+--------------------------------------------------------------------------------
+  qt-material
+--------------------------------------------------------------------------------
+License:    BSD-2-Clause
+Copyright:  Yeison Cardona
+URL:        https://github.com/dunderlab/qt-material
+
+--------------------------------------------------------------------------------
+  XlsxWriter
+--------------------------------------------------------------------------------
+License:    BSD-2-Clause
+Copyright:  John McNamara
+URL:        https://github.com/jmcnamara/XlsxWriter
+
+--------------------------------------------------------------------------------
+  pandas
+--------------------------------------------------------------------------------
+License:    BSD-3-Clause
+Copyright:  2008-2023, AQR Capital Management, LLC, Lambda Foundry, Inc.,
+            PyData Development Team, and Open source contributors
+URL:        https://pandas.pydata.org
+
+--------------------------------------------------------------------------------
+  reportlab
+--------------------------------------------------------------------------------
+License:    BSD
+Copyright:  2000-2025, ReportLab Inc.
+Author:     Andy Robinson, Robin Becker, the ReportLab team and the community
+URL:        https://www.reportlab.com
+
+--------------------------------------------------------------------------------
+  PyPDF2
+--------------------------------------------------------------------------------
+License:    BSD
+Copyright:  Mathieu Fenniak
+URL:        https://github.com/py-pdf/PyPDF2
+
+--------------------------------------------------------------------------------
+  qrcode
+--------------------------------------------------------------------------------
+License:    BSD
+Copyright:  Lincoln Loop
+URL:        https://github.com/lincolnloop/python-qrcode
+
+--------------------------------------------------------------------------------
+  pyserial
+--------------------------------------------------------------------------------
+License:    BSD
+Copyright:  Chris Liechti
+URL:        https://github.com/pyserial/pyserial
+
+--------------------------------------------------------------------------------
+  click
+--------------------------------------------------------------------------------
+License:    BSD-3-Clause
+Copyright:  Pallets Projects
+URL:        https://click.palletsprojects.com
+
+--------------------------------------------------------------------------------
+  uvicorn
+--------------------------------------------------------------------------------
+License:    BSD-3-Clause
+Copyright:  Tom Christie
+URL:        https://uvicorn.dev
+
+--------------------------------------------------------------------------------
+  psutil
+--------------------------------------------------------------------------------
+License:    BSD-3-Clause
+Copyright:  Giampaolo Rodola
+URL:        https://github.com/giampaolo/psutil
+
+--------------------------------------------------------------------------------
+  python-dotenv
+--------------------------------------------------------------------------------
+License:    BSD-3-Clause
+Copyright:  Saurabh Kumar
+URL:        https://github.com/theskumar/python-dotenv
+
+
+================================================================================
+  Apache 2.0 Licensed Libraries
+================================================================================
+
+--------------------------------------------------------------------------------
+  requests
+--------------------------------------------------------------------------------
+License:    Apache-2.0
+Copyright:  Kenneth Reitz
+URL:        https://requests.readthedocs.io
+
+--------------------------------------------------------------------------------
+  python-multipart
+--------------------------------------------------------------------------------
+License:    Apache-2.0
+Copyright:  Andrew Dunham, Marcelo Trylesinski
+URL:        https://github.com/Kludex/python-multipart
+
+
+================================================================================
+  Other Licenses
+================================================================================
+
+--------------------------------------------------------------------------------
+  python-dateutil
+--------------------------------------------------------------------------------
+License:    Apache-2.0 / BSD (Dual License)
+Copyright:  Gustavo Niemeyer
+URL:        https://github.com/dateutil/dateutil
+
+--------------------------------------------------------------------------------
+  pywin32
+--------------------------------------------------------------------------------
+License:    PSF (Python Software Foundation License)
+Copyright:  Mark Hammond and contributors
+URL:        https://github.com/mhammond/pywin32
+
+--------------------------------------------------------------------------------
+  packaging
+--------------------------------------------------------------------------------
+License:    Apache-2.0 / BSD (Dual License)
+Copyright:  Donald Stufft
+URL:        https://packaging.pypa.io
+
+
+================================================================================
+  Full License Texts
+================================================================================
+
+The full text of the referenced licenses can be found at:
+
+  - LGPLv3:      https://www.gnu.org/licenses/lgpl-3.0.html
+  - GPLv2:       https://www.gnu.org/licenses/old-licenses/gpl-2.0.html
+  - MIT:         https://opensource.org/licenses/MIT
+  - BSD-2:       https://opensource.org/licenses/BSD-2-Clause
+  - BSD-3:       https://opensource.org/licenses/BSD-3-Clause
+  - Apache-2.0:  https://www.apache.org/licenses/LICENSE-2.0
+  - PSF:         https://docs.python.org/3/license.html
+
+================================================================================

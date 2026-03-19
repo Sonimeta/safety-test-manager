@@ -1,0 +1,617 @@
+{
+  "profile_key": "concentratore_o2",
+  "name": "Concentratore O2",
+  "device_type": "CONCENTRATORE O2",
+  "sections": [
+    {
+      "key": "normative_references",
+      "title": "Riferimenti Normativi-Procedure",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "norme_procedure",
+          "label": "Norme/Procedure",
+          "field_type": "text",
+          "required": false,
+          "unit": null,
+          "options": [],
+          "read_only": false,
+          "default": "UNI EN ISO 80601-2-61:2011",
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "visual_functional_control",
+      "title": "Controllo Visivo/Funzionale",
+      "section_type": "checklist",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "serigrafie",
+          "label": "Leggibilita delle serigrafie",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "manuale_uso",
+          "label": "Manuale d'uso disponibile",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "involucro",
+          "label": "Integrita involucro",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "cambio_filtri",
+          "label": "Cambio filtri (PM6000 2800 ore - SIM 10000 ore - OXIMAT 5000 ore)",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "cambio_batteria",
+          "label": "Cambio batteria tampone (PM6000 5000 ore)",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "oxygen_flow_control",
+      "title": "Controllo Livelli d'Ossigeno e Flusso",
+      "section_type": "table",
+      "description": "4 L/min dopo 10 min",
+      "fields": [],
+      "rows": [
+        {
+          "key": "level_2",
+          "label": "2.00 L/min",
+          "fields": [
+            {
+              "key": "flow_set",
+              "label": "Flusso impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "L/min",
+              "options": [],
+              "read_only": true,
+              "default": 2.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            },
+            {
+              "key": "flow_measured",
+              "label": "Flusso rilevato",
+              "field_type": "number",
+              "required": false,
+              "unit": "L/min",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            },
+            {
+              "key": "flow_error",
+              "label": "Errore flusso",
+              "field_type": "number",
+              "required": false,
+              "unit": "L/min",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            },
+            {
+              "key": "conc_teorica",
+              "label": "Conc. teorica",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": true,
+              "default": 95,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "conc_misurata",
+              "label": "Conc. misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "conc_error",
+              "label": "Errore",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            }
+          ]
+        },
+        {
+          "key": "level_4",
+          "label": "4.00 L/min",
+          "fields": [
+            {
+              "key": "flow_set",
+              "label": "Flusso impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "L/min",
+              "options": [],
+              "read_only": true,
+              "default": 4.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            },
+            {
+              "key": "flow_measured",
+              "label": "Flusso rilevato",
+              "field_type": "number",
+              "required": false,
+              "unit": "L/min",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            },
+            {
+              "key": "flow_error",
+              "label": "Errore flusso",
+              "field_type": "number",
+              "required": false,
+              "unit": "L/min",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            },
+            {
+              "key": "conc_teorica",
+              "label": "Conc. teorica",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": true,
+              "default": 90,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "conc_misurata",
+              "label": "Conc. misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "conc_error",
+              "label": "Errore",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            }
+          ]
+        },
+        {
+          "key": "level_5",
+          "label": "5.00 L/min",
+          "fields": [
+            {
+              "key": "flow_set",
+              "label": "Flusso impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "L/min",
+              "options": [],
+              "read_only": true,
+              "default": 5.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            },
+            {
+              "key": "flow_measured",
+              "label": "Flusso rilevato",
+              "field_type": "number",
+              "required": false,
+              "unit": "L/min",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            },
+            {
+              "key": "flow_error",
+              "label": "Errore flusso",
+              "field_type": "number",
+              "required": false,
+              "unit": "L/min",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            },
+            {
+              "key": "conc_teorica",
+              "label": "Conc. teorica",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": true,
+              "default": 82,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "conc_misurata",
+              "label": "Conc. misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "conc_error",
+              "label": "Errore",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "output_pressure",
+      "title": "Pressione d'Uscita",
+      "section_type": "table",
+      "description": "PM6000 300-350 - SIM 300-400 - OXYMAT 600. Min > 120, Max < 240 (4 L/min dopo 10 min).",
+      "fields": [],
+      "rows": [
+        {
+          "key": "min",
+          "label": "MIN",
+          "fields": [
+            {
+              "key": "col1",
+              "label": "Colonna 1",
+              "field_type": "number",
+              "required": false,
+              "unit": "mbar",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "col2",
+              "label": "Colonna 2",
+              "field_type": "number",
+              "required": false,
+              "unit": "mbar",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "col3",
+              "label": "Colonna 3",
+              "field_type": "number",
+              "required": false,
+              "unit": "mbar",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "max",
+          "label": "MAX",
+          "fields": [
+            {
+              "key": "col1",
+              "label": "Colonna 1",
+              "field_type": "number",
+              "required": false,
+              "unit": "mbar",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "col2",
+              "label": "Colonna 2",
+              "field_type": "number",
+              "required": false,
+              "unit": "mbar",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "col3",
+              "label": "Colonna 3",
+              "field_type": "number",
+              "required": false,
+              "unit": "mbar",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "alarm_functionality",
+      "title": "Controllo Funzionalita Allarmi",
+      "section_type": "checklist",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "allarme_flusso_basso",
+          "label": "Allarme flusso basso",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "allarme_mancanza_rete",
+          "label": "Allarme mancanza rete elettrica",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "final_evaluation",
+      "title": "Esito Complessivo della Prova",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "esito_complessivo",
+          "label": "Esito Complessivo",
+          "field_type": "choice",
+          "required": false,
+          "unit": null,
+          "options": [
+            "OK",
+            "KO",
+            "N.A."
+          ],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "notes",
+      "title": "Note",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "note",
+          "label": "Note",
+          "field_type": "multiline",
+          "required": false,
+          "unit": null,
+          "options": [],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    }
+  ]
+}
+

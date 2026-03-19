@@ -1,0 +1,46 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+*.spec
+
+# ===== Virtual Environment =====
+.venv/
+venv/
+ENV/
+
+# ===== Segreti e configurazione locale =====
+.env
+chiave.txt
+config.ini
+
+# ===== Dati utente, log, backup =====
+data/
+logs/
+backups/
+*.db
+*.sqlite3
+
+# ===== IDE / Editor =====
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ===== OS =====
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# ===== Cache UDI =====
+data/udi_cache.json
+
+# ===== PyInstaller =====
+*.manifest
+*.spec

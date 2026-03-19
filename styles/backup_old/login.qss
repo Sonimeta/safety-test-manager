@@ -1,0 +1,112 @@
+/* Stile specifico per il dialog di login */
+* { 
+    font-family: 'Segoe UI', 'Inter', system-ui; 
+}
+
+QDialog { 
+    background: transparent; 
+}
+
+QFrame#card {
+    background: #ffffff;
+    border-radius: 16px;
+}
+
+QLabel#title {
+    font-size: 22px;
+    font-weight: 700;
+    color: #0f172a;
+    background: transparent;
+    alignment: center;
+}
+
+QLabel#subtitle {
+    font-size: 13px;
+    color: #64748b;
+    background: transparent;
+}
+
+QLabel { 
+    color: #334155; 
+    background: transparent; 
+}
+
+QLineEdit#input {
+    padding: 8px 12px;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    background: #ffffff;
+    selection-background-color: #bfdbfe;
+}
+
+QLineEdit#input:focus {
+    border: 1px solid #2563eb;
+    background: #ffffff;
+}
+
+QLineEdit#input:disabled {
+    color: #94a3b8;
+    background: #f8fafc;
+}
+
+QDialogButtonBox QPushButton {
+    padding: 10px 20px;
+    border-radius: 10px;
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #f1f5f9, stop: 1 #e2e8f0);
+    border: 1px solid #cbd5e1;
+    color: #475569;
+    font-weight: 600;
+    font-size: 14px;
+    min-height: 40px;
+    min-width: 90px;
+}
+
+QDialogButtonBox QPushButton:hover { 
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #e2e8f0, stop: 1 #cbd5e1);
+    border-color: #94a3b8;
+}
+
+QDialogButtonBox QPushButton:pressed { 
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #cbd5e1, stop: 1 #94a3b8);
+}
+
+QDialogButtonBox QPushButton:disabled { 
+    background: #f1f5f9;
+    color: #94a3b8;
+    border-color: #e2e8f0;
+}
+
+/* Pulsante primario (Login) usando :default */
+QDialogButtonBox QPushButton:default {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #3b82f6, stop: 1 #2563eb);
+    color: white;
+    border: none;
+}
+
+QDialogButtonBox QPushButton:default:hover { 
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #2563eb, stop: 1 #1d4ed8);
+}
+
+QDialogButtonBox QPushButton:default:pressed { 
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #1d4ed8, stop: 1 #1e40af);
+}
+
+QDialogButtonBox QPushButton:default:focus {
+    outline: none;
+    border: 2px solid #60a5fa;
+    padding: 8px 18px;
+}
+
+/* === TESTO PULSANTI SEMPRE IN GRASSETTO === */
+QPushButton,
+QToolButton,
+QDialogButtonBox QPushButton {
+    font-weight: 700;
+}
+
