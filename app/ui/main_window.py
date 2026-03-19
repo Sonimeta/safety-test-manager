@@ -406,7 +406,7 @@ class MainWindow(QMainWindow):
             f"<h2>Safety Test Manager</h2>"
             f"<p><b>Versione:</b> {config.VERSIONE}</p>"
             f"<p><b>Sviluppato da:</b> ELSON META</p>"
-            f"<p><b>© 2024-2026</b> — Tutti i diritti riservati</p>"
+            f"<p><b>© 2026</b> — Tutti i diritti riservati</p>"
             f"<hr>"
             f"<p style='color: gray; font-size: 11px;'>"
             f"Questo software utilizza librerie open-source di terze parti.<br>"

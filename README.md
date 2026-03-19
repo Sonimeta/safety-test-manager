@@ -158,7 +158,7 @@ Vedi il file [LICENSE](LICENSE) per i dettagli completi.
 
 ```
 Safety Test Manager - Software per verifiche di sicurezza elettrica
-Copyright (C) 2024-2026  Elson Meta
+Copyright (C) 2026  Elson Meta
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
