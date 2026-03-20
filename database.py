@@ -2168,6 +2168,22 @@ def overwrite_local_record(table_name: str, record_data: dict, is_conflict_resol
                         exc_info=True,
                     )
 
+        # Filtra le colonne: mantieni solo quelle che esistono nella tabella locale.
+        # I dati dal server (specie PUSH conflicts) possono contenere colonne extra
+        # (es. customer_uuid, destination_uuid) che non esistono nella tabella SQLite.
+        cursor = conn.execute(f'PRAGMA table_info("{table_name}")')
+        valid_columns = {row[1] for row in cursor.fetchall()}
+        # Rimuovi dal dict i campi che non esistono nella tabella locale
+        invalid_keys = [k for k in record_data if k not in valid_columns]
+        for k in invalid_keys:
+            record_data.pop(k)
+        if invalid_keys:
+            logging.debug(f"overwrite_local_record: rimossi campi non validi per '{table_name}': {invalid_keys}")
+
+        if 'uuid' not in record_data:
+            logging.error(f"overwrite_local_record: nessun campo 'uuid' nel record per '{table_name}' dopo il filtraggio")
+            return  # Senza UUID non possiamo fare UPSERT
+
         # Prepara le parti della query dinamicamente
         columns = record_data.keys()
         # Quota i nomi delle colonne per evitare conflitti con parole riservate SQL

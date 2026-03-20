@@ -540,16 +540,13 @@ class SyncConflictsDialog(QDialog):
             local_data = conflict.get('local_data') or {}
 
             if local_data and record_uuid and table_name:
-                try:
-                    ts = datetime.now(timezone.utc).isoformat()
-                    database.force_update_timestamp(table_name, record_uuid, ts)
-                except Exception as e:
-                    logging.warning(f"Impossibile forzare timestamp per {table_name}/{record_uuid}: {e}")
+                ts = datetime.now(timezone.utc).isoformat()
+                database.force_update_timestamp(table_name, record_uuid, ts)
 
             database.resolve_sync_conflict(conflict_id, 'keep_local')
             self._after_resolve(row, f"mantieni locale ({table_name}, uuid={record_uuid})")
         except Exception as e:
-            logging.error(f"Errore risoluzione conflitto: {e}", exc_info=True)
+            logging.error(f"Errore risoluzione conflitto (mantieni locale): {e}", exc_info=True)
             QMessageBox.critical(self, "Errore", f"Errore durante la risoluzione del conflitto:\n{e}")
 
     def _resolve_use_server(self):
@@ -565,17 +562,14 @@ class SyncConflictsDialog(QDialog):
             server_data = conflict.get('server_data') or {}
 
             if server_data and table_name:
-                try:
-                    if record_uuid and 'uuid' not in server_data:
-                        server_data['uuid'] = record_uuid
-                    database.overwrite_local_record(table_name, server_data, is_conflict_resolution=True)
-                except Exception as e:
-                    logging.warning(f"Impossibile sovrascrivere record {table_name}/{record_uuid}: {e}")
+                if record_uuid and 'uuid' not in server_data:
+                    server_data['uuid'] = record_uuid
+                database.overwrite_local_record(table_name, server_data, is_conflict_resolution=True)
 
             database.resolve_sync_conflict(conflict_id, 'use_server')
             self._after_resolve(row, f"usa server ({table_name}, uuid={record_uuid})")
         except Exception as e:
-            logging.error(f"Errore risoluzione conflitto: {e}", exc_info=True)
+            logging.error(f"Errore risoluzione conflitto (usa server): {e}", exc_info=True)
             QMessageBox.critical(self, "Errore", f"Errore durante la risoluzione del conflitto:\n{e}")
 
     def _resolve_merge(self):
@@ -694,17 +688,14 @@ class SyncConflictsDialog(QDialog):
                 local_data = conflict.get('local_data') or {}
 
                 if local_data and record_uuid and table_name:
-                    try:
-                        ts = datetime.now(timezone.utc).isoformat()
-                        database.force_update_timestamp(table_name, record_uuid, ts)
-                    except Exception as e:
-                        logging.warning(f"Batch keep_local: impossibile forzare ts per {table_name}/{record_uuid}: {e}")
+                    ts = datetime.now(timezone.utc).isoformat()
+                    database.force_update_timestamp(table_name, record_uuid, ts)
 
                 database.resolve_sync_conflict(cid, 'keep_local')
                 resolved += 1
             except Exception as e:
                 errors += 1
-                logging.error(f"Errore batch keep_local: {e}")
+                logging.error(f"Errore batch keep_local ({table_name}/{record_uuid}): {e}")
 
         self._after_batch_resolve(resolved, errors)
 
@@ -733,18 +724,15 @@ class SyncConflictsDialog(QDialog):
                 server_data = conflict.get('server_data') or {}
 
                 if server_data and table_name:
-                    try:
-                        if record_uuid and 'uuid' not in server_data:
-                            server_data['uuid'] = record_uuid
-                        database.overwrite_local_record(table_name, server_data, is_conflict_resolution=True)
-                    except Exception as e:
-                        logging.warning(f"Batch use_server: impossibile sovrascrivere {table_name}/{record_uuid}: {e}")
+                    if record_uuid and 'uuid' not in server_data:
+                        server_data['uuid'] = record_uuid
+                    database.overwrite_local_record(table_name, server_data, is_conflict_resolution=True)
 
                 database.resolve_sync_conflict(cid, 'use_server')
                 resolved += 1
             except Exception as e:
                 errors += 1
-                logging.error(f"Errore batch use_server: {e}")
+                logging.error(f"Errore batch use_server ({table_name}/{record_uuid}): {e}")
 
         self._after_batch_resolve(resolved, errors)
 
