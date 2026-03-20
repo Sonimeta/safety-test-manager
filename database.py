@@ -2189,22 +2189,17 @@ def overwrite_local_record(table_name: str, record_data: dict, is_conflict_resol
         params = tuple(record_data[col] for col in columns)
 
         try:
-            # === IMPORTANTE: Disabilita vincoli di chiave estera temporaneamente ===
-            # Il server potrebbe inviare record con riferimenti a tabelle non ancora sincronizzate
-            conn.execute("PRAGMA foreign_keys=OFF")
+            # === IMPORTANTE: Differisce i vincoli FK alla fine della transazione ===
+            # PRAGMA foreign_keys=OFF è ignorato dentro una transazione attiva in SQLite.
+            # defer_foreign_keys=ON funziona dentro una transazione: i vincoli FK vengono
+            # verificati al COMMIT invece che al momento dell'INSERT/UPDATE, evitando
+            # errori quando il record padre non è ancora stato sincronizzato.
+            conn.execute("PRAGMA defer_foreign_keys=ON")
             
             conn.execute(query, params)
             logging.info(f"Record {record_data['uuid']} nella tabella '{table_name}' sovrascritto con la versione del server.")
-            
-            # === Rabilita vincoli di chiave estera ===
-            conn.execute("PRAGMA foreign_keys=ON")
         except Exception as e:
             logging.error(f"Fallimento UPSERT per record {record_data['uuid']} in '{table_name}'", exc_info=True)
-            # Assicurati che i vincoli siano riabilitati anche in caso di errore
-            try:
-                conn.execute("PRAGMA foreign_keys=ON")
-            except:
-                pass
             raise e
 # ==============================================================================
 # SEZIONE 4: GESTORE PROFILI DI VERIFICA
