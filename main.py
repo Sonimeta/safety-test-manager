@@ -14,7 +14,7 @@ from app import auth_manager
 from dotenv import load_dotenv
 from app.config import MODERN_STYLESHEET, load_verification_profiles
 from app.ui.main_window import MainWindow
-from app.logging_config import setup_logging
+from app.logging_config import setup_logging, log_session_start
 from app.backup_manager import create_backup
 from app.ui.dialogs.login_dialog import LoginDialog
 from app import config
@@ -263,9 +263,7 @@ if __name__ == '__main__':
      
     # Setup logging and create backup in the main thread
     setup_logging()
-    logging.info("=====================================")
-    logging.info("||   Avvio Safety Test Manager     ||")
-    logging.info("=====================================")
+    log_session_start()
     logging.info(f"BASE_DIR: {config.BASE_DIR}")
     logging.info(f"APP_DATA_DIR: {config.APP_DATA_DIR}")
     if splash:

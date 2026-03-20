@@ -39,7 +39,7 @@ class DatabaseConnection:
             self.conn = sqlite3.connect(self.db_name)
             self.conn.row_factory = sqlite3.Row
             self.conn.execute("PRAGMA foreign_keys = ON;")
-            logging.info("Connessione al database aperta.")
+            logging.debug("Connessione al database aperta.")
             return self.conn
         except sqlite3.Error as e:
             logging.error(f"Errore di connessione al database: {e}", exc_info=True)
@@ -52,13 +52,13 @@ class DatabaseConnection:
             if self.conn is not None:
                 self.conn.rollback()
         else:
-            logging.info("Transazione DB completata, modifiche confermate (commit).")
+            logging.debug("Transazione DB completata, modifiche confermate (commit).")
             if self.conn is not None:
                 self.conn.commit()
         
         if self.conn is not None:
             self.conn.close()
-        logging.info("Connessione al database chiusa.")
+        logging.debug("Connessione al database chiusa.")
         return False # Non sopprime eventuali eccezioni
 
 # ==============================================================================

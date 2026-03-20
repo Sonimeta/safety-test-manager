@@ -674,7 +674,10 @@ def _validate_sync_data(changes):
             if table not in SYNC_ORDER:
                 logging.warning(f"⚠ Tabella sconosciuta nei dati di sync: {table}")
         
-        # Verifica che ogni record abbia un UUID
+        # Tabelle che usano una chiave diversa da uuid
+        tables_without_uuid = {'signatures'}  # usa 'username' come chiave
+        
+        # Verifica che ogni record abbia un UUID (o chiave alternativa)
         for table, records in changes.items():
             if not isinstance(records, list):
                 return False, f"I record della tabella '{table}' non sono una lista"
@@ -683,8 +686,14 @@ def _validate_sync_data(changes):
                 if not isinstance(record, dict):
                     return False, f"Record {idx} in '{table}' non è un dizionario"
                     
+                if table in tables_without_uuid:
+                    continue  # queste tabelle usano chiavi alternative
+                    
                 if 'uuid' not in record and not record.get('is_deleted'):
-                    logging.warning(f"⚠ Record senza UUID in '{table}': {record}")
+                    # Log sicuro: non stampare mai dati binari/grandi nei record
+                    safe_keys = [k for k in record.keys() if k not in ('signature_data', 'image_data')]
+                    safe_record = {k: record[k] for k in safe_keys}
+                    logging.warning(f"⚠ Record senza UUID in '{table}' (idx={idx}): {safe_record}")
         
         logging.info("✓ Validazione dati di sincronizzazione completata con successo")
         return True, None
