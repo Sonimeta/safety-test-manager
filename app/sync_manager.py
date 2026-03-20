@@ -537,9 +537,19 @@ def _make_sync_request_with_retry(payload: dict, headers: dict, sync_url: str) -
             retry_manager.wait_before_retry()
             
         except requests.HTTPError as e:
-            if e.response and e.response.status_code == 401:
-                logging.error("✗ Errore di autenticazione (401)")
-                return None, "auth_error"
+            if e.response is not None and e.response.status_code == 401:
+                # Analizza il body della risposta per distinguere token scaduto da errore generico
+                detail = ""
+                try:
+                    detail = e.response.json().get("detail", "")
+                except Exception:
+                    pass
+                if detail == "token_expired":
+                    logging.error("✗ Token di accesso scaduto (401 - token_expired)")
+                    return None, "token_expired"
+                else:
+                    logging.error(f"✗ Errore di autenticazione (401 - {detail or 'credenziali non valide'})")
+                    return None, "auth_error"
             elif e.response and e.response.status_code == 403:
                 logging.error("✗ Accesso negato (403)")
                 return None, "Accesso negato. Non hai i permessi per sincronizzare."
@@ -1363,14 +1373,27 @@ def run_sync(full_sync=False):
             # Esegui la richiesta con retry e backoff
             server_response, error_msg = _make_sync_request_with_retry(payload, headers, sync_url)
             
+            if error_msg == "token_expired":
+                logging.error("✗ Token di accesso scaduto - è necessario un nuovo login")
+                try:
+                    auth_manager.logout()
+                except Exception as logout_err:
+                    logging.error(f"Errore durante il logout dopo token scaduto: {logout_err}")
+                return "auth_error", (
+                    "Il token di accesso è scaduto.\n\n"
+                    "Per motivi di sicurezza, la sessione di login ha una durata limitata.\n"
+                    "È necessario effettuare nuovamente il login per continuare a sincronizzare."
+                )
+            
             if error_msg == "auth_error":
-                logging.error("✗ Errore di autenticazione (401 - token scaduto o non valido)")
+                logging.error("✗ Errore di autenticazione (401 - credenziali non valide)")
                 try:
                     auth_manager.logout()
                 except Exception as logout_err:
                     logging.error(f"Errore durante il logout dopo 401: {logout_err}")
                 return "auth_error", (
-                    "La sessione di accesso è scaduta o non è più valida.\n"
+                    "La sessione di accesso non è più valida.\n\n"
+                    "Le credenziali di autenticazione non sono state accettate dal server.\n"
                     "È necessario effettuare nuovamente il login per continuare."
                 )
             

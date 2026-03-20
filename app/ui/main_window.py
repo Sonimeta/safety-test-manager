@@ -3423,9 +3423,13 @@ class MainWindow(QMainWindow):
         # Ripristina subito lo stato UI
         self.on_sync_finished()
 
+        # Determina il titolo in base al tipo di errore
+        is_token_expired = "scaduto" in message.lower()
+        title = "Token di Accesso Scaduto" if is_token_expired else "Sessione Non Valida"
+
         QMessageBox.warning(
             self,
-            "Sessione Scaduta",
+            title,
             f"{message}\n\nL'applicazione verrà chiusa per permettere un nuovo login."
         )
 

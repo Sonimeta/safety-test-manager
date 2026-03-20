@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 # Sicurezza
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, InvalidHash
-from jose import JWTError, jwt
+from jose import JWTError, ExpiredSignatureError, jwt
 load_dotenv()
 
 # --- CONFIGURAZIONE LOGGING MIGLIORATA ---
@@ -328,9 +328,15 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
             first_name=payload.get("first_name"), 
             last_name=payload.get("last_name")
         )
+    except ExpiredSignatureError:
+        logger.warning("Token di accesso scaduto")
+        raise HTTPException(
+            status_code=401,
+            detail="token_expired",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
     except JWTError:
         raise credentials_exception
-    return {"username": username, "role": role, "full_name": payload.get("full_name")}
 
 # --- ENDPOINT HEALTH CHECK ---
 @app.get("/health")
