@@ -44,7 +44,6 @@ from app.ui.dialogs import (DbManagerDialog, VisualInspectionDialog, DeviceDialo
 from app.ui.dialogs.expiring_devices_dialog import ExpiringDevicesDialog
 from app.workers.sync_worker import SyncWorker
 from app.workers.bulk_report_worker import BulkReportWorker
-from app.ui.dialogs.conflict_dialog import ConflictResolutionDialog
 from app import auth_manager
 from app.ui.dialogs.signature_manager_dialog import SignatureManagerDialog
 from app.hardware.fluke_esa612 import FlukeESA612
@@ -3339,6 +3338,14 @@ class MainWindow(QMainWindow):
         self.load_all_data()
         logging.info("Dati ricaricati dal database dopo la sincronizzazione.")
         
+        # Pulizia conflitti già risolti per non accumulare dati obsoleti
+        try:
+            cleaned = database.delete_resolved_conflicts()
+            if cleaned:
+                logging.info(f"🧹 Pulizia: {cleaned} conflitti risolti rimossi dal database")
+        except Exception as e:
+            logging.debug(f"Errore pulizia conflitti risolti: {e}")
+
         # Aggiorna l'indicatore dei conflitti
         self._update_conflict_indicator()
 
@@ -3402,12 +3409,30 @@ class MainWindow(QMainWindow):
         try:
             from app.ui.dialogs.sync_conflicts_dialog import SyncConflictsDialog
             dialog = SyncConflictsDialog(self)
+            dialog.conflicts_resolved.connect(self._on_conflicts_panel_closed)
             dialog.exec()
-            # Dopo la chiusura, aggiorna l'indicatore
             self._update_conflict_indicator()
         except Exception as e:
             logging.error(f"Errore apertura pannello conflitti: {e}", exc_info=True)
             QMessageBox.critical(self, "Errore", f"Impossibile aprire il pannello conflitti: {e}")
+
+    def _on_conflicts_panel_closed(self):
+        """
+        Chiamato quando l'utente ha risolto almeno un conflitto nel pannello.
+        Propone una nuova sincronizzazione per applicare le risoluzioni.
+        """
+        self._update_conflict_indicator()
+        pending = database.get_pending_conflicts_count()
+        if pending == 0:
+            reply = QMessageBox.question(
+                self,
+                "Tutti i Conflitti Risolti",
+                "Tutti i conflitti sono stati risolti.\n\n"
+                "Vuoi avviare una nuova sincronizzazione per applicare le modifiche?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes
+            )
+            if reply == QMessageBox.Yes:
+                self.run_synchronization()
 
     def on_sync_error(self, error_message):
         """Gestisce il caso di errore durante la sincronizzazione."""
@@ -3497,57 +3522,71 @@ class MainWindow(QMainWindow):
         return {}, {}
 
     def on_sync_conflict(self, conflicts):
-        # IMPORTANTE: Reset dello stato prima di mostrare i dialog, così l'utente può interagire
-        # Il lock è già stato rilasciato dal sync_manager nel finally
+        """
+        Gestisce i conflitti PUSH rilevati dal server.
+        Li salva nel database locale (come i conflitti PULL) e apre il pannello
+        unificato di gestione conflitti, così l'utente può risolverli con
+        le stesse modalità (mantieni locale, usa server, merge per-campo).
+        """
+        # Ripristina lo stato UI
         self.state_manager.set_state(AppState.IDLE)
         self.set_ui_enabled(True)
-        
-        QMessageBox.warning(
-            self,
-            "Conflitto di Sincronizzazione",
-            "Sono stati rilevati dei conflitti. Risolvili uno per uno."
-        )
-        
-        try:
-            for conflict in conflicts:
-                dialog = ConflictResolutionDialog(conflict, self)
-                if dialog.exec() == QDialog.Accepted:
-                    resolution = dialog.resolution
-                    if resolution == "keep_local":
-                        # Passiamo l'intero oggetto conflitto così i servizi
-                        # possono applicare logiche specifiche (es. serial_conflict)
-                        services.resolve_conflict_keep_local(conflict)
-                    elif resolution == "use_server":
-                        # Normalizza il conflitto per ottenere server_version
-                        _, server_version = self._normalize_conflict(conflict)
-                        services.resolve_conflict_use_server(conflict['table'], server_version)
-                else:
-                    QMessageBox.information(
-                        self,
-                        "Sincronizzazione Interrotta",
-                        "La sincronizzazione è stata interrotta. Puoi riprovare più tardi."
+
+        # Salva ogni conflitto PUSH nel database locale
+        import uuid as uuid_module
+        persisted = 0
+        for conflict in (conflicts or []):
+            try:
+                conflict_id = str(uuid_module.uuid4())
+
+                # Normalizza: estrai client/server version
+                client_version, server_version = self._normalize_conflict(conflict)
+
+                table_name = conflict.get('table', 'unknown')
+                record_uuid = (
+                    conflict.get('uuid')
+                    or client_version.get('uuid')
+                    or server_version.get('uuid')
+                )
+                conflict_type = conflict.get('reason', 'modification_conflict')
+                severity = conflict.get('severity', 'high')
+                error_message = conflict.get('message', '')
+                if not error_message:
+                    # Costruisci un messaggio leggibile
+                    error_message = (
+                        f"Il server ha rilevato un conflitto di tipo '{conflict_type}' "
+                        f"nella tabella '{table_name}' durante il push."
                     )
-                    return  # Esce senza riprovare
-            
-            # Tutti i conflitti sono stati risolti, riprova la sincronizzazione
-            QMessageBox.information(
-                self,
-                "Riprova Sincronizzazione",
-                "Le risoluzioni sono state applicate. Verrà ora tentata una nuova sincronizzazione."
-            )
-            # Chiama run_synchronization che controllerà can_sync() e gestirà lo stato
-            self.run_synchronization()
-            
+
+                database.save_sync_conflict(
+                    conflict_id=conflict_id,
+                    table_name=table_name,
+                    record_uuid=record_uuid,
+                    conflict_type=conflict_type,
+                    severity=severity,
+                    local_data=client_version if client_version else None,
+                    server_data=server_version if server_version else None,
+                    error_message=error_message
+                )
+                persisted += 1
+            except Exception as e:
+                logging.error(f"Errore nel salvataggio del conflitto PUSH: {e}", exc_info=True)
+
+        logging.info(f"📌 {persisted}/{len(conflicts or [])} conflitti PUSH salvati nel database locale")
+
+        # Aggiorna l'indicatore nella status bar
+        self._update_conflict_indicator()
+
+        # Apri il pannello unificato di gestione conflitti
+        try:
+            from app.ui.dialogs.sync_conflicts_dialog import SyncConflictsDialog
+            dialog = SyncConflictsDialog(self)
+            dialog.conflicts_resolved.connect(self._on_conflicts_panel_closed)
+            dialog.exec()
+            self._update_conflict_indicator()
         except Exception as e:
-            logging.error(f"Errore durante la risoluzione dei conflitti: {e}", exc_info=True)
-            QMessageBox.critical(
-                self,
-                "Errore durante la Risoluzione",
-                f"Si è verificato un errore durante la risoluzione dei conflitti:\n{str(e)}\n\n"
-                "Lo stato è stato resettato. Puoi riprovare la sincronizzazione."
-            )
-            # Assicurati che lo stato sia IDLE anche in caso di errore
-            self.state_manager.set_state(AppState.IDLE)
+            logging.error(f"Errore apertura pannello conflitti: {e}", exc_info=True)
+            QMessageBox.critical(self, "Errore", f"Impossibile aprire il pannello conflitti: {e}")
 
     # --- INIZIO MODIFICA: Nuovo metodo per gestire i cambi di stato ---
     def handle_state_change(self, new_state: AppState):

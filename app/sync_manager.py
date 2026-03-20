@@ -252,7 +252,8 @@ class ConflictAnalyzer:
         severity = self._calculate_severity(
             len(affected_fields),
             len(non_conflicting_fields),
-            table
+            table,
+            affected_fields
         )
         
         # Determina se è auto-risolvibile
@@ -288,7 +289,7 @@ class ConflictAnalyzer:
             ]
         }
     
-    def _calculate_severity(self, conflict_count: int, safe_count: int, table: str) -> str:
+    def _calculate_severity(self, conflict_count: int, safe_count: int, table: str, affected_fields: list = None) -> str:
         """Calcola gravità del conflitto."""
         if conflict_count == 0:
             return 'low'
@@ -297,7 +298,9 @@ class ConflictAnalyzer:
         
         # Campi critici hanno maggiore impatto
         critical_fields = self._get_critical_fields(table)
-        conflicting_critical = sum(1 for f in critical_fields if f in conflict_count)
+        conflicting_critical = 0
+        if affected_fields:
+            conflicting_critical = sum(1 for f in critical_fields if f in affected_fields)
         
         if conflicting_critical > 0:
             return 'high'
@@ -311,9 +314,15 @@ class ConflictAnalyzer:
     def _get_critical_fields(self, table: str) -> List[str]:
         """Ritorna i campi critici per una tabella."""
         critical_by_table = {
-            'devices': ['serial_number', 'status', 'location'],
-            'customers': ['name', 'email'],
-            'verifications': ['test_date', 'status'],
+            'devices': ['serial_number', 'status', 'manufacturer', 'model'],
+            'customers': ['name', 'email', 'phone'],
+            'verifications': ['test_date', 'status', 'result'],
+            'functional_verifications': ['test_date', 'status', 'result'],
+            'destinations': ['name', 'customer_id'],
+            'profiles': ['profile_key', 'profile_name'],
+            'functional_profiles': ['profile_key', 'profile_name'],
+            'signatures': ['username', 'signature_data'],
+            'mti_instruments': ['name', 'serial_number', 'calibration_due_date'],
         }
         return critical_by_table.get(table, [])
 
