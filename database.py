@@ -28,9 +28,16 @@ class DatabaseConnection:
     """
     Un gestore di contesto robusto per la connessione al database SQLite.
     Gestisce automaticamente l'apertura, la chiusura, il commit e il rollback.
+    
+    Args:
+        db_name: Percorso del file database.
+        enable_fk: Se True (default) abilita i vincoli di chiave estera.
+                   Passare False per operazioni che necessitano di scrivere record
+                   con riferimenti a tabelle padre non ancora sincronizzate.
     """
-    def __init__(self, db_name=DB_PATH):
+    def __init__(self, db_name=DB_PATH, enable_fk=True):
         self.db_name = db_name
+        self.enable_fk = enable_fk
         self.conn = None
 
     def __enter__(self):
@@ -38,7 +45,10 @@ class DatabaseConnection:
         try:
             self.conn = sqlite3.connect(self.db_name)
             self.conn.row_factory = sqlite3.Row
-            self.conn.execute("PRAGMA foreign_keys = ON;")
+            if self.enable_fk:
+                self.conn.execute("PRAGMA foreign_keys = ON;")
+            else:
+                self.conn.execute("PRAGMA foreign_keys = OFF;")
             logging.debug("Connessione al database aperta.")
             return self.conn
         except sqlite3.Error as e:
@@ -2111,11 +2121,12 @@ def overwrite_local_record(table_name: str, record_data: dict, is_conflict_resol
         is_conflict_resolution: Se True, salta il controllo dei duplicati di serial_number
                                (usato quando si risolve un conflitto e il record ha UUID diverso)
     
-    NOTA: Disabilita temporaneamente i vincoli di chiave estera poiché il server
+    NOTA: Disabilita i vincoli di chiave estera per questa connessione poiché il server
     potrebbe inviare record con riferimenti a tabelle correlate che non sono state
-    ancora sincronizzate localmente.
+    ancora sincronizzate localmente (PRAGMA foreign_keys=OFF deve essere impostato
+    PRIMA di qualsiasi transazione, non può essere cambiato durante una transazione).
     """
-    with DatabaseConnection() as conn:
+    with DatabaseConnection(enable_fk=False) as conn:
         # Rimuoviamo l'ID numerico locale, non ci serve. L'UUID è la nostra chiave.
         record_data.pop('id', None)
 
@@ -2205,13 +2216,6 @@ def overwrite_local_record(table_name: str, record_data: dict, is_conflict_resol
         params = tuple(record_data[col] for col in columns)
 
         try:
-            # === IMPORTANTE: Differisce i vincoli FK alla fine della transazione ===
-            # PRAGMA foreign_keys=OFF è ignorato dentro una transazione attiva in SQLite.
-            # defer_foreign_keys=ON funziona dentro una transazione: i vincoli FK vengono
-            # verificati al COMMIT invece che al momento dell'INSERT/UPDATE, evitando
-            # errori quando il record padre non è ancora stato sincronizzato.
-            conn.execute("PRAGMA defer_foreign_keys=ON")
-            
             conn.execute(query, params)
             logging.info(f"Record {record_data['uuid']} nella tabella '{table_name}' sovrascritto con la versione del server.")
         except Exception as e:
