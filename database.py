@@ -34,7 +34,12 @@ class DatabaseConnection:
         enable_fk: Se True (default) abilita i vincoli di chiave estera.
                    Passare False per operazioni che necessitano di scrivere record
                    con riferimenti a tabelle padre non ancora sincronizzate.
+                   Quando False, usa autocommit + BEGIN esplicito per garantire
+                   che PRAGMA foreign_keys=OFF sia effettivo (Python's sqlite3
+                   con isolation_level="" può interferire con i PRAGMA).
     """
+    DB_TIMEOUT = 15  # secondi di attesa se il database è bloccato da un'altra connessione
+
     def __init__(self, db_name=DB_PATH, enable_fk=True):
         self.db_name = db_name
         self.enable_fk = enable_fk
@@ -43,12 +48,18 @@ class DatabaseConnection:
     def __enter__(self):
         """Metodo chiamato quando si entra nel blocco 'with'."""
         try:
-            self.conn = sqlite3.connect(self.db_name)
+            self.conn = sqlite3.connect(self.db_name, timeout=self.DB_TIMEOUT)
             self.conn.row_factory = sqlite3.Row
             if self.enable_fk:
                 self.conn.execute("PRAGMA foreign_keys = ON;")
             else:
+                # Per garantire che PRAGMA foreign_keys=OFF sia effettivo,
+                # usiamo autocommit (isolation_level=None) per eseguire il PRAGMA
+                # fuori da qualsiasi transazione implicita di Python, poi apriamo
+                # manualmente una transazione con BEGIN.
+                self.conn.isolation_level = None
                 self.conn.execute("PRAGMA foreign_keys = OFF;")
+                self.conn.execute("BEGIN;")
             logging.debug("Connessione al database aperta.")
             return self.conn
         except sqlite3.Error as e:
