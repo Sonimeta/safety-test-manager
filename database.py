@@ -2147,6 +2147,9 @@ def overwrite_local_record(table_name: str, record_data: dict, is_conflict_resol
         # Gestione speciale per la tabella devices in caso di conflitti sul numero di serie:
         # se esiste già in locale un altro dispositivo ATTIVO con lo stesso serial_number
         # ma UUID diverso, lo marchiamo come eliminato prima di applicare la versione server.
+        # Salviamo le FK del dispositivo sostituito come fallback per la risoluzione FK
+        # (il nuovo UUID del server non esiste localmente, quindi non c'è record da cui ereditare).
+        _replaced_device_row = None  # Fallback FK dal device locale sostituito
         if table_name == "devices":
             serial = record_data.get("serial_number")
             uuid_value = record_data.get("uuid")
@@ -2154,7 +2157,7 @@ def overwrite_local_record(table_name: str, record_data: dict, is_conflict_resol
                 try:
                     existing = conn.execute(
                         """
-                        SELECT id, uuid
+                        SELECT *
                         FROM devices
                         WHERE serial_number = ?
                           AND uuid <> ?
@@ -2163,6 +2166,8 @@ def overwrite_local_record(table_name: str, record_data: dict, is_conflict_resol
                         (serial, uuid_value),
                     ).fetchone()
                     if existing:
+                        # Salva PRIMA le FK del device che stiamo per eliminare
+                        _replaced_device_row = existing
                         logging.warning(
                             "overwrite_local_record: trovato dispositivo locale con stesso "
                             "numero di serie ma UUID diverso (id=%s, uuid=%s). "
@@ -2230,6 +2235,10 @@ def overwrite_local_record(table_name: str, record_data: dict, is_conflict_resol
                     ).fetchone()
                 except Exception:
                     pass
+            # Se non c'è un record locale con lo stesso UUID (es. serial_conflict con UUID diverso),
+            # usa il record del device sostituito (soft-deleted sopra) come fallback.
+            if local_row is None and _replaced_device_row is not None:
+                local_row = _replaced_device_row
 
             for fk_col, parent_table in fk_defs:
                 server_fk_value = record_data.get(fk_col)
