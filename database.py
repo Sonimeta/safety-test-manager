@@ -2206,6 +2206,63 @@ def overwrite_local_record(table_name: str, record_data: dict, is_conflict_resol
             logging.error(f"overwrite_local_record: nessun campo 'uuid' nel record per '{table_name}' dopo il filtraggio")
             return  # Senza UUID non possiamo fare UPSERT
 
+        # ── Risoluzione FK: i dati dal server (specie nei conflitti PUSH) contengono ──
+        # ID numerici FK del DATABASE SERVER che non corrispondono agli ID locali.
+        # Per ogni FK nota, verifichiamo che l'ID puntato esista localmente;
+        # se non esiste, recuperiamo l'FK dal record locale corrente (se presente).
+        FK_MAP = {
+            # tabella: [(colonna_fk, tabella_padre), ...]
+            'devices': [('destination_id', 'destinations')],
+            'destinations': [('customer_id', 'customers')],
+            'verifications': [('device_id', 'devices')],
+            'functional_verifications': [('device_id', 'devices')],
+            'profile_tests': [('profile_id', 'profiles')],
+        }
+        fk_defs = FK_MAP.get(table_name, [])
+        if fk_defs:
+            record_uuid = record_data.get('uuid')
+            # Carica il record locale corrente (se esiste) come fallback per gli FK
+            local_row = None
+            if record_uuid:
+                try:
+                    local_row = conn.execute(
+                        f'SELECT * FROM "{table_name}" WHERE uuid = ?', (record_uuid,)
+                    ).fetchone()
+                except Exception:
+                    pass
+
+            for fk_col, parent_table in fk_defs:
+                server_fk_value = record_data.get(fk_col)
+                if server_fk_value is None:
+                    continue  # Nessun FK da risolvere
+
+                # Controlla se l'ID esiste nella tabella padre locale
+                try:
+                    parent_exists = conn.execute(
+                        f'SELECT 1 FROM "{parent_table}" WHERE id = ?', (server_fk_value,)
+                    ).fetchone()
+                except Exception:
+                    parent_exists = None
+
+                if not parent_exists:
+                    # L'ID del server non corrisponde a nessun record locale.
+                    # Usa l'FK dal record locale corrente (se esiste).
+                    local_fk = dict(local_row).get(fk_col) if local_row else None
+                    if local_fk is not None:
+                        logging.warning(
+                            f"overwrite_local_record: FK '{fk_col}' = {server_fk_value} "
+                            f"non trovata localmente in '{parent_table}'. "
+                            f"Preservo il valore locale: {local_fk}"
+                        )
+                        record_data[fk_col] = local_fk
+                    else:
+                        logging.warning(
+                            f"overwrite_local_record: FK '{fk_col}' = {server_fk_value} "
+                            f"non trovata localmente in '{parent_table}' e nessun "
+                            f"record locale da cui recuperare. FK rimossa dal record."
+                        )
+                        record_data.pop(fk_col, None)
+
         # Prepara le parti della query dinamicamente
         columns = record_data.keys()
         # Quota i nomi delle colonne per evitare conflitti con parole riservate SQL
