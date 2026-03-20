@@ -2125,9 +2125,7 @@ def overwrite_local_record(table_name: str, record_data: dict, is_conflict_resol
         # Gestione speciale per la tabella devices in caso di conflitti sul numero di serie:
         # se esiste già in locale un altro dispositivo ATTIVO con lo stesso serial_number
         # ma UUID diverso, lo marchiamo come eliminato prima di applicare la versione server.
-        # NOTA: Salta questo controllo se stiamo risolvendo un conflitto (is_conflict_resolution=True)
-        # perché il record del server ha UUID diverso ed è lo STESSO device che stiamo aggiornando.
-        if table_name == "devices" and not is_conflict_resolution:
+        if table_name == "devices":
             serial = record_data.get("serial_number")
             uuid_value = record_data.get("uuid")
             if serial and uuid_value:
