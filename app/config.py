@@ -42,7 +42,7 @@ BASE_DIR = get_base_dir() # La cartella del programma
 APP_DATA_DIR = get_app_data_dir() # La cartella dei dati utente
 
 # I file di dati ora vengono cercati/creati nella cartella AppData
-DB_PATH = os.path.join(APP_DATA_DIR, "verifiche.db")
+DB_PATH = os.path.join(APP_DATA_DIR, "verifichetest.db")
 SESSION_FILE = os.path.join(APP_DATA_DIR, "session.json")
 BACKUP_DIR = os.path.join(APP_DATA_DIR, "backups")
 LOG_DIR = os.path.join(APP_DATA_DIR, "logs")
