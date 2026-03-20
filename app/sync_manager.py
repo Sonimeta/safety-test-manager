@@ -1359,6 +1359,20 @@ def run_sync(full_sync=False):
             
         payload = {"last_sync_timestamp": last_sync, "changes": local_changes}
         
+        # Includi risoluzioni conflitto pendenti (per serial_conflict)
+        pending_resolutions = database.get_pending_sync_resolutions()
+        if pending_resolutions:
+            payload["conflict_resolutions"] = [
+                {
+                    "table": r['table_name'],
+                    "uuid_to_keep": r['uuid_to_keep'],
+                    "uuid_to_delete": r['uuid_to_delete'],
+                    "type": r['resolution_type']
+                }
+                for r in pending_resolutions
+            ]
+            logging.info(f"📋 {len(pending_resolutions)} risoluzioni conflitto pendenti incluse nel payload")
+        
         # Aggiungi checksum e versione per validazione
         payload_checksum = _calculate_checksum(local_changes)
         payload["checksum"] = payload_checksum
@@ -1415,6 +1429,15 @@ def run_sync(full_sync=False):
 
             # 7. GESTIONE RISPOSTA SERVER
             status = server_response.get("status")
+            
+            # Pulisci risoluzioni conflitto pendenti: il server le ha già processate
+            # (sia in caso di success che di conflict, le risoluzioni vengono applicate
+            # prima del processing dei record e sono committate)
+            if status in ("success", "conflict"):
+                try:
+                    database.clear_pending_sync_resolutions()
+                except Exception as e:
+                    logging.warning(f"Errore pulizia risoluzioni pendenti: {e}")
             
             if status == "conflict":
                 logging.warning("⚠ Conflitti rilevati durante la sincronizzazione")

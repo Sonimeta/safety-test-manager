@@ -3663,5 +3663,51 @@ def delete_all_conflicts():
     return count
 
 
+# ==============================================================================
+# SEZIONE: RISOLUZIONI CONFLITTO PENDENTI (da inviare al server)
+# ==============================================================================
+# Quando l'utente risolve un serial_conflict, il device "perdente" deve essere
+# soft-deletato anche sul server.  Le risoluzioni vengono salvate qui e inviate
+# nel payload del prossimo sync push tramite il campo "conflict_resolutions".
+
+def save_pending_sync_resolution(table_name: str, uuid_to_keep: str,
+                                  uuid_to_delete: str, resolution_type: str):
+    """
+    Salva una risoluzione di conflitto pendente che verrà inviata al server
+    al prossimo sync per applicare la risoluzione (soft-delete del device perdente).
+    """
+    with DatabaseConnection() as conn:
+        conn.execute("""
+            INSERT INTO pending_sync_resolutions
+                (table_name, uuid_to_keep, uuid_to_delete, resolution_type, created_at)
+            VALUES (?, ?, ?, ?, datetime('now'))
+        """, (table_name, uuid_to_keep, uuid_to_delete, resolution_type))
+    logging.info(
+        f"Risoluzione sync pendente salvata: {resolution_type} per {table_name} "
+        f"(keep={uuid_to_keep[:8]}..., delete={uuid_to_delete[:8]}...)"
+    )
+
+
+def get_pending_sync_resolutions() -> list:
+    """Restituisce tutte le risoluzioni di conflitto pendenti da inviare al server."""
+    try:
+        with DatabaseConnection() as conn:
+            conn.row_factory = sqlite3.Row
+            rows = conn.execute("SELECT * FROM pending_sync_resolutions").fetchall()
+            return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+def clear_pending_sync_resolutions() -> int:
+    """Elimina tutte le risoluzioni pendenti dopo che il server le ha processate."""
+    with DatabaseConnection() as conn:
+        cursor = conn.execute("DELETE FROM pending_sync_resolutions")
+        count = cursor.rowcount
+    if count > 0:
+        logging.info(f"Eliminate {count} risoluzioni sync pendenti.")
+    return count
+
+
 # Applica le migrazioni del database all'avvio del modulo
 migrate_database()

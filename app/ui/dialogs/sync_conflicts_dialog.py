@@ -527,6 +527,36 @@ class SyncConflictsDialog(QDialog):
             return row, self.conflicts[row]
         return None, None
 
+    def _save_serial_resolution_if_needed(self, conflict, resolution_type: str):
+        """
+        Per i serial_conflict, salva una risoluzione pendente che il server
+        applicherà al prossimo sync (soft-delete del device perdente).
+        """
+        if conflict.get('conflict_type') != 'serial_conflict':
+            return
+        table_name = conflict.get('table_name')
+        record_uuid = conflict.get('record_uuid')  # UUID locale
+        server_data = conflict.get('server_data') or {}
+        server_uuid = server_data.get('uuid')
+        if not server_uuid or not record_uuid or server_uuid == record_uuid:
+            return
+
+        if resolution_type in ('keep_local', 'merged'):
+            # Teniamo il device locale, il server deve eliminare il suo
+            uuid_to_keep = record_uuid
+            uuid_to_delete = server_uuid
+        else:  # use_server
+            # Teniamo il device del server, il server deve eliminare quello locale
+            uuid_to_keep = server_uuid
+            uuid_to_delete = record_uuid
+
+        try:
+            database.save_pending_sync_resolution(
+                table_name, uuid_to_keep, uuid_to_delete, resolution_type
+            )
+        except Exception as e:
+            logging.warning(f"Impossibile salvare risoluzione pendente: {e}")
+
     def _resolve_keep_local(self):
         """Risolve il conflitto mantenendo la versione locale."""
         row, conflict = self._get_selected_conflict()
@@ -544,6 +574,7 @@ class SyncConflictsDialog(QDialog):
                 database.force_update_timestamp(table_name, record_uuid, ts)
 
             database.resolve_sync_conflict(conflict_id, 'keep_local')
+            self._save_serial_resolution_if_needed(conflict, 'keep_local')
             self._after_resolve(row, f"mantieni locale ({table_name}, uuid={record_uuid})")
         except Exception as e:
             logging.error(f"Errore risoluzione conflitto (mantieni locale): {e}", exc_info=True)
@@ -567,6 +598,7 @@ class SyncConflictsDialog(QDialog):
                 database.overwrite_local_record(table_name, server_data, is_conflict_resolution=True)
 
             database.resolve_sync_conflict(conflict_id, 'use_server')
+            self._save_serial_resolution_if_needed(conflict, 'use_server')
             self._after_resolve(row, f"usa server ({table_name}, uuid={record_uuid})")
         except Exception as e:
             logging.error(f"Errore risoluzione conflitto (usa server): {e}", exc_info=True)
@@ -618,6 +650,7 @@ class SyncConflictsDialog(QDialog):
                     pass
 
             database.resolve_sync_conflict(conflict_id, 'merged')
+            self._save_serial_resolution_if_needed(conflict, 'merged')
             self._after_resolve(row, f"merge manuale ({table_name}, uuid={record_uuid})")
         except Exception as e:
             logging.error(f"Errore merge conflitto: {e}", exc_info=True)
@@ -692,6 +725,7 @@ class SyncConflictsDialog(QDialog):
                     database.force_update_timestamp(table_name, record_uuid, ts)
 
                 database.resolve_sync_conflict(cid, 'keep_local')
+                self._save_serial_resolution_if_needed(conflict, 'keep_local')
                 resolved += 1
             except Exception as e:
                 errors += 1
@@ -729,6 +763,7 @@ class SyncConflictsDialog(QDialog):
                     database.overwrite_local_record(table_name, server_data, is_conflict_resolution=True)
 
                 database.resolve_sync_conflict(cid, 'use_server')
+                self._save_serial_resolution_if_needed(conflict, 'use_server')
                 resolved += 1
             except Exception as e:
                 errors += 1

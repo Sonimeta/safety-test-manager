@@ -312,6 +312,7 @@ class SyncPayload(BaseModel):
     changes: SyncChanges
     checksum: Optional[str] = None  # SHA256 checksum dei dati
     sync_version: Optional[str] = "1.0"  # Versione del sync
+    conflict_resolutions: Optional[List[dict]] = None  # Risoluzioni serial_conflict dal client
 
 # --- DEPENDENCY PER LA SICUREZZA ---
 def get_current_user(token: str = Depends(oauth2_scheme)):
@@ -460,7 +461,8 @@ def process_client_changes(conn_or_cursor, table_name: str, records: list[dict],
             # --- GESTIONE CONFLITTO: numero di serie già esistente ---
             # Se esiste già un dispositivo ATTIVO con lo stesso serial_number ma UUID diverso,
             # non generiamo un errore 500 ma un conflitto esplicito.
-            if normalized_serial:
+            # Skip: non controlliamo i record in fase di eliminazione (is_deleted)
+            if normalized_serial and not r.get('is_deleted'):
                 cursor.execute(
                     """
                     SELECT * FROM devices
@@ -666,7 +668,8 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
             last_sync_timestamp=last_sync_timestamp,
             changes=payload_raw.get("changes", {}),
             checksum=checksum_received,
-            sync_version=payload_raw.get("sync_version", "1.0")
+            sync_version=payload_raw.get("sync_version", "1.0"),
+            conflict_resolutions=payload_raw.get("conflict_resolutions")
         )
         
     except Exception as e:
@@ -696,6 +699,39 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
         with conn:
             with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                 logging.info("Fase PUSH: Ricezione dati con rilevamento conflitti...")
+
+                # === GESTIONE RISOLUZIONI CONFLITTO SERIAL ===
+                # Il client invia le risoluzioni dei serial_conflict già approvate
+                # dall'utente. Applichiamo PRIMA di processare i record normali
+                # così il serial_number check non rileva più il conflitto.
+                if payload.conflict_resolutions:
+                    tables_valid = {"customers", "mti_instruments", "profiles", "profile_tests",
+                                    "functional_profiles", "destinations", "devices",
+                                    "verifications", "functional_verifications", "signatures", "audit_log"}
+                    for resolution in payload.conflict_resolutions:
+                        res_table = resolution.get('table')
+                        uuid_to_delete = resolution.get('uuid_to_delete')
+                        if not res_table or not uuid_to_delete:
+                            continue
+                        if res_table not in tables_valid:
+                            logging.warning(f"Tabella non valida nella risoluzione conflitto: {res_table}")
+                            continue
+                        try:
+                            cursor.execute(
+                                f"UPDATE {res_table} SET is_deleted = TRUE, last_modified = %s "
+                                f"WHERE uuid = %s AND is_deleted = FALSE",
+                                (new_sync_timestamp, uuid_to_delete)
+                            )
+                            if cursor.rowcount > 0:
+                                logging.info(
+                                    f"✓ Risoluzione conflitto applicata: soft-delete {uuid_to_delete} in {res_table}"
+                                )
+                            else:
+                                logging.info(
+                                    f"Risoluzione conflitto: {uuid_to_delete} in {res_table} già eliminato o non trovato"
+                                )
+                        except Exception as e:
+                            logging.error(f"Errore applicazione risoluzione conflitto: {e}")
 
                 changes_dict = payload.changes.model_dump()
                 tables_order = ["customers", "mti_instruments", "profiles", "profile_tests", "functional_profiles",
