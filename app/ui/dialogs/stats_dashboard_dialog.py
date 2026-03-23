@@ -4,12 +4,12 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QSpinBox, QLab
                                QSizePolicy, QGroupBox, QGridLayout, QPushButton, QComboBox, QTabWidget,
                                QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QFileDialog,
                                QMessageBox, QApplication, QFormLayout, QListWidget, QListWidgetItem, QStyle,
-                               QScrollArea, QFrame, QProgressBar, QSplitter)
+                               QScrollArea, QFrame, QProgressBar, QSplitter, QToolTip)
 from PySide6.QtCharts import (QChart, QChartView, QBarSet, QPercentBarSeries, QBarCategoryAxis,
                               QPieSeries, QPieSlice, QLineSeries, QValueAxis, QBarSeries,
                               QStackedBarSeries)
-from PySide6.QtGui import QPainter, QColor, QPen, QFont
-from PySide6.QtCore import Qt, QDate
+from PySide6.QtGui import QPainter, QColor, QPen, QFont, QCursor
+from PySide6.QtCore import Qt, QDate, QTimer
 
 from app import services, config
 import qtawesome as qta
@@ -49,27 +49,53 @@ class StatsDashboardDialog(QDialog):
         self.tabs = QTabWidget()
         self.tabs.setObjectName("statsTabs")
         
-        # Tab 1: Panoramica
+        # Tab 1: Panoramica (solo KPI)
         overview_tab = self._create_overview_tab()
-        self.tabs.addTab(overview_tab, qta.icon('fa5s.chart-line'), " Panoramica")
+        self.tabs.addTab(overview_tab, qta.icon('fa5s.tachometer-alt'), " Panoramica")
         
-        # Tab 2: Grafici Dettagliati
-        charts_tab = self._create_charts_tab()
-        self.tabs.addTab(charts_tab, qta.icon('fa5s.chart-bar'), " Grafici")
+        # Tab 2: Conformità (grafici torta VE + VF)
+        conformity_tab = self._create_conformity_tab()
+        self.tabs.addTab(conformity_tab, qta.icon('fa5s.chart-pie'), " Conformità")
         
-        # Tab 3: Classifiche
+        # Tab 3: Andamento Mensile (barre mensili)
+        monthly_tab = self._create_monthly_tab()
+        self.tabs.addTab(monthly_tab, qta.icon('fa5s.calendar-alt'), " Andamento Mensile")
+        
+        # Tab 4: Trend & Confronto (trend + confronto anno)
+        trend_tab = self._create_trend_tab()
+        self.tabs.addTab(trend_tab, qta.icon('fa5s.chart-line'), " Trend & Confronto")
+        
+        # Tab 5: Produttività
+        prod_tab = self._create_productivity_tab()
+        self.tabs.addTab(prod_tab, qta.icon('fa5s.chart-bar'), " Produttività")
+        
+        # Tab 6: Classifiche
         rankings_tab = self._create_rankings_tab()
         self.tabs.addTab(rankings_tab, qta.icon('fa5s.trophy'), " Classifiche")
         
-        # Tab 4: Dashboard Operativa
+        # Tab 7: Dashboard Operativa
         dashboard_tab = self._create_dashboard_tab()
-        self.tabs.addTab(dashboard_tab, qta.icon('fa5s.tachometer-alt'), " Dashboard Operativa")
+        self.tabs.addTab(dashboard_tab, qta.icon('fa5s.clipboard-list'), " Dashboard Operativa")
         
         main_layout.addWidget(self.tabs)
 
-        # Caricamento iniziale
-        self.update_all_data()
+        # Overlay di caricamento
+        self._loading_overlay = _DashboardLoadingOverlay(self)
+        self._loading_overlay.hide()
+
         self.setWindowState(Qt.WindowMaximized)
+
+        # Caricamento differito: mostra prima la finestra, poi carica i dati
+        QTimer.singleShot(100, self._deferred_load)
+
+    def _deferred_load(self):
+        """Carica i dati dopo che la finestra è stata visualizzata."""
+        self._loading_overlay.show_message("Caricamento statistiche in corso...")
+        QApplication.processEvents()
+        try:
+            self.update_all_data()
+        finally:
+            self._loading_overlay.hide()
 
     # =========================================================================
     # HEADER
@@ -115,12 +141,12 @@ class StatsDashboardDialog(QDialog):
         return layout
     
     # =========================================================================
-    # TAB 1: PANORAMICA
+    # TAB 1: PANORAMICA (solo KPI)
     # =========================================================================
     def _create_overview_tab(self):
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        layout.setSpacing(12)
+        layout.setSpacing(16)
         
         # --- Riga 1: KPI principali ---
         kpi_row1 = QHBoxLayout()
@@ -172,8 +198,18 @@ class StatsDashboardDialog(QDialog):
         
         layout.addLayout(kpi_row2)
         
-        # --- Grafici ---
-        charts_layout = QHBoxLayout()
+        # Spacer per centrare i KPI verticalmente
+        layout.addStretch(1)
+        
+        return widget
+    
+    # =========================================================================
+    # TAB 2: CONFORMITÀ (torte VE + VF)
+    # =========================================================================
+    def _create_conformity_tab(self):
+        widget = QWidget()
+        layout = QHBoxLayout(widget)
+        layout.setSpacing(16)
         
         # Grafico a torta conformità elettriche
         pie_group = QGroupBox("Distribuzione Esiti Verifiche Elettriche")
@@ -182,8 +218,9 @@ class StatsDashboardDialog(QDialog):
         self.pie_chart.setAnimationOptions(QChart.SeriesAnimations)
         self.pie_chart_view = QChartView(self.pie_chart)
         self.pie_chart_view.setRenderHint(QPainter.Antialiasing)
+        self.pie_chart_view.setMinimumHeight(500)
         pie_layout.addWidget(self.pie_chart_view)
-        charts_layout.addWidget(pie_group)
+        layout.addWidget(pie_group)
         
         # Grafico a torta conformità funzionale
         pie_func_group = QGroupBox("Distribuzione Esiti Verifiche Funzionali")
@@ -192,80 +229,77 @@ class StatsDashboardDialog(QDialog):
         self.pie_func_chart.setAnimationOptions(QChart.SeriesAnimations)
         self.pie_func_chart_view = QChartView(self.pie_func_chart)
         self.pie_func_chart_view.setRenderHint(QPainter.Antialiasing)
+        self.pie_func_chart_view.setMinimumHeight(500)
         pie_func_layout.addWidget(self.pie_func_chart_view)
-        charts_layout.addWidget(pie_func_group)
+        layout.addWidget(pie_func_group)
         
-        # Grafico barre mensile combinato
-        monthly_group = QGroupBox("Verifiche per Mese (Elettriche + Funzionali)")
+        return widget
+    
+    # =========================================================================
+    # TAB 3: ANDAMENTO MENSILE (barre stacked)
+    # =========================================================================
+    def _create_monthly_tab(self):
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        
+        monthly_group = QGroupBox("Andamento Mensile Verifiche")
         monthly_layout = QVBoxLayout(monthly_group)
         self.monthly_chart = QChart()
         self.monthly_chart.setAnimationOptions(QChart.SeriesAnimations)
         self.monthly_chart_view = QChartView(self.monthly_chart)
         self.monthly_chart_view.setRenderHint(QPainter.Antialiasing)
         monthly_layout.addWidget(self.monthly_chart_view)
-        charts_layout.addWidget(monthly_group)
-        
-        layout.addLayout(charts_layout)
+        layout.addWidget(monthly_group)
         
         return widget
     
     # =========================================================================
-    # TAB 2: GRAFICI DETTAGLIATI
+    # TAB 4: TREND & CONFRONTO
     # =========================================================================
-    def _create_charts_tab(self):
+    def _create_trend_tab(self):
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        layout.setSpacing(10)
+        layout.setSpacing(12)
         
-        # Riga superiore: Trend + Confronto anno
-        top_row = QHBoxLayout()
-        
-        # Grafico trend
+        # Grafico trend (occupa metà superiore)
         trend_group = QGroupBox("Andamento Verifiche per Mese")
         trend_layout = QVBoxLayout(trend_group)
         self.trend_chart = QChart()
         self.trend_chart.setAnimationOptions(QChart.SeriesAnimations)
         self.trend_chart_view = QChartView(self.trend_chart)
         self.trend_chart_view.setRenderHint(QPainter.Antialiasing)
+        self.trend_chart_view.setMinimumHeight(350)
         trend_layout.addWidget(self.trend_chart_view)
-        top_row.addWidget(trend_group)
+        layout.addWidget(trend_group)
         
-        # Confronto anno precedente
+        # Confronto anno precedente (occupa metà inferiore)
         comparison_group = QGroupBox("Confronto con Anno Precedente")
         comparison_layout = QVBoxLayout(comparison_group)
         self.comparison_chart = QChart()
         self.comparison_chart.setAnimationOptions(QChart.SeriesAnimations)
         self.comparison_chart_view = QChartView(self.comparison_chart)
         self.comparison_chart_view.setRenderHint(QPainter.Antialiasing)
+        self.comparison_chart_view.setMinimumHeight(350)
         comparison_layout.addWidget(self.comparison_chart_view)
-        top_row.addWidget(comparison_group)
+        layout.addWidget(comparison_group)
         
-        layout.addLayout(top_row)
+        return widget
+    
+    # =========================================================================
+    # TAB 5: PRODUTTIVITÀ
+    # =========================================================================
+    def _create_productivity_tab(self):
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
         
-        # Riga inferiore: Distribuzione dispositivi + Produttività
-        bottom_row = QHBoxLayout()
-        
-        # Distribuzione tipologie dispositivi
-        device_dist_group = QGroupBox("Distribuzione Tipologie Dispositivi")
-        device_dist_layout = QVBoxLayout(device_dist_group)
-        self.device_dist_chart = QChart()
-        self.device_dist_chart.setAnimationOptions(QChart.SeriesAnimations)
-        self.device_dist_chart_view = QChartView(self.device_dist_chart)
-        self.device_dist_chart_view.setRenderHint(QPainter.Antialiasing)
-        device_dist_layout.addWidget(self.device_dist_chart_view)
-        bottom_row.addWidget(device_dist_group)
-        
-        # Produttività
-        productivity_group = QGroupBox("Produttività Mensile (Giorni Lavorativi e Media)")
+        productivity_group = QGroupBox("Produttività Mensile (Giorni Lavorativi e Media Verifiche/Giorno)")
         productivity_layout = QVBoxLayout(productivity_group)
         self.productivity_chart = QChart()
         self.productivity_chart.setAnimationOptions(QChart.SeriesAnimations)
         self.productivity_chart_view = QChartView(self.productivity_chart)
         self.productivity_chart_view.setRenderHint(QPainter.Antialiasing)
         productivity_layout.addWidget(self.productivity_chart_view)
-        bottom_row.addWidget(productivity_group)
-        
-        layout.addLayout(bottom_row)
+        layout.addWidget(productivity_group)
         
         return widget
     
@@ -335,68 +369,94 @@ class StatsDashboardDialog(QDialog):
     def _create_dashboard_tab(self):
         widget = QWidget()
         main_layout = QVBoxLayout(widget)
+        main_layout.setSpacing(12)
         
-        # --- Riga superiore: KPI operativi ---
-        ops_kpi_layout = QHBoxLayout()
+        # --- Riga superiore: KPI operativi con card ---
+        top_section = QVBoxLayout()
         
-        # Statistiche generali in una griglia
-        stats_group = QGroupBox("📊 Riepilogo Generale")
-        stats_grid = QGridLayout(stats_group)
-        stats_grid.setSpacing(8)
+        # Riga 1: Riepilogo Generale (4 card)
+        row1_label = QLabel("<b>📊 Riepilogo Generale</b>")
+        row1_label.setStyleSheet("font-size: 14px; padding: 4px 0;")
+        top_section.addWidget(row1_label)
         
-        self.op_labels = {}
-        op_items = [
-            ("customers", "Clienti", "fa5s.hospital", "#2563eb"),
-            ("destinations", "Destinazioni", "fa5s.map-marker-alt", "#0891b2"),
-            ("devices_active", "Dispositivi Attivi", "fa5s.laptop-medical", "#16a34a"),
-            ("devices_decommissioned", "Dismessi", "fa5s.power-off", "#64748b"),
-            ("instruments", "Strumenti MTI", "fa5s.tools", "#ea580c"),
-            ("profiles_electrical", "Profili Elettrici", "fa5s.bolt", "#7c3aed"),
-            ("profiles_functional", "Profili Funzionali", "fa5s.cogs", "#be185d"),
-            ("last_verification", "Ultima Verifica", "fa5s.calendar", "#4f46e5"),
-        ]
+        kpi_row1 = QHBoxLayout()
+        kpi_row1.setSpacing(10)
         
-        for idx, (key, label, icon, color) in enumerate(op_items):
-            row = idx // 4
-            col = idx % 4
-            
-            icon_label = QLabel()
-            icon_label.setPixmap(qta.icon(icon, color=color).pixmap(20, 20))
-            stats_grid.addWidget(icon_label, row * 2, col * 2)
-            
-            text_label = QLabel(f"<b>{label}:</b>")
-            stats_grid.addWidget(text_label, row * 2, col * 2 + 1)
-            
-            value_label = QLabel(f"<b style='font-size: 14px; color: {color};'>...</b>")
-            value_label.setAlignment(Qt.AlignCenter)
-            stats_grid.addWidget(value_label, row * 2 + 1, col * 2, 1, 2)
-            
-            self.op_labels[key] = value_label
+        self.op_card_customers = self._create_kpi_card(
+            "Clienti", "...", qta.icon('fa5s.hospital'), "#2563eb")
+        kpi_row1.addWidget(self.op_card_customers)
         
-        ops_kpi_layout.addWidget(stats_group, 2)
+        self.op_card_destinations = self._create_kpi_card(
+            "Destinazioni", "...", qta.icon('fa5s.map-marker-alt'), "#0891b2")
+        kpi_row1.addWidget(self.op_card_destinations)
         
-        # Verifiche oggi/mese
-        activity_group = QGroupBox("📈 Attività Periodo")
-        activity_layout = QFormLayout(activity_group)
-        activity_layout.setSpacing(8)
+        self.op_card_devices_active = self._create_kpi_card(
+            "Dispositivi Attivi", "...", qta.icon('fa5s.laptop-medical'), "#16a34a")
+        kpi_row1.addWidget(self.op_card_devices_active)
         
-        self.op_ve_total = QLabel("...")
-        self.op_vf_total = QLabel("...")
-        self.op_ve_month = QLabel("...")
-        self.op_vf_month = QLabel("...")
-        self.op_ve_today = QLabel("...")
-        self.op_vf_today = QLabel("...")
+        self.op_card_decommissioned = self._create_kpi_card(
+            "Dismessi", "...", qta.icon('fa5s.power-off'), "#64748b")
+        kpi_row1.addWidget(self.op_card_decommissioned)
         
-        activity_layout.addRow("⚡ Verifiche Elettriche totali:", self.op_ve_total)
-        activity_layout.addRow("⚙️ Verifiche Funzionali totali:", self.op_vf_total)
-        activity_layout.addRow("⚡ VE questo mese:", self.op_ve_month)
-        activity_layout.addRow("⚙️ VF questo mese:", self.op_vf_month)
-        activity_layout.addRow("⚡ VE oggi:", self.op_ve_today)
-        activity_layout.addRow("⚙️ VF oggi:", self.op_vf_today)
+        top_section.addLayout(kpi_row1)
         
-        ops_kpi_layout.addWidget(activity_group, 1)
+        # Riga 2: Strumenti, Profili, Verifiche periodo (5 card)
+        kpi_row2 = QHBoxLayout()
+        kpi_row2.setSpacing(10)
         
-        main_layout.addLayout(ops_kpi_layout)
+        self.op_card_instruments = self._create_kpi_card(
+            "Strumenti MTI", "...", qta.icon('fa5s.tools'), "#ea580c")
+        kpi_row2.addWidget(self.op_card_instruments)
+        
+        self.op_card_profiles_el = self._create_kpi_card(
+            "Profili Elettrici", "...", qta.icon('fa5s.bolt'), "#7c3aed")
+        kpi_row2.addWidget(self.op_card_profiles_el)
+        
+        self.op_card_profiles_fn = self._create_kpi_card(
+            "Profili Funzionali", "...", qta.icon('fa5s.cogs'), "#be185d")
+        kpi_row2.addWidget(self.op_card_profiles_fn)
+        
+        self.op_card_last_verif = self._create_kpi_card(
+            "Ultima Verifica", "...", qta.icon('fa5s.calendar'), "#4f46e5")
+        kpi_row2.addWidget(self.op_card_last_verif)
+        
+        top_section.addLayout(kpi_row2)
+        
+        # Riga 3: Attività periodo (6 card)
+        row3_label = QLabel("<b>📈 Attività Periodo</b>")
+        row3_label.setStyleSheet("font-size: 14px; padding: 4px 0;")
+        top_section.addWidget(row3_label)
+        
+        kpi_row3 = QHBoxLayout()
+        kpi_row3.setSpacing(10)
+        
+        self.op_card_ve_total = self._create_kpi_card(
+            "VE Totali", "...", qta.icon('fa5s.bolt'), "#2563eb")
+        kpi_row3.addWidget(self.op_card_ve_total)
+        
+        self.op_card_vf_total = self._create_kpi_card(
+            "VF Totali", "...", qta.icon('fa5s.cogs'), "#7c3aed")
+        kpi_row3.addWidget(self.op_card_vf_total)
+        
+        self.op_card_ve_month = self._create_kpi_card(
+            "VE Questo Mese", "...", qta.icon('fa5s.calendar-check'), "#0891b2")
+        kpi_row3.addWidget(self.op_card_ve_month)
+        
+        self.op_card_vf_month = self._create_kpi_card(
+            "VF Questo Mese", "...", qta.icon('fa5s.calendar-check'), "#be185d")
+        kpi_row3.addWidget(self.op_card_vf_month)
+        
+        self.op_card_ve_today = self._create_kpi_card(
+            "VE Oggi", "...", qta.icon('fa5s.clock'), "#16a34a")
+        kpi_row3.addWidget(self.op_card_ve_today)
+        
+        self.op_card_vf_today = self._create_kpi_card(
+            "VF Oggi", "...", qta.icon('fa5s.clock'), "#ea580c")
+        kpi_row3.addWidget(self.op_card_vf_today)
+        
+        top_section.addLayout(kpi_row3)
+        
+        main_layout.addLayout(top_section)
         
         # --- Riga inferiore: Scadenze e Attività recente ---
         bottom_splitter = QSplitter(Qt.Horizontal)
@@ -558,22 +618,68 @@ class StatsDashboardDialog(QDialog):
             return QColor("#BF616A")
     
     # =========================================================================
+    # HOVER HELPERS (tooltip interattivi sui grafici)
+    # =========================================================================
+    _MONTHS_NAMES = ["", "Gen", "Feb", "Mar", "Apr", "Mag", "Giu",
+                     "Lug", "Ago", "Set", "Ott", "Nov", "Dic"]
+
+    def _on_pie_hovered(self, pie_slice, state):
+        """Effetto hover sulle fette della torta: esplode e mostra tooltip."""
+        pie_slice.setExploded(state)
+        pie_slice.setExplodeDistanceFactor(0.07)
+        if state:
+            pct = pie_slice.percentage() * 100
+            QToolTip.showText(
+                QCursor.pos(),
+                f"{pie_slice.label()}\n{pct:.1f}% del totale"
+            )
+
+    def _on_bar_hovered(self, status, index, barset):
+        """Tooltip hover sulle barre: mostra nome serie, mese e valore."""
+        if status:
+            month_name = self._MONTHS_NAMES[index + 1] if 0 <= index < 12 else str(index)
+            value = int(barset.at(index))
+            QToolTip.showText(
+                QCursor.pos(),
+                f"{barset.label()}\n{month_name}: {value}"
+            )
+
+    def _on_line_hovered(self, point, state, series_name):
+        """Tooltip hover sui punti delle linee: mostra nome serie, mese e valore."""
+        if state:
+            month_idx = int(round(point.x()))
+            month_name = self._MONTHS_NAMES[month_idx] if 0 < month_idx <= 12 else str(month_idx)
+            QToolTip.showText(
+                QCursor.pos(),
+                f"{series_name}\n{month_name}: {int(point.y())}"
+            )
+
+    # =========================================================================
     # UPDATE ALL
     # =========================================================================
     def update_all_data(self):
         try:
             QApplication.setOverrideCursor(Qt.WaitCursor)
             
+            # Mostra overlay se disponibile (non durante __init__ iniziale)
+            if hasattr(self, '_loading_overlay') and not self._loading_overlay.isVisible():
+                self._loading_overlay.show_message("Aggiornamento statistiche in corso...")
+                QApplication.processEvents()
+            
             selected_year = self.year_spinbox.value()
             
             self._update_kpi()
+            QApplication.processEvents()
             self._update_pie_chart()
             self._update_pie_func_chart()
+            QApplication.processEvents()
             self._update_monthly_chart(selected_year)
+            QApplication.processEvents()
             self._update_trend_chart(selected_year)
             self._update_comparison_chart(selected_year)
-            self._update_device_distribution_chart()
+            QApplication.processEvents()
             self._update_productivity_chart(selected_year)
+            QApplication.processEvents()
             self._update_rankings()
             self._update_dashboard_data()
             
@@ -582,6 +688,8 @@ class StatsDashboardDialog(QDialog):
             QMessageBox.critical(self, "Errore", f"Impossibile aggiornare la dashboard:\n{str(e)}")
         finally:
             QApplication.restoreOverrideCursor()
+            if hasattr(self, '_loading_overlay'):
+                self._loading_overlay.hide()
     
     # =========================================================================
     # KPI
@@ -686,6 +794,7 @@ class StatsDashboardDialog(QDialog):
                 sl.setLabelVisible(True)
                 sl.setLabelPosition(QPieSlice.LabelOutside)
             
+            series.hovered.connect(self._on_pie_hovered)
             self.pie_chart.addSeries(series)
             rate = conformi / total * 100 if total > 0 else 0
             self.pie_chart.setTitle(f"Verifiche Elettriche — {rate:.1f}% conformi (tot: {total})")
@@ -723,6 +832,7 @@ class StatsDashboardDialog(QDialog):
                 sl.setLabelVisible(True)
                 sl.setLabelPosition(QPieSlice.LabelOutside)
             
+            series.hovered.connect(self._on_pie_hovered)
             self.pie_func_chart.addSeries(series)
             rate = conformi / total * 100 if total > 0 else 0
             self.pie_func_chart.setTitle(f"Verifiche Funzionali — {rate:.1f}% conformi (tot: {total})")
@@ -733,7 +843,7 @@ class StatsDashboardDialog(QDialog):
             logging.error(f"Errore aggiornamento grafico torta VF: {e}", exc_info=True)
     
     def _update_monthly_chart(self, year):
-        """Grafico barre mensile con elettriche e funzionali sovrapposte (stacked)."""
+        """Grafico barre mensile: 4 barre raggruppate + linea totale + linea % conformità."""
         try:
             self.monthly_chart.removeAllSeries()
             for axis in self.monthly_chart.axes():
@@ -746,19 +856,9 @@ class StatsDashboardDialog(QDialog):
                 self.monthly_chart.setTitle(f"Nessuna verifica per l'anno {year}")
                 return
 
-            set_ve_passed = QBarSet("VE Conformi")
-            set_ve_failed = QBarSet("VE Non Conformi")
-            set_vf_passed = QBarSet("VF Conformi")
-            set_vf_failed = QBarSet("VF Non Conformi")
-            
-            set_ve_passed.setColor(QColor("#16a34a"))
-            set_ve_failed.setColor(QColor("#dc2626"))
-            set_vf_passed.setColor(QColor("#7c3aed"))
-            set_vf_failed.setColor(QColor("#e11d48"))
-
+            # --- Raccogli dati per mese ---
             months_ve = {f"{i:02d}": {"passed": 0, "failed": 0} for i in range(1, 13)}
             months_vf = {f"{i:02d}": {"passed": 0, "failed": 0} for i in range(1, 13)}
-            max_value = 0
             
             for row in (ve_stats or []):
                 months_ve[row['month']]['passed'] = row['passed'] or 0
@@ -768,45 +868,130 @@ class StatsDashboardDialog(QDialog):
                 months_vf[row['month']]['passed'] = row['passed'] or 0
                 months_vf[row['month']]['failed'] = row['failed'] or 0
 
-            for mk in sorted(months_ve.keys()):
-                set_ve_passed.append(months_ve[mk]['passed'])
-                set_ve_failed.append(months_ve[mk]['failed'])
-                set_vf_passed.append(months_vf[mk]['passed'])
-                set_vf_failed.append(months_vf[mk]['failed'])
-                month_total = (months_ve[mk]['passed'] + months_ve[mk]['failed'] + 
-                             months_vf[mk]['passed'] + months_vf[mk]['failed'])
-                max_value = max(max_value, month_total)
-
-            series = QStackedBarSeries()
-            series.append(set_ve_passed)
-            series.append(set_ve_failed)
-            series.append(set_vf_passed)
-            series.append(set_vf_failed)
-
-            self.monthly_chart.addSeries(series)
+            # --- 4 Bar Sets raggruppati ---
+            set_ve_ok = QBarSet("VE Conformi")
+            set_ve_ko = QBarSet("VE Non Conformi")
+            set_vf_ok = QBarSet("VF Conformi")
+            set_vf_ko = QBarSet("VF Non Conformi")
             
-            total_all = sum(months_ve[m]['passed'] + months_ve[m]['failed'] + 
-                          months_vf[m]['passed'] + months_vf[m]['failed'] for m in months_ve)
-            self.monthly_chart.setTitle(f"Verifiche per Mese - {year} (Totale: {total_all})")
-            
-            months_cat = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", 
+            set_ve_ok.setColor(QColor("#2563eb"))
+            set_ve_ko.setColor(QColor("#dc2626"))
+            set_vf_ok.setColor(QColor("#7c3aed"))
+            set_vf_ko.setColor(QColor("#e11d48"))
+
+            # --- Linea totale ---
+            line_total = QLineSeries()
+            line_total.setName("Totale mensile")
+            pen_total = QPen(QColor("#16a34a"))
+            pen_total.setWidth(3)
+            line_total.setPen(pen_total)
+            line_total.setPointsVisible(True)
+
+            # --- Linea % conformità ---
+            line_rate = QLineSeries()
+            line_rate.setName("% Conformità")
+            pen_rate = QPen(QColor("#f59e0b"))
+            pen_rate.setWidth(3)
+            pen_rate.setStyle(Qt.DashLine)
+            line_rate.setPen(pen_rate)
+            line_rate.setPointsVisible(True)
+
+            max_value = 0
+            month_keys = sorted(months_ve.keys())
+
+            for idx, mk in enumerate(month_keys):
+                ve_p = months_ve[mk]['passed']
+                ve_f = months_ve[mk]['failed']
+                vf_p = months_vf[mk]['passed']
+                vf_f = months_vf[mk]['failed']
+                
+                set_ve_ok.append(ve_p)
+                set_ve_ko.append(ve_f)
+                set_vf_ok.append(vf_p)
+                set_vf_ko.append(vf_f)
+                
+                grand = ve_p + ve_f + vf_p + vf_f
+                line_total.append(idx + 0.5, grand)
+                
+                # % conformità del mese
+                total_ok = ve_p + vf_p
+                rate_m = (total_ok / grand * 100) if grand > 0 else 0
+                line_rate.append(idx + 0.5, rate_m)
+                
+                max_value = max(max_value, grand)
+
+            bar_series = QBarSeries()
+            bar_series.append(set_ve_ok)
+            bar_series.append(set_ve_ko)
+            bar_series.append(set_vf_ok)
+            bar_series.append(set_vf_ko)
+            bar_series.setLabelsVisible(True)
+            bar_series.setLabelsPosition(QBarSeries.LabelsOutsideEnd)
+            bar_series.setLabelsFormat("@value")
+            bar_series.hovered.connect(self._on_bar_hovered)
+
+            line_total.hovered.connect(
+                lambda pt, st: self._on_line_hovered(pt, st, "Totale")
+            )
+            line_rate.hovered.connect(
+                lambda pt, st: self._on_line_hovered(pt, st, "% Conformità")
+            )
+
+            self.monthly_chart.addSeries(bar_series)
+            self.monthly_chart.addSeries(line_total)
+            self.monthly_chart.addSeries(line_rate)
+
+            # --- Titolo riepilogativo ---
+            total_ve = sum(months_ve[m]['passed'] + months_ve[m]['failed'] for m in months_ve)
+            total_vf = sum(months_vf[m]['passed'] + months_vf[m]['failed'] for m in months_vf)
+            total_all = total_ve + total_vf
+            total_ok_year = sum(months_ve[m]['passed'] + months_vf[m]['passed'] for m in months_ve)
+            rate_year = (total_ok_year / total_all * 100) if total_all > 0 else 0
+            self.monthly_chart.setTitle(
+                f"Andamento Mensile — {year}  |  "
+                f"VE: {total_ve}  |  VF: {total_vf}  |  "
+                f"Totale: {total_all}  |  Conformità: {rate_year:.1f}%"
+            )
+
+            # --- Asse X ---
+            months_cat = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu",
                          "Lug", "Ago", "Set", "Ott", "Nov", "Dic"]
             axis_x = QBarCategoryAxis()
             axis_x.append(months_cat)
+            axis_x.setLabelsFont(QFont("Segoe UI", 9, QFont.Bold))
             self.monthly_chart.addAxis(axis_x, Qt.AlignBottom)
-            series.attachAxis(axis_x)
-            
+            bar_series.attachAxis(axis_x)
+            line_total.attachAxis(axis_x)
+            line_rate.attachAxis(axis_x)
+
+            # --- Asse Y sinistro (conteggio verifiche) ---
             axis_y = QValueAxis()
-            axis_y.setRange(0, max(max_value * 1.15, 1))
+            axis_y.setRange(0, max(max_value * 1.3, 1))
             axis_y.setLabelFormat("%d")
             axis_y.setTitleText("Numero Verifiche")
+            axis_y.setGridLineVisible(True)
+            axis_y.setMinorGridLineVisible(True)
+            axis_y.setMinorTickCount(1)
             axis_y.applyNiceNumbers()
             self.monthly_chart.addAxis(axis_y, Qt.AlignLeft)
-            series.attachAxis(axis_y)
-            
+            bar_series.attachAxis(axis_y)
+            line_total.attachAxis(axis_y)
+
+            # --- Asse Y destro (percentuale conformità) ---
+            axis_y_pct = QValueAxis()
+            axis_y_pct.setRange(0, 105)
+            axis_y_pct.setLabelFormat("%d%%")
+            axis_y_pct.setTitleText("% Conformità")
+            axis_y_pct.setTickCount(6)  # 0, 20, 40, 60, 80, 100
+            axis_y_pct.setGridLineVisible(False)
+            self.monthly_chart.addAxis(axis_y_pct, Qt.AlignRight)
+            line_rate.attachAxis(axis_y_pct)
+
+            # --- Legenda ---
             self.monthly_chart.legend().setVisible(True)
             self.monthly_chart.legend().setAlignment(Qt.AlignBottom)
-            
+            self.monthly_chart.legend().setFont(QFont("Segoe UI", 9))
+
         except Exception as e:
             logging.error(f"Errore aggiornamento grafico mensile: {e}", exc_info=True)
     
@@ -859,6 +1044,11 @@ class StatsDashboardDialog(QDialog):
                 series_vf.append(m, months_vf[m])
                 series_total.append(m, total)
                 max_value = max(max_value, total)
+            
+            # Punti visibili e tooltip hover
+            for s in [series_ve, series_vf, series_total]:
+                s.setPointsVisible(True)
+                s.hovered.connect(lambda pt, st, name=s.name(): self._on_line_hovered(pt, st, name))
             
             self.trend_chart.addSeries(series_total)
             self.trend_chart.addSeries(series_ve)
@@ -934,6 +1124,7 @@ class StatsDashboardDialog(QDialog):
             series = QBarSeries()
             series.append(set_previous)
             series.append(set_current)
+            series.hovered.connect(self._on_bar_hovered)
             
             self.comparison_chart.addSeries(series)
             
@@ -965,46 +1156,6 @@ class StatsDashboardDialog(QDialog):
             
         except Exception as e:
             logging.error(f"Errore aggiornamento grafico confronto: {e}", exc_info=True)
-    
-    def _update_device_distribution_chart(self):
-        """Grafico a torta distribuzione tipologie dispositivi."""
-        try:
-            self.device_dist_chart.removeAllSeries()
-            
-            data = services.get_device_type_distribution()
-            
-            if not data:
-                self.device_dist_chart.setTitle("Nessun dato disponibile")
-                return
-            
-            series = QPieSeries()
-            colors = [
-                "#2563eb", "#16a34a", "#dc2626", "#7c3aed", "#ea580c",
-                "#0891b2", "#be185d", "#4f46e5", "#0d9488", "#b91c1c",
-                "#65a30d", "#c026d3", "#0369a1", "#d97706", "#6d28d9"
-            ]
-            
-            total_devices = sum(row['count'] for row in data)
-            
-            for idx, row in enumerate(data):
-                desc = row['description'] or "N/D"
-                # Tronca nomi lunghi
-                if len(desc) > 25:
-                    desc = desc[:22] + "..."
-                count = row['count']
-                sl = series.append(f"{desc} ({count})", float(count))
-                sl.setColor(QColor(colors[idx % len(colors)]))
-                if idx < 5:  # Mostra label solo per i top 5
-                    sl.setLabelVisible(True)
-                    sl.setLabelPosition(QPieSlice.LabelOutside)
-            
-            self.device_dist_chart.addSeries(series)
-            self.device_dist_chart.setTitle(f"Tipologie Dispositivi (tot: {total_devices})")
-            self.device_dist_chart.legend().setVisible(True)
-            self.device_dist_chart.legend().setAlignment(Qt.AlignRight)
-            
-        except Exception as e:
-            logging.error(f"Errore aggiornamento distribuzione dispositivi: {e}", exc_info=True)
     
     def _update_productivity_chart(self, year):
         """Grafico produttività mensile: giorni lavorativi + media verifiche/giorno."""
@@ -1044,6 +1195,9 @@ class StatsDashboardDialog(QDialog):
             
             bar_series = QBarSeries()
             bar_series.append(set_days)
+            bar_series.hovered.connect(self._on_bar_hovered)
+            series_avg.setPointsVisible(True)
+            series_avg.hovered.connect(lambda pt, st: self._on_line_hovered(pt, st, series_avg.name()))
             
             self.productivity_chart.addSeries(bar_series)
             self.productivity_chart.addSeries(series_avg)
@@ -1054,6 +1208,13 @@ class StatsDashboardDialog(QDialog):
             self.productivity_chart.setTitle(
                 f"Produttività {year} — {total_days} giorni lavorativi, media {avg_overall:.1f} verifiche/giorno")
             
+            # Calcola il massimo della media verifiche/giorno
+            max_avg = 0
+            for mk in sorted(months_data.keys()):
+                if months_data[mk]['days'] > 0:
+                    avg_val = months_data[mk]['total'] / months_data[mk]['days']
+                    max_avg = max(max_avg, avg_val)
+            
             months_cat = ["Gen", "Feb", "Mar", "Apr", "Mag", "Giu", 
                          "Lug", "Ago", "Set", "Ott", "Nov", "Dic"]
             axis_x = QBarCategoryAxis()
@@ -1062,14 +1223,23 @@ class StatsDashboardDialog(QDialog):
             bar_series.attachAxis(axis_x)
             series_avg.attachAxis(axis_x)
             
-            axis_y = QValueAxis()
-            axis_y.setRange(0, max(max_days * 1.2, 1))
-            axis_y.setLabelFormat("%d")
-            axis_y.setTitleText("Giorni / Media")
-            axis_y.applyNiceNumbers()
-            self.productivity_chart.addAxis(axis_y, Qt.AlignLeft)
-            bar_series.attachAxis(axis_y)
-            series_avg.attachAxis(axis_y)
+            # Asse sinistro: Giorni Lavorativi (barre)
+            axis_y_left = QValueAxis()
+            axis_y_left.setRange(0, max(max_days * 1.2, 1))
+            axis_y_left.setLabelFormat("%d")
+            axis_y_left.setTitleText("Giorni Lavorativi")
+            axis_y_left.applyNiceNumbers()
+            self.productivity_chart.addAxis(axis_y_left, Qt.AlignLeft)
+            bar_series.attachAxis(axis_y_left)
+            
+            # Asse destro: Media Verifiche/Giorno (linea)
+            axis_y_right = QValueAxis()
+            axis_y_right.setRange(0, max(max_avg * 1.3, 1))
+            axis_y_right.setLabelFormat("%.1f")
+            axis_y_right.setTitleText("Media Verifiche/Giorno")
+            axis_y_right.applyNiceNumbers()
+            self.productivity_chart.addAxis(axis_y_right, Qt.AlignRight)
+            series_avg.attachAxis(axis_y_right)
             
             self.productivity_chart.legend().setVisible(True)
             self.productivity_chart.legend().setAlignment(Qt.AlignBottom)
@@ -1088,7 +1258,8 @@ class StatsDashboardDialog(QDialog):
             
             if top_customers:
                 self.clients_table.setRowCount(len(top_customers))
-                for row_idx, customer in enumerate(top_customers):
+                for row_idx, customer_row in enumerate(top_customers):
+                    customer = dict(customer_row)
                     # Posizione
                     pos_item = QTableWidgetItem(self._get_medal_icon(row_idx + 1))
                     pos_item.setTextAlignment(Qt.AlignCenter)
@@ -1127,7 +1298,8 @@ class StatsDashboardDialog(QDialog):
             
             if top_techs:
                 self.techs_table.setRowCount(len(top_techs))
-                for row_idx, tech in enumerate(top_techs):
+                for row_idx, tech_row in enumerate(top_techs):
+                    tech = dict(tech_row)
                     pos_item = QTableWidgetItem(self._get_medal_icon(row_idx + 1))
                     pos_item.setTextAlignment(Qt.AlignCenter)
                     self.techs_table.setItem(row_idx, 0, pos_item)
@@ -1161,7 +1333,8 @@ class StatsDashboardDialog(QDialog):
             
             if top_types:
                 self.device_types_table.setRowCount(len(top_types))
-                for row_idx, dtype in enumerate(top_types):
+                for row_idx, dtype_row in enumerate(top_types):
+                    dtype = dict(dtype_row)
                     pos_item = QTableWidgetItem(self._get_medal_icon(row_idx + 1))
                     pos_item.setTextAlignment(Qt.AlignCenter)
                     self.device_types_table.setItem(row_idx, 0, pos_item)
@@ -1202,20 +1375,39 @@ class StatsDashboardDialog(QDialog):
             # --- KPI operativi ---
             summary = services.get_dashboard_summary_stats()
             
-            for key, label_widget in self.op_labels.items():
+            # Riepilogo Generale - card
+            card_mapping = {
+                'customers': self.op_card_customers,
+                'destinations': self.op_card_destinations,
+                'devices_active': self.op_card_devices_active,
+                'devices_decommissioned': self.op_card_decommissioned,
+                'instruments': self.op_card_instruments,
+                'profiles_electrical': self.op_card_profiles_el,
+                'profiles_functional': self.op_card_profiles_fn,
+                'last_verification': self.op_card_last_verif,
+            }
+            
+            for key, card in card_mapping.items():
                 val = summary.get(key, 'N/A')
                 if isinstance(val, int):
-                    label_widget.setText(f"<b style='font-size: 14px;'>{val:,}</b>")
+                    card.value_label.setText(f"{val:,}")
                 else:
-                    label_widget.setText(f"<b style='font-size: 14px;'>{val}</b>")
+                    card.value_label.setText(str(val))
             
-            # Attività
-            self.op_ve_total.setText(f"<b>{summary.get('verifications_electrical', 0):,}</b>")
-            self.op_vf_total.setText(f"<b>{summary.get('verifications_functional', 0):,}</b>")
-            self.op_ve_month.setText(f"<b>{summary.get('verifications_this_month', 0):,}</b>")
-            self.op_vf_month.setText(f"<b>{summary.get('functional_verifications_this_month', 0):,}</b>")
-            self.op_ve_today.setText(f"<b>{summary.get('verifications_today', 0):,}</b>")
-            self.op_vf_today.setText(f"<b>{summary.get('functional_verifications_today', 0):,}</b>")
+            # Attività Periodo - card
+            ve_total = summary.get('verifications_electrical', 0)
+            vf_total = summary.get('verifications_functional', 0)
+            ve_month = summary.get('verifications_this_month', 0)
+            vf_month = summary.get('functional_verifications_this_month', 0)
+            ve_today = summary.get('verifications_today', 0)
+            vf_today = summary.get('functional_verifications_today', 0)
+            
+            self.op_card_ve_total.value_label.setText(f"{ve_total:,}")
+            self.op_card_vf_total.value_label.setText(f"{vf_total:,}")
+            self.op_card_ve_month.value_label.setText(f"{ve_month:,}")
+            self.op_card_vf_month.value_label.setText(f"{vf_month:,}")
+            self.op_card_ve_today.value_label.setText(f"{ve_today:,}")
+            self.op_card_vf_today.value_label.setText(f"{vf_today:,}")
             
             # --- Scadenze verifiche ---
             self.scadenze_list.clear()
@@ -1490,3 +1682,79 @@ class StatsDashboardDialog(QDialog):
             QApplication.restoreOverrideCursor()
             logging.error(f"Errore esportazione report: {e}", exc_info=True)
             QMessageBox.critical(self, "Errore", f"Impossibile esportare il report:\n{str(e)}")
+
+
+class _DashboardLoadingOverlay(QWidget):
+    """Overlay semitrasparente con spinner e messaggio di caricamento per la dashboard."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setStyleSheet("background: transparent;")
+        
+        layout = QVBoxLayout(self)
+        layout.setAlignment(Qt.AlignCenter)
+        layout.setContentsMargins(0, 0, 0, 0)
+        
+        # Container centrale con sfondo
+        container = QWidget()
+        container.setFixedSize(320, 200)
+        container.setStyleSheet("""
+            QWidget {
+                background-color: rgba(30, 30, 30, 220);
+                border-radius: 16px;
+                border: 1px solid rgba(255, 255, 255, 40);
+            }
+        """)
+        container_layout = QVBoxLayout(container)
+        container_layout.setAlignment(Qt.AlignCenter)
+        container_layout.setSpacing(16)
+        
+        # Spinner animato con QMovie (stessa GIF dell'overlay sync)
+        from PySide6.QtGui import QMovie
+        from PySide6.QtCore import QSize
+        self._spinner_label = QLabel()
+        self._spinner_label.setAlignment(Qt.AlignCenter)
+        self._spinner_label.setStyleSheet("background: transparent; border: none;")
+        self._movie = QMovie("./icons/loading.gif")
+        self._movie.setScaledSize(QSize(80, 80))
+        self._spinner_label.setMovie(self._movie)
+        container_layout.addWidget(self._spinner_label)
+        
+        # Messaggio
+        self._message_label = QLabel("Caricamento in corso...")
+        self._message_label.setAlignment(Qt.AlignCenter)
+        self._message_label.setStyleSheet("""
+            QLabel {
+                color: white;
+                font-size: 15px;
+                font-weight: bold;
+                background: transparent;
+                border: none;
+            }
+        """)
+        container_layout.addWidget(self._message_label)
+        
+        layout.addWidget(container)
+    
+    def show_message(self, text: str):
+        """Mostra l'overlay con il messaggio specificato."""
+        self._message_label.setText(text)
+        if self.parent():
+            self.setGeometry(self.parent().rect())
+            self.raise_()
+        self._movie.start()
+        self.show()
+    
+    def hide(self):
+        """Nasconde l'overlay e ferma l'animazione."""
+        self._movie.stop()
+        super().hide()
+    
+    def paintEvent(self, event):
+        """Disegna lo sfondo semitrasparente."""
+        from PySide6.QtGui import QPainter, QColor
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 120))
+        painter.end()
+        super().paintEvent(event)

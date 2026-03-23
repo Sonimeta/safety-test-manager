@@ -98,6 +98,9 @@ class MainWindow(QMainWindow):
         # Inizializza widget dummy per compatibilità con codice legacy
         self._init_legacy_widgets()
 
+        # Flag sincronizzazione automatica (resettato ad ogni avvio)
+        self._auto_sync_disabled = False
+
         # --- INIZIO MODIFICA: Integrazione StateManager ---
         self.state_manager = StateManager()
         self.state_manager.state_changed.connect(self.handle_state_change)
@@ -111,6 +114,14 @@ class MainWindow(QMainWindow):
         # Aggiorna le icone del menu dopo la creazione per applicare il tema corretto
         self._update_menu_icons(self.current_theme)
         self.setStatusBar(QStatusBar(self))
+        
+        # Indicatore sync automatica disattivata (permanente nella status bar)
+        self._auto_sync_status_label = QLabel("")
+        self._auto_sync_status_label.setStyleSheet(
+            "color: #dc2626; font-weight: bold; padding: 0 12px;"
+        )
+        self.statusBar().addPermanentWidget(self._auto_sync_status_label)
+        self._auto_sync_status_label.hide()
         
         # Indicatore conflitti nella status bar
         self._setup_conflict_indicator()
@@ -178,6 +189,15 @@ class MainWindow(QMainWindow):
         self.view_conflicts_action = QAction(qta.icon('fa5s.exclamation-triangle'), "Gestisci Conflitti...", self)
         self.view_conflicts_action.triggered.connect(self._open_conflict_resolution_panel)
         sync_menu.addAction(self.view_conflicts_action)
+
+        sync_menu.addSeparator()
+
+        # Toggle sincronizzazione automatica
+        self.disable_auto_sync_action = QAction(qta.icon('fa5s.pause-circle'), "Disattiva Sincronizzazione Automatica", self)
+        self.disable_auto_sync_action.setCheckable(True)
+        self.disable_auto_sync_action.setChecked(False)
+        self.disable_auto_sync_action.toggled.connect(self._toggle_auto_sync)
+        sync_menu.addAction(self.disable_auto_sync_action)
 
         sync_menu.addSeparator()
 
@@ -449,6 +469,23 @@ class MainWindow(QMainWindow):
         else:
             logging.info("Sincronizzazione periodica disabilitata (interval_minutes = 0)")
     
+    def _toggle_auto_sync(self, disabled):
+        """Attiva/disattiva la sincronizzazione automatica (periodica e all'avvio)."""
+        self._auto_sync_disabled = disabled
+        if disabled:
+            if hasattr(self, 'periodic_sync_timer') and self.periodic_sync_timer.isActive():
+                self.periodic_sync_timer.stop()
+            logging.info("Sincronizzazione automatica DISATTIVATA dall'utente.")
+            self._auto_sync_status_label.setText("⏸ Sincronizzazione automatica disattivata")
+            self._auto_sync_status_label.show()
+        else:
+            # Riavvia il timer se l'intervallo è configurato
+            if SYNC_INTERVAL_MINUTES > 0 and hasattr(self, 'periodic_sync_timer'):
+                interval_ms = SYNC_INTERVAL_MINUTES * 60 * 1000
+                self.periodic_sync_timer.start(interval_ms)
+            logging.info("Sincronizzazione automatica RIATTIVATA dall'utente.")
+            self._auto_sync_status_label.hide()
+
     def _periodic_background_sync(self):
         """
         Esegue una sincronizzazione in background se le condizioni lo permettono.
@@ -456,6 +493,10 @@ class MainWindow(QMainWindow):
         Non mostra messaggi di errore all'utente per non disturbarlo.
         """
         try:
+            # Non sincronizzare se disattivata dall'utente
+            if self._auto_sync_disabled:
+                logging.debug("Sincronizzazione periodica saltata: disattivata dall'utente")
+                return
             # Non sincronizzare se l'app non è in stato IDLE
             if not self.state_manager.can_sync():
                 logging.debug("Sincronizzazione periodica saltata: app non in stato IDLE")
@@ -482,8 +523,14 @@ class MainWindow(QMainWindow):
         solo se:
         - l'app è in stato IDLE
         - il server di sincronizzazione è raggiungibile.
+        - la sincronizzazione automatica non è stata disattivata.
         """
         try:
+            # Non sincronizzare se disattivata dall'utente
+            if self._auto_sync_disabled:
+                logging.info("Sincronizzazione automatica all'avvio saltata: disattivata dall'utente.")
+                return
+
             # Evita di avviare la sync se l'app non è in stato IDLE
             if not self.state_manager.can_sync():
                 logging.info("Stato non IDLE all'avvio, sincronizzazione automatica non eseguita.")

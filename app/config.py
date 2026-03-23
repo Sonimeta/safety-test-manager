@@ -37,7 +37,7 @@ def get_app_data_dir():
     # Crea la cartella se non esiste
     os.makedirs(app_data_path, exist_ok=True)
     return app_data_path
-VERSIONE = "10.0.4"
+VERSIONE = "10.0.5"
 BASE_DIR = get_base_dir() # La cartella del programma
 APP_DATA_DIR = get_app_data_dir() # La cartella dei dati utente
 
