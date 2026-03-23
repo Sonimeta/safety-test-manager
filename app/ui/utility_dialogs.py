@@ -178,7 +178,7 @@ class MappingDialog(QDialog):
         mapping = {}
         for key, combo in self.combo_boxes.items():
             selected_col = combo.currentText()
-            if selected_col != "<Nessuna>": mapping[key] = selected_col
+            if selected_col not in ("<Nessuna>", "<NESSUNA>"): mapping[key] = selected_col
         if 'matricola' not in mapping or 'descrizione' not in mapping:
             QMessageBox.warning(self, "CAMPI MANCANTI", "ASSICURATI DI AVER MAPPATO ALMENO I CAMPI MATRICOLA E DESCRIZIONE.")
             return None

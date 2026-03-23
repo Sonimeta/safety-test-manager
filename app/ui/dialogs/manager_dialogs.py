@@ -1476,11 +1476,12 @@ class DbManagerDialog(QDialog):
                     raise Exception(f"Impossibile leggere le colonne dal file Excel. Errori provati:\n" + "\n".join(error_messages))
             
             # Pulisci i nomi delle colonne (rimuovi spazi iniziali/finali e caratteri invisibili)
-            df_headers = [str(col).strip() if col is not None else "" for col in df_headers]
+            # e normalizza in MAIUSCOLO per coerenza con il mapping
+            df_headers = [str(col).strip().upper() if col is not None else "" for col in df_headers]
             
             # Rimuovi colonne vuote o None, ma mantieni tutte le colonne anche se hanno nomi vuoti
             # (potrebbero essere colonne con dati ma senza intestazione)
-            df_headers = [col if col else f"Colonna_{i+1}" for i, col in enumerate(df_headers)]
+            df_headers = [col if col else f"COLONNA_{i+1}" for i, col in enumerate(df_headers)]
             
             if not df_headers:
                 raise Exception("Nessuna colonna trovata nel file. Assicurati che il file contenga una riga di intestazione.")

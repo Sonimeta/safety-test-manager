@@ -29,6 +29,8 @@ class ImportWorker(QObject):
                    sample = f.read(2048)
                    f.seek(0)
                df = pd.read_csv(self.filename, sep=';', dtype=str, encoding='utf-8').fillna('')
+               # Normalizza nomi colonne in MAIUSCOLO per coerenza con il mapping
+               df.columns = [str(col).strip().upper() if col is not None else "" for col in df.columns]
             else:
                 # Leggi Excel - prova diversi engine
                 df = None
@@ -73,7 +75,8 @@ class ImportWorker(QObject):
                     raise Exception(f"Impossibile leggere il file Excel. Errori provati:\n" + "\n".join(error_messages))
                 
                 # Pulisci i nomi delle colonne (rimuovi spazi iniziali/finali)
-                df.columns = [str(col).strip() if col is not None else "" for col in df.columns]
+                # e normalizza in MAIUSCOLO per coerenza con il mapping
+                df.columns = [str(col).strip().upper() if col is not None else "" for col in df.columns]
                 
         except Exception as e:
             self.error.emit(f"Impossibile leggere il file:\n{e}")

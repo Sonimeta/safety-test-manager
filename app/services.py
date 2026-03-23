@@ -644,6 +644,11 @@ def get_device_by_id(device_id: int):
     return database.get_device_by_id(device_id)
 
 
+def get_devices_needing_verification(days_in_future=30):
+    """Recupera i dispositivi ATTIVI con verifica scaduta o in scadenza."""
+    return database.get_devices_needing_verification(days_in_future)
+
+
 def get_devices_for_destination(destination_id: int, search_query=None):
     return database.get_devices_for_destination(destination_id, search_query)
 
