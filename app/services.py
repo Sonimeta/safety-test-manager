@@ -1773,6 +1773,42 @@ def get_top_technicians_by_verifications(limit=10):
     """Recupera i top tecnici per numero di verifiche."""
     return database.get_top_technicians_by_verifications(limit)
 
+def get_functional_verification_stats():
+    """Recupera statistiche sulle verifiche funzionali."""
+    return database.get_functional_verification_stats()
+
+def get_functional_verification_stats_by_month(year: int):
+    """Recupera statistiche verifiche funzionali per mese."""
+    return database.get_functional_verification_stats_by_month(year)
+
+def get_device_type_distribution():
+    """Distribuzione dispositivi per tipologia."""
+    return database.get_device_type_distribution()
+
+def get_recent_verifications(limit=20):
+    """Recupera le verifiche più recenti."""
+    return database.get_recent_verifications(limit)
+
+def get_verifications_per_day_last_n_days(days=30):
+    """Verifiche per giorno negli ultimi N giorni."""
+    return database.get_verifications_per_day_last_n_days(days)
+
+def get_dashboard_summary_stats():
+    """Statistiche riassuntive complete per la dashboard."""
+    return database.get_dashboard_summary_stats()
+
+def get_top_device_types_by_verifications(limit=10):
+    """Tipologie di dispositivi con più verifiche."""
+    return database.get_top_device_types_by_verifications(limit)
+
+def get_monthly_productivity(year: int):
+    """Produttività mensile."""
+    return database.get_monthly_productivity(year)
+
+def get_instruments_needing_calibration(days_in_future=30):
+    """Recupera strumenti con calibrazione in scadenza."""
+    return database.get_instruments_needing_calibration(days_in_future)
+
 # ==============================================================================
 # AUDIT LOG SERVICES
 # ==============================================================================

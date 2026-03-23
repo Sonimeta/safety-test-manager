@@ -3224,6 +3224,251 @@ def get_top_technicians_by_verifications(limit=10):
         return conn.execute(query, (limit,)).fetchall()
 
 # ==============================================================================
+# STATISTICHE DASHBOARD AVANZATE
+# ==============================================================================
+
+def get_functional_verification_stats():
+    """Recupera statistiche sulle verifiche funzionali."""
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT 
+                COUNT(*) as totale,
+                SUM(CASE WHEN overall_status = 'PASSATO' THEN 1 ELSE 0 END) as conformi,
+                SUM(CASE WHEN overall_status = 'FALLITO' THEN 1 ELSE 0 END) as non_conformi
+            FROM functional_verifications
+            WHERE is_deleted = 0
+        """
+        result = conn.execute(query).fetchone()
+        if not result:
+            return {'totale': 0, 'conformi': 0, 'non_conformi': 0}
+        return {
+            'totale': int(result['totale'] or 0),
+            'conformi': int(result['conformi'] or 0),
+            'non_conformi': int(result['non_conformi'] or 0)
+        }
+
+
+def get_functional_verification_stats_by_month(year: int):
+    """Recupera statistiche verifiche funzionali per mese."""
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT
+                strftime('%m', verification_date) as month,
+                COUNT(id) as total,
+                SUM(CASE WHEN overall_status = 'PASSATO' THEN 1 ELSE 0 END) as passed,
+                SUM(CASE WHEN overall_status = 'FALLITO' THEN 1 ELSE 0 END) as failed
+            FROM functional_verifications
+            WHERE strftime('%Y', verification_date) = ? AND is_deleted = 0
+            GROUP BY month
+            ORDER BY month;
+        """
+        return conn.execute(query, (str(year),)).fetchall()
+
+
+def get_device_type_distribution():
+    """Distribuzione dispositivi per tipologia (description)."""
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT description, COUNT(*) as count
+            FROM devices
+            WHERE is_deleted = 0 AND status = 'active' AND description IS NOT NULL AND description != ''
+            GROUP BY description
+            ORDER BY count DESC
+            LIMIT 15
+        """
+        return conn.execute(query).fetchall()
+
+
+def get_recent_verifications(limit=20):
+    """Recupera le verifiche più recenti (elettriche + funzionali)."""
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT 
+                'elettrica' as tipo,
+                v.verification_date,
+                v.overall_status,
+                v.technician_name,
+                v.profile_name as profile,
+                d.description as device_desc,
+                d.serial_number,
+                c.name as customer_name
+            FROM verifications v
+            JOIN devices d ON v.device_id = d.id
+            JOIN destinations dest ON d.destination_id = dest.id
+            JOIN customers c ON dest.customer_id = c.id
+            WHERE v.is_deleted = 0
+            UNION ALL
+            SELECT 
+                'funzionale' as tipo,
+                fv.verification_date,
+                fv.overall_status,
+                fv.technician_name,
+                fv.profile_key as profile,
+                d.description as device_desc,
+                d.serial_number,
+                c.name as customer_name
+            FROM functional_verifications fv
+            JOIN devices d ON fv.device_id = d.id
+            JOIN destinations dest ON d.destination_id = dest.id
+            JOIN customers c ON dest.customer_id = c.id
+            WHERE fv.is_deleted = 0
+            ORDER BY verification_date DESC
+            LIMIT ?
+        """
+        return conn.execute(query, (limit,)).fetchall()
+
+
+def get_verifications_per_day_last_n_days(days=30):
+    """Verifiche (elettriche + funzionali) per giorno negli ultimi N giorni."""
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT date_val, 
+                   SUM(elettriche) as elettriche, 
+                   SUM(funzionali) as funzionali,
+                   SUM(elettriche) + SUM(funzionali) as totale
+            FROM (
+                SELECT verification_date as date_val, COUNT(*) as elettriche, 0 as funzionali
+                FROM verifications
+                WHERE is_deleted = 0 AND verification_date >= date('now', ?)
+                GROUP BY verification_date
+                UNION ALL
+                SELECT verification_date as date_val, 0 as elettriche, COUNT(*) as funzionali
+                FROM functional_verifications
+                WHERE is_deleted = 0 AND verification_date >= date('now', ?)
+                GROUP BY verification_date
+            )
+            GROUP BY date_val
+            ORDER BY date_val ASC
+        """
+        offset = f'-{days} days'
+        return conn.execute(query, (offset, offset)).fetchall()
+
+
+def get_dashboard_summary_stats():
+    """Statistiche riassuntive complete per la dashboard."""
+    with DatabaseConnection() as conn:
+        stats = {}
+        # Clienti attivi
+        stats['customers'] = conn.execute(
+            "SELECT COUNT(*) FROM customers WHERE is_deleted = 0"
+        ).fetchone()[0] or 0
+        # Destinazioni attive
+        stats['destinations'] = conn.execute(
+            "SELECT COUNT(*) FROM destinations WHERE is_deleted = 0"
+        ).fetchone()[0] or 0
+        # Dispositivi attivi
+        stats['devices_active'] = conn.execute(
+            "SELECT COUNT(*) FROM devices WHERE is_deleted = 0 AND status = 'active'"
+        ).fetchone()[0] or 0
+        # Dispositivi dismessi
+        stats['devices_decommissioned'] = conn.execute(
+            "SELECT COUNT(*) FROM devices WHERE is_deleted = 0 AND status = 'decommissioned'"
+        ).fetchone()[0] or 0
+        # Totale dispositivi
+        stats['devices_total'] = conn.execute(
+            "SELECT COUNT(*) FROM devices WHERE is_deleted = 0"
+        ).fetchone()[0] or 0
+        # Strumenti attivi
+        stats['instruments'] = conn.execute(
+            "SELECT COUNT(*) FROM mti_instruments WHERE is_deleted = 0"
+        ).fetchone()[0] or 0
+        # Profili elettrici
+        stats['profiles_electrical'] = conn.execute(
+            "SELECT COUNT(*) FROM profiles WHERE is_deleted = 0"
+        ).fetchone()[0] or 0
+        # Profili funzionali
+        stats['profiles_functional'] = conn.execute(
+            "SELECT COUNT(*) FROM functional_profiles WHERE is_deleted = 0"
+        ).fetchone()[0] or 0
+        # Verifiche elettriche totali
+        stats['verifications_electrical'] = conn.execute(
+            "SELECT COUNT(*) FROM verifications WHERE is_deleted = 0"
+        ).fetchone()[0] or 0
+        # Verifiche funzionali totali
+        stats['verifications_functional'] = conn.execute(
+            "SELECT COUNT(*) FROM functional_verifications WHERE is_deleted = 0"
+        ).fetchone()[0] or 0
+        # Verifiche questo mese
+        stats['verifications_this_month'] = conn.execute(
+            "SELECT COUNT(*) FROM verifications WHERE is_deleted = 0 AND strftime('%Y-%m', verification_date) = strftime('%Y-%m', 'now')"
+        ).fetchone()[0] or 0
+        stats['functional_verifications_this_month'] = conn.execute(
+            "SELECT COUNT(*) FROM functional_verifications WHERE is_deleted = 0 AND strftime('%Y-%m', verification_date) = strftime('%Y-%m', 'now')"
+        ).fetchone()[0] or 0
+        # Verifiche oggi
+        stats['verifications_today'] = conn.execute(
+            "SELECT COUNT(*) FROM verifications WHERE is_deleted = 0 AND verification_date = date('now')"
+        ).fetchone()[0] or 0
+        stats['functional_verifications_today'] = conn.execute(
+            "SELECT COUNT(*) FROM functional_verifications WHERE is_deleted = 0 AND verification_date = date('now')"
+        ).fetchone()[0] or 0
+        # Ultima verifica
+        last_e = conn.execute(
+            "SELECT MAX(verification_date) FROM verifications WHERE is_deleted = 0"
+        ).fetchone()[0]
+        last_f = conn.execute(
+            "SELECT MAX(verification_date) FROM functional_verifications WHERE is_deleted = 0"
+        ).fetchone()[0]
+        stats['last_verification'] = max(last_e or '', last_f or '') or 'N/A'
+        # Dispositivi senza verifica
+        stats['devices_never_verified'] = conn.execute("""
+            SELECT COUNT(*) FROM devices d
+            WHERE d.is_deleted = 0 AND d.status = 'active'
+            AND NOT EXISTS (SELECT 1 FROM verifications v WHERE v.device_id = d.id AND v.is_deleted = 0)
+            AND NOT EXISTS (SELECT 1 FROM functional_verifications fv WHERE fv.device_id = d.id AND fv.is_deleted = 0)
+        """).fetchone()[0] or 0
+        
+        return stats
+
+
+def get_top_device_types_by_verifications(limit=10):
+    """Tipologie di dispositivi con più verifiche."""
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT 
+                d.description as device_type,
+                COUNT(v.id) as total_verifications,
+                SUM(CASE WHEN v.overall_status = 'PASSATO' THEN 1 ELSE 0 END) as passed,
+                SUM(CASE WHEN v.overall_status = 'FALLITO' THEN 1 ELSE 0 END) as failed,
+                ROUND(CAST(SUM(CASE WHEN v.overall_status = 'PASSATO' THEN 1 ELSE 0 END) AS FLOAT) / 
+                      COUNT(v.id) * 100, 1) as conformity_rate
+            FROM devices d
+            JOIN verifications v ON d.id = v.device_id
+            WHERE d.is_deleted = 0 AND v.is_deleted = 0 AND d.description IS NOT NULL AND d.description != ''
+            GROUP BY d.description
+            HAVING COUNT(v.id) > 0
+            ORDER BY total_verifications DESC
+            LIMIT ?
+        """
+        return conn.execute(query, (limit,)).fetchall()
+
+
+def get_monthly_productivity(year: int):
+    """Produttività mensile: giorni lavorativi con almeno una verifica."""
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT 
+                strftime('%m', date_val) as month,
+                COUNT(DISTINCT date_val) as working_days,
+                SUM(total_count) as total_verifications
+            FROM (
+                SELECT verification_date as date_val, COUNT(*) as total_count
+                FROM verifications
+                WHERE strftime('%Y', verification_date) = ? AND is_deleted = 0
+                GROUP BY verification_date
+                UNION ALL
+                SELECT verification_date as date_val, COUNT(*) as total_count
+                FROM functional_verifications
+                WHERE strftime('%Y', verification_date) = ? AND is_deleted = 0
+                GROUP BY verification_date
+            )
+            GROUP BY month
+            ORDER BY month
+        """
+        return conn.execute(query, (str(year), str(year))).fetchall()
+
+
+# ==============================================================================
 # AUDIT LOG FUNCTIONS
 # ==============================================================================
 
