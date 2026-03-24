@@ -126,6 +126,9 @@ class MainWindow(QMainWindow):
         # Indicatore conflitti nella status bar
         self._setup_conflict_indicator()
 
+        # Indicatore/toggle server QR nella status bar (visibile da qualsiasi schermata)
+        self._setup_qr_server_statusbar()
+
         main_widget = QWidget()
         self.main_layout = QHBoxLayout(main_widget)
         self.setCentralWidget(main_widget)
@@ -3451,6 +3454,70 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logging.error(f"Errore aggiornamento indicatore conflitti: {e}")
 
+    def _setup_qr_server_statusbar(self):
+        """Crea il pulsante toggle server QR nella status bar, visibile da qualsiasi schermata."""
+        self.qr_statusbar_btn = QPushButton("📱 Scanner QR")
+        self.qr_statusbar_btn.setFlat(True)
+        self.qr_statusbar_btn.setCursor(Qt.PointingHandCursor)
+        self.qr_statusbar_btn.setToolTip(
+            "Click: Attiva/disattiva lo scanner QR\n"
+            "Quando attivo, il telefono può inviare scansioni e allegati"
+        )
+        self.qr_statusbar_btn.setStyleSheet(
+            "QPushButton { color: #888; padding: 2px 10px; border: 1px solid #888; "
+            "border-radius: 4px; background: transparent; font-size: 9pt; }"
+            "QPushButton:hover { background: rgba(136, 136, 136, 0.15); }"
+        )
+        self.qr_statusbar_btn.clicked.connect(self._on_qr_statusbar_clicked)
+        self.statusBar().addPermanentWidget(self.qr_statusbar_btn)
+
+    def _on_qr_statusbar_clicked(self):
+        """Gestisce il click sul pulsante QR nella status bar."""
+        if hasattr(self, 'qr_scanner_server_running') and self.qr_scanner_server_running:
+            # Server attivo: mostra menu con opzioni
+            menu = QMenu(self)
+            show_qr_action = menu.addAction("📱 Mostra QR Code")
+            show_qr_action.triggered.connect(self._show_qr_scanner_dialog)
+            menu.addSeparator()
+            stop_action = menu.addAction("🔴 Disattiva Scanner")
+            stop_action.triggered.connect(self._stop_qr_scanner_server)
+            # Mostra il menu sotto il pulsante
+            btn_pos = self.qr_statusbar_btn.mapToGlobal(
+                self.qr_statusbar_btn.rect().topLeft()
+            )
+            menu.exec(btn_pos)
+        else:
+            # Server non attivo: avvia
+            self._start_qr_scanner_server()
+
+    def _update_qr_statusbar(self, active: bool):
+        """Aggiorna l'aspetto del pulsante QR nella status bar."""
+        if not hasattr(self, 'qr_statusbar_btn'):
+            return
+        if active:
+            url = getattr(self, 'qr_scanner_url', '')
+            self.qr_statusbar_btn.setText("📱 Scanner QR 🟢")
+            self.qr_statusbar_btn.setToolTip(
+                f"Scanner ATTIVO: {url}\n"
+                f"Click: mostra QR code per il telefono"
+            )
+            self.qr_statusbar_btn.setStyleSheet(
+                "QPushButton { color: #2E7D32; font-weight: bold; padding: 2px 10px; "
+                "border: 1px solid #4CAF50; border-radius: 4px; background: rgba(76, 175, 80, 0.1); font-size: 9pt; }"
+                "QPushButton:hover { background: rgba(76, 175, 80, 0.25); }"
+            )
+        else:
+            self.qr_statusbar_btn.setText("📱 Scanner QR")
+            self.qr_statusbar_btn.setToolTip(
+                "Click: Attiva lo scanner QR\n"
+                "Quando attivo, il telefono può inviare scansioni e allegati"
+            )
+            self.qr_statusbar_btn.setStyleSheet(
+                "QPushButton { color: #888; padding: 2px 10px; border: 1px solid #888; "
+                "border-radius: 4px; background: transparent; font-size: 9pt; }"
+                "QPushButton:hover { background: rgba(136, 136, 136, 0.15); }"
+            )
+
     def _open_conflict_resolution_panel(self):
         """Apre il pannello di risoluzione conflitti."""
         try:
@@ -3761,6 +3828,9 @@ class MainWindow(QMainWindow):
             
             logging.info(f"[QR Scanner] Server avviato su {self.qr_scanner_url}")
             
+            # Aggiorna indicatore nella status bar
+            self._update_qr_statusbar(True)
+            
             # Mostra dialog con QR code
             self._show_qr_scanner_dialog()
             
@@ -3795,6 +3865,9 @@ class MainWindow(QMainWindow):
         self.qr_status_indicator.setText("")
         self.qr_status_indicator.setToolTip("Scanner QR non attivo")
         
+        # Aggiorna indicatore nella status bar
+        self._update_qr_statusbar(False)
+        
         # Chiudi dialog se aperto
         if hasattr(self, 'qr_scanner_dialog') and self.qr_scanner_dialog:
             self.qr_scanner_dialog.close()
@@ -3806,9 +3879,13 @@ class MainWindow(QMainWindow):
         """Mostra il dialog con QR code (server già attivo in background)."""
         from app.ui.dialogs.qr_device_scanner_dialog import QRDeviceScannerDialog
         
+        # Usa la finestra attiva come parent, così il dialog appare sopra
+        # anche quando è aperto un dialog modale (es. Gestione Anagrafiche)
+        active_window = QApplication.activeWindow() or self
+        
         # Crea nuovo dialog se non esiste o è stato chiuso
         if not hasattr(self, 'qr_scanner_dialog') or not self.qr_scanner_dialog or not self.qr_scanner_dialog.isVisible():
-            self.qr_scanner_dialog = QRDeviceScannerDialog(self, continuous_mode=True, external_server=True)
+            self.qr_scanner_dialog = QRDeviceScannerDialog(active_window, continuous_mode=True, external_server=True)
             self.qr_scanner_dialog.device_scan_requested.connect(self._on_qr_scan_received)
         
         # Imposta URL e mostra QR

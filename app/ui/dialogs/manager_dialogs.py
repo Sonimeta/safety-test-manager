@@ -620,11 +620,59 @@ class DbManagerDialog(QDialog):
         layout.addWidget(self.create_button("💾 Esporta Verifiche", self.export_daily_verifications, "secondaryButton"))
         
         layout.addStretch()
+
+        # Pulsante Scanner QR (collegato alla MainWindow)
+        self.qr_scanner_btn = QPushButton("📱 Scanner QR")
+        self.qr_scanner_btn.setCursor(Qt.PointingHandCursor)
+        self.qr_scanner_btn.setToolTip("Attiva/gestisci lo scanner QR per il telefono")
+        self.qr_scanner_btn.clicked.connect(self._on_qr_scanner_clicked)
+        self._update_qr_scanner_btn_style()
+        layout.addWidget(self.qr_scanner_btn)
         
         layout.addWidget(self.create_button("📄 Genera Report", self.generate_monthly_reports, "editButton"))
         layout.addWidget(self.create_button("🔍 Filtra Periodo", self.open_period_filter_dialog, "secondaryButton"))
         
         return layout
+
+    def _on_qr_scanner_clicked(self):
+        """Gestisce il click sul pulsante QR Scanner nel dialog anagrafiche."""
+        mw = self.main_window
+        if not mw:
+            return
+        if hasattr(mw, 'qr_scanner_server_running') and mw.qr_scanner_server_running:
+            # Server attivo: mostra menu
+            from PySide6.QtWidgets import QMenu
+            menu = QMenu(self)
+            show_qr_action = menu.addAction("📱 Mostra QR Code")
+            show_qr_action.triggered.connect(mw._show_qr_scanner_dialog)
+            menu.addSeparator()
+            stop_action = menu.addAction("🔴 Disattiva Scanner")
+            stop_action.triggered.connect(lambda: (mw._stop_qr_scanner_server(), self._update_qr_scanner_btn_style()))
+            btn_pos = self.qr_scanner_btn.mapToGlobal(self.qr_scanner_btn.rect().bottomLeft())
+            menu.exec(btn_pos)
+        else:
+            # Server non attivo: avvia
+            mw._start_qr_scanner_server()
+            self._update_qr_scanner_btn_style()
+
+    def _update_qr_scanner_btn_style(self):
+        """Aggiorna l'aspetto del pulsante QR in base allo stato del server."""
+        mw = self.main_window
+        is_active = mw and hasattr(mw, 'qr_scanner_server_running') and mw.qr_scanner_server_running
+        if is_active:
+            self.qr_scanner_btn.setText("📱 Scanner QR 🟢")
+            self.qr_scanner_btn.setStyleSheet(
+                "QPushButton { color: #2E7D32; font-weight: bold; padding: 6px 16px; "
+                "border: 2px solid #4CAF50; border-radius: 6px; background: rgba(76, 175, 80, 0.12); font-size: 10pt; }"
+                "QPushButton:hover { background: rgba(76, 175, 80, 0.25); }"
+            )
+        else:
+            self.qr_scanner_btn.setText("📱 Scanner QR")
+            self.qr_scanner_btn.setStyleSheet(
+                "QPushButton { color: #888; padding: 6px 16px; border: 1px solid #aaa; "
+                "border-radius: 6px; background: transparent; font-size: 10pt; }"
+                "QPushButton:hover { background: rgba(136, 136, 136, 0.15); }"
+            )
 
     def create_customer_buttons(self):
         layout = QHBoxLayout()

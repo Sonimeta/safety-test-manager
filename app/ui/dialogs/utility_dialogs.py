@@ -514,8 +514,10 @@ class FunctionalVerificationViewerDialog(QDialog):
     def __init__(self, verification_data, parent=None):
         super().__init__(parent)
         data = verification_data or {}
+        self.verification_data = data
+        self.verification_id = data.get('id')
         self.setWindowTitle(f"DETTAGLI VERIFICA FUNZIONALE DEL {data.get('verification_date', 'N/D')}")
-        self.setMinimumSize(840, 520)
+        self.setMinimumSize(900, 600)
 
         layout = QVBoxLayout(self)
 
@@ -596,9 +598,242 @@ class FunctionalVerificationViewerDialog(QDialog):
         details_layout.addWidget(table)
         layout.addWidget(details_group)
 
+        # --- SEZIONE ALLEGATI ---
+        self._setup_attachments_section(layout)
+
+        # Pulsanti in fondo
+        btn_layout = QHBoxLayout()
+        btn_layout.addStretch()
         close_button = QPushButton("CHIUDI")
         close_button.clicked.connect(self.accept)
-        layout.addWidget(close_button)
+        btn_layout.addWidget(close_button)
+        layout.addLayout(btn_layout)
+
+    def _setup_attachments_section(self, parent_layout):
+        """Configura la sezione allegati con lista e pulsanti aggiungi/rimuovi/visualizza."""
+        import database
+
+        att_group = QGroupBox("📎 ALLEGATI (FOGLI DI MANUTENZIONE)")
+        att_layout = QVBoxLayout(att_group)
+
+        # Toolbar allegati
+        att_toolbar = QHBoxLayout()
+
+        self.att_count_label = QLabel("Caricamento...")
+        self.att_count_label.setStyleSheet("font-weight: bold;")
+        att_toolbar.addWidget(self.att_count_label)
+
+        att_toolbar.addStretch()
+
+        self.btn_add_attachment = QPushButton("➕ AGGIUNGI FILE")
+        self.btn_add_attachment.setMinimumHeight(30)
+        self.btn_add_attachment.clicked.connect(self._add_attachment_from_file)
+        att_toolbar.addWidget(self.btn_add_attachment)
+
+        self.btn_view_attachment = QPushButton("👁 VISUALIZZA")
+        self.btn_view_attachment.setMinimumHeight(30)
+        self.btn_view_attachment.setEnabled(False)
+        self.btn_view_attachment.clicked.connect(self._view_selected_attachment)
+        att_toolbar.addWidget(self.btn_view_attachment)
+
+        self.btn_save_attachment = QPushButton("💾 SALVA SU DISCO")
+        self.btn_save_attachment.setMinimumHeight(30)
+        self.btn_save_attachment.setEnabled(False)
+        self.btn_save_attachment.clicked.connect(self._save_attachment_to_disk)
+        att_toolbar.addWidget(self.btn_save_attachment)
+
+        self.btn_delete_attachment = QPushButton("🗑 ELIMINA")
+        self.btn_delete_attachment.setMinimumHeight(30)
+        self.btn_delete_attachment.setEnabled(False)
+        self.btn_delete_attachment.clicked.connect(self._delete_selected_attachment)
+        att_toolbar.addWidget(self.btn_delete_attachment)
+
+        att_layout.addLayout(att_toolbar)
+
+        # Lista allegati
+        self.attachments_list = QListWidget()
+        self.attachments_list.setMaximumHeight(120)
+        self.attachments_list.setStyleSheet("font-family: monospace; font-size: 10pt;")
+        self.attachments_list.currentRowChanged.connect(self._on_attachment_selected)
+        att_layout.addWidget(self.attachments_list)
+
+        parent_layout.addWidget(att_group)
+
+        # Carica allegati
+        self._load_attachments()
+
+    def _load_attachments(self):
+        """Carica la lista degli allegati dal database."""
+        try:
+            import database
+            self.attachments_list.clear()
+            if not self.verification_id:
+                self.att_count_label.setText("📎 Allegati: N/D (verifica senza ID)")
+                return
+
+            attachments = database.get_verification_attachments(self.verification_id, 'functional')
+            self.att_count_label.setText(f"📎 Allegati: {len(attachments)}")
+
+            for att in attachments:
+                size_str = self._format_file_size(att.get('file_size', 0))
+                created = att.get('created_at', '')[:19].replace('T', ' ')
+                desc = att.get('description', '')
+                text = f"📄 {att['filename']}  ({size_str})  [{created}]"
+                if desc:
+                    text += f"  - {desc}"
+                item = QListWidgetItem(text)
+                item.setData(Qt.UserRole, att['id'])
+                self.attachments_list.addItem(item)
+        except Exception as e:
+            import logging
+            logging.error(f"Errore caricamento allegati: {e}", exc_info=True)
+            self.att_count_label.setText("📎 Allegati: errore caricamento")
+
+    def _on_attachment_selected(self, row):
+        """Abilita/disabilita pulsanti in base alla selezione."""
+        has_selection = row >= 0
+        self.btn_view_attachment.setEnabled(has_selection)
+        self.btn_save_attachment.setEnabled(has_selection)
+        self.btn_delete_attachment.setEnabled(has_selection)
+
+    def _add_attachment_from_file(self):
+        """Aggiunge un allegato selezionando un file dal disco."""
+        import database
+        if not self.verification_id:
+            QMessageBox.warning(self, "Attenzione", "Impossibile aggiungere allegati a questa verifica.")
+            return
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Seleziona Documento da Allegare", "",
+            "Immagini (*.jpg *.jpeg *.png *.bmp *.tiff *.tif);;PDF (*.pdf);;Tutti i file (*)"
+        )
+        if not file_path:
+            return
+
+        try:
+            with open(file_path, 'rb') as f:
+                file_data = f.read()
+
+            if len(file_data) > 20 * 1024 * 1024:
+                QMessageBox.warning(self, "File troppo grande", "Il file supera il limite di 20MB.")
+                return
+
+            filename = os.path.basename(file_path)
+            ext = os.path.splitext(filename)[1].lower()
+            mime_map = {
+                '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+                '.bmp': 'image/bmp', '.tiff': 'image/tiff', '.tif': 'image/tiff',
+                '.pdf': 'application/pdf',
+            }
+            mime_type = mime_map.get(ext, 'application/octet-stream')
+
+            database.save_verification_attachment(
+                verification_id=self.verification_id,
+                filename=filename,
+                file_data=file_data,
+                mime_type=mime_type,
+                description="Allegato aggiunto manualmente dal PC",
+                verification_type='functional',
+            )
+
+            self._load_attachments()
+            QMessageBox.information(self, "Allegato Salvato", f"File '{filename}' allegato con successo.")
+        except Exception as e:
+            import logging
+            logging.error(f"Errore aggiunta allegato: {e}", exc_info=True)
+            QMessageBox.critical(self, "Errore", f"Impossibile allegare il file:\n{e}")
+
+    def _view_selected_attachment(self):
+        """Apre/visualizza l'allegato selezionato direttamente dal disco."""
+        import database
+
+        item = self.attachments_list.currentItem()
+        if not item:
+            return
+
+        att_id = item.data(Qt.UserRole)
+        try:
+            file_path = database.get_attachment_file_path(att_id)
+            if not file_path:
+                QMessageBox.warning(self, "Errore", "File allegato non trovato su disco.")
+                return
+
+            # Apri con il programma predefinito del sistema
+            os.startfile(file_path)
+
+        except Exception as e:
+            import logging
+            logging.error(f"Errore visualizzazione allegato: {e}", exc_info=True)
+            QMessageBox.critical(self, "Errore", f"Impossibile aprire l'allegato:\n{e}")
+
+    def _save_attachment_to_disk(self):
+        """Salva l'allegato selezionato su disco copiando il file."""
+        import database
+        import shutil
+
+        item = self.attachments_list.currentItem()
+        if not item:
+            return
+
+        att_id = item.data(Qt.UserRole)
+        try:
+            # Recupera metadati per il nome file originale
+            attachments = database.get_verification_attachments(self.verification_id, 'functional')
+            att_meta = next((a for a in attachments if a['id'] == att_id), None)
+            original_filename = att_meta['filename'] if att_meta else 'allegato'
+
+            file_path = database.get_attachment_file_path(att_id)
+            if not file_path:
+                QMessageBox.warning(self, "Errore", "File allegato non trovato su disco.")
+                return
+
+            save_path, _ = QFileDialog.getSaveFileName(
+                self, "Salva Allegato", original_filename, "Tutti i file (*)"
+            )
+            if not save_path:
+                return
+
+            shutil.copy2(file_path, save_path)
+            QMessageBox.information(self, "Salvato", f"Allegato salvato in:\n{save_path}")
+        except Exception as e:
+            import logging
+            logging.error(f"Errore salvataggio allegato: {e}", exc_info=True)
+            QMessageBox.critical(self, "Errore", f"Impossibile salvare l'allegato:\n{e}")
+
+    def _delete_selected_attachment(self):
+        """Elimina l'allegato selezionato."""
+        import database
+
+        item = self.attachments_list.currentItem()
+        if not item:
+            return
+
+        att_id = item.data(Qt.UserRole)
+        reply = QMessageBox.question(
+            self, "Conferma Eliminazione",
+            "Vuoi davvero eliminare questo allegato?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            database.delete_verification_attachment(att_id)
+            self._load_attachments()
+        except Exception as e:
+            import logging
+            logging.error(f"Errore eliminazione allegato: {e}", exc_info=True)
+            QMessageBox.critical(self, "Errore", f"Impossibile eliminare l'allegato:\n{e}")
+
+    @staticmethod
+    def _format_file_size(size_bytes: int) -> str:
+        """Formatta dimensione file in formato leggibile."""
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        elif size_bytes < 1024 * 1024:
+            return f"{size_bytes // 1024} KB"
+        else:
+            return f"{size_bytes / (1024 * 1024):.1f} MB"
 
 class InstrumentSelectionDialog(QDialog):
     def __init__(self, parent=None, instrument_type: str = None):

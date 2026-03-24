@@ -47,6 +47,10 @@ SESSION_FILE = os.path.join(APP_DATA_DIR, "session.json")
 BACKUP_DIR = os.path.join(APP_DATA_DIR, "backups")
 LOG_DIR = os.path.join(APP_DATA_DIR, "logs")
 LOCK_FILE_DIR = os.path.join(APP_DATA_DIR, "sync.lock")
+ATTACHMENTS_DIR = os.path.join(APP_DATA_DIR, "attachments")
+
+# Crea la cartella allegati se non esiste
+os.makedirs(ATTACHMENTS_DIR, exist_ok=True)
 # Il file di configurazione viene ancora letto dalla cartella del programma
 CONFIG_INI_PATH = os.path.join(BASE_DIR, "config.ini")
 # --- FINE NUOVA DEFINIZIONE DEI PERCORSI ---

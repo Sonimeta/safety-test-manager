@@ -3954,5 +3954,199 @@ def clear_pending_sync_resolutions() -> int:
     return count
 
 
+# ==============================================================================
+# SEZIONE: ALLEGATI VERIFICHE (Verification Attachments)
+# ==============================================================================
+
+def save_verification_attachment(
+    verification_id: int,
+    filename: str,
+    file_data: bytes,
+    mime_type: str = "image/jpeg",
+    description: str = "",
+    verification_type: str = "functional",
+) -> int:
+    """Salva un allegato su disco e registra il percorso nel database."""
+    attachment_uuid = str(uuid.uuid4())
+    timestamp = datetime.now(timezone.utc).isoformat()
+    file_size = len(file_data)
+
+    # Crea la sotto-cartella per la verifica
+    verify_dir = os.path.join(config.ATTACHMENTS_DIR, str(verification_id))
+    os.makedirs(verify_dir, exist_ok=True)
+
+    # Genera un nome file unico per evitare collisioni
+    ext = os.path.splitext(filename)[1] if '.' in filename else '.jpg'
+    safe_filename = f"{attachment_uuid}{ext}"
+    file_path = os.path.join(verify_dir, safe_filename)
+
+    # Scrivi il file su disco
+    with open(file_path, 'wb') as f:
+        f.write(file_data)
+
+    # Salva il percorso relativo nel database (relativo ad ATTACHMENTS_DIR)
+    relative_path = os.path.join(str(verification_id), safe_filename)
+
+    with DatabaseConnection() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO verification_attachments
+                (uuid, verification_id, verification_type, filename, file_path,
+                 mime_type, file_size, description, created_at, last_modified,
+                 is_synced, is_deleted)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
+            RETURNING id
+            """,
+            (
+                attachment_uuid,
+                verification_id,
+                verification_type,
+                filename,
+                relative_path,
+                mime_type,
+                file_size,
+                description,
+                timestamp,
+                timestamp,
+            ),
+        )
+        new_id = cursor.fetchone()[0]
+    logging.info(
+        f"Allegato salvato su disco: id={new_id}, verifica={verification_id}, "
+        f"file={filename}, path={relative_path}, size={file_size}"
+    )
+    return new_id
+
+
+def get_verification_attachments(
+    verification_id: int, verification_type: str = "functional"
+) -> list[dict]:
+    """Restituisce tutti gli allegati (metadati) per una verifica."""
+    with DatabaseConnection() as conn:
+        rows = conn.execute(
+            """
+            SELECT id, uuid, verification_id, verification_type, filename,
+                   file_path, mime_type, file_size, description, created_at
+            FROM verification_attachments
+            WHERE verification_id = ? AND verification_type = ? AND is_deleted = 0
+            ORDER BY created_at DESC
+            """,
+            (verification_id, verification_type),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_attachment_data(attachment_id: int) -> dict | None:
+    """Restituisce i metadati di un allegato e legge i dati binari dal disco."""
+    with DatabaseConnection() as conn:
+        row = conn.execute(
+            """
+            SELECT id, uuid, verification_id, verification_type, filename,
+                   file_path, mime_type, file_size, description, created_at
+            FROM verification_attachments
+            WHERE id = ? AND is_deleted = 0
+            """,
+            (attachment_id,),
+        ).fetchone()
+        if not row:
+            return None
+
+        result = dict(row)
+        # Leggi i dati binari dal disco
+        abs_path = os.path.join(config.ATTACHMENTS_DIR, result['file_path'])
+        if os.path.exists(abs_path):
+            with open(abs_path, 'rb') as f:
+                result['file_data'] = f.read()
+        else:
+            logging.warning(f"File allegato non trovato su disco: {abs_path}")
+            result['file_data'] = None
+        return result
+
+
+def get_attachment_file_path(attachment_id: int) -> str | None:
+    """Restituisce il percorso assoluto del file allegato su disco."""
+    with DatabaseConnection() as conn:
+        row = conn.execute(
+            "SELECT file_path FROM verification_attachments WHERE id = ? AND is_deleted = 0",
+            (attachment_id,),
+        ).fetchone()
+        if not row:
+            return None
+        abs_path = os.path.join(config.ATTACHMENTS_DIR, row['file_path'])
+        return abs_path if os.path.exists(abs_path) else None
+
+
+def delete_verification_attachment(attachment_id: int) -> bool:
+    """Elimina (soft-delete) un allegato e rimuove il file da disco."""
+    # Prima recupera il percorso del file
+    with DatabaseConnection() as conn:
+        row = conn.execute(
+            "SELECT file_path FROM verification_attachments WHERE id = ? AND is_deleted = 0",
+            (attachment_id,),
+        ).fetchone()
+
+    if not row:
+        return False
+
+    timestamp = datetime.now(timezone.utc).isoformat()
+    with DatabaseConnection() as conn:
+        cursor = conn.execute(
+            """
+            UPDATE verification_attachments
+            SET is_deleted = 1, last_modified = ?, is_synced = 0
+            WHERE id = ?
+            """,
+            (timestamp, attachment_id),
+        )
+    deleted = cursor.rowcount > 0
+
+    if deleted:
+        # Elimina anche il file fisico da disco
+        abs_path = os.path.join(config.ATTACHMENTS_DIR, row['file_path'])
+        try:
+            if os.path.exists(abs_path):
+                os.remove(abs_path)
+                logging.info(f"File allegato rimosso da disco: {abs_path}")
+        except OSError as e:
+            logging.warning(f"Impossibile eliminare il file allegato {abs_path}: {e}")
+        logging.info(f"Allegato id={attachment_id} eliminato.")
+    return deleted
+
+
+def get_attachments_count(
+    verification_id: int, verification_type: str = "functional"
+) -> int:
+    """Restituisce il numero di allegati per una verifica."""
+    with DatabaseConnection() as conn:
+        row = conn.execute(
+            """
+            SELECT COUNT(*) as cnt FROM verification_attachments
+            WHERE verification_id = ? AND verification_type = ? AND is_deleted = 0
+            """,
+            (verification_id, verification_type),
+        ).fetchone()
+        return row["cnt"] if row else 0
+
+
+def get_functional_verification_by_uuid(verification_uuid: str) -> dict | None:
+    """Trova una verifica funzionale tramite UUID."""
+    with DatabaseConnection() as conn:
+        row = conn.execute(
+            "SELECT * FROM functional_verifications WHERE uuid = ? AND is_deleted = 0",
+            (verification_uuid,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def get_functional_verification_by_code(verification_code: str) -> dict | None:
+    """Trova una verifica funzionale tramite codice verifica."""
+    with DatabaseConnection() as conn:
+        row = conn.execute(
+            "SELECT * FROM functional_verifications WHERE verification_code = ? AND is_deleted = 0",
+            (verification_code,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
 # Applica le migrazioni del database all'avvio del modulo
 migrate_database()

@@ -73,6 +73,26 @@ class QRScannerHTTPHandler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps(payload).encode('utf-8'))
                 return
 
+            # --- ALLEGATI: lista allegati per una verifica ---
+            if self.path.startswith('/attachments/'):
+                self._handle_get_attachments()
+                return
+
+            # --- ALLEGATI: scarica singolo allegato ---
+            if self.path.startswith('/attachment/') and not self.path.startswith('/attachment/upload'):
+                self._handle_download_attachment()
+                return
+
+            # --- VERIFICHE: cerca per codice verifica ---
+            if self.path.startswith('/verifications/search'):
+                self._handle_search_verification()
+                return
+
+            # --- VERIFICHE: lista recenti per un dispositivo ---
+            if self.path.startswith('/verifications/recent'):
+                self._handle_recent_verifications()
+                return
+
             if self.path == '/manifest.json':
                 self.send_response(200)
                 self.send_header('Content-type', 'application/json')
@@ -123,8 +143,13 @@ class QRScannerHTTPHandler(BaseHTTPRequestHandler):
             pass
     
     def do_POST(self):
-        """Riceve i dati della scansione QR o immagine da decodificare."""
+        """Riceve i dati della scansione QR, immagine da decodificare, o allegato."""
         try:
+            # --- ALLEGATI: upload allegato ---
+            if self.path == '/attachment/upload':
+                self._handle_upload_attachment()
+                return
+
             content_length = int(self.headers.get('Content-Length', 0))
             post_data = self.rfile.read(content_length)
 
@@ -313,6 +338,231 @@ class QRScannerHTTPHandler(BaseHTTPRequestHandler):
         except Exception as e:
             logging.error(f"Errore decodifica barcode: {e}")
             return ''
+
+    # ==================================================================
+    # GESTIONE ALLEGATI (Attachment endpoints)
+    # ==================================================================
+
+    def _handle_upload_attachment(self):
+        """Gestisce l'upload di un allegato scannerizzato dal telefono."""
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length > 20 * 1024 * 1024:  # Max 20MB
+                self._send_json_response(413, {'status': 'error', 'message': 'File troppo grande (max 20MB)'})
+                return
+
+            post_data = self.rfile.read(content_length)
+            content_type = (self.headers.get('Content-Type') or '').lower()
+
+            if 'application/json' in content_type:
+                # JSON con immagine base64
+                data = json.loads(post_data.decode('utf-8', errors='replace'))
+                verification_code = data.get('verification_code', '')
+                verification_id = data.get('verification_id', 0)
+                description = data.get('description', '')
+                filename = data.get('filename', 'scan.jpg')
+                image_b64 = data.get('image_data', '')
+
+                if not image_b64:
+                    self._send_json_response(400, {'status': 'error', 'message': 'Nessuna immagine fornita'})
+                    return
+
+                # Rimuovi header data URL se presente
+                if ',' in image_b64 and image_b64.startswith('data:'):
+                    image_b64 = image_b64.split(',', 1)[1]
+
+                file_data = base64.b64decode(image_b64)
+                mime_type = data.get('mime_type', 'image/jpeg')
+            else:
+                self._send_json_response(400, {'status': 'error', 'message': 'Content-Type non supportato'})
+                return
+
+            # Risolvi la verifica se abbiamo solo il codice
+            if not verification_id and verification_code:
+                import database
+                verif = database.get_functional_verification_by_code(verification_code)
+                if verif:
+                    verification_id = verif['id']
+
+            if not verification_id:
+                self._send_json_response(404, {
+                    'status': 'error',
+                    'message': 'Verifica non trovata. Specifica verification_id o verification_code valido.'
+                })
+                return
+
+            # Salva nel database
+            import database
+            att_id = database.save_verification_attachment(
+                verification_id=verification_id,
+                filename=filename,
+                file_data=file_data,
+                mime_type=mime_type,
+                description=description,
+                verification_type='functional',
+            )
+
+            self._send_json_response(200, {
+                'status': 'ok',
+                'message': 'Allegato salvato con successo',
+                'attachment_id': att_id,
+                'verification_id': verification_id,
+            })
+            logging.info(f"[Allegato] Upload completato: id={att_id}, verifica={verification_id}, file={filename}")
+
+        except Exception as e:
+            logging.error(f"[Allegato] Errore upload: {e}", exc_info=True)
+            self._send_json_response(500, {'status': 'error', 'message': str(e)})
+
+    def _handle_get_attachments(self):
+        """Restituisce la lista degli allegati per una verifica (senza dati binari)."""
+        try:
+            # Path: /attachments/<verification_id>
+            parts = self.path.strip('/').split('/')
+            if len(parts) < 2:
+                self._send_json_response(400, {'status': 'error', 'message': 'verification_id mancante'})
+                return
+            verification_id = int(parts[1])
+
+            import database
+            attachments = database.get_verification_attachments(verification_id, 'functional')
+
+            self._send_json_response(200, {
+                'status': 'ok',
+                'verification_id': verification_id,
+                'count': len(attachments),
+                'attachments': attachments,
+            })
+        except Exception as e:
+            logging.error(f"[Allegato] Errore lista: {e}", exc_info=True)
+            self._send_json_response(500, {'status': 'error', 'message': str(e)})
+
+    def _handle_download_attachment(self):
+        """Scarica un singolo allegato (dati binari)."""
+        try:
+            # Path: /attachment/<id>
+            parts = self.path.strip('/').split('/')
+            if len(parts) < 2:
+                self._send_json_response(400, {'status': 'error', 'message': 'attachment_id mancante'})
+                return
+            attachment_id = int(parts[1])
+
+            import database
+            att = database.get_attachment_data(attachment_id)
+            if not att:
+                self._send_json_response(404, {'status': 'error', 'message': 'Allegato non trovato'})
+                return
+
+            if not att.get('file_data'):
+                self._send_json_response(404, {'status': 'error', 'message': 'File allegato non trovato su disco'})
+                return
+
+            self.send_response(200)
+            self.send_header('Content-type', att['mime_type'])
+            self.send_header('Content-Length', str(len(att['file_data'])))
+            self.send_header('Content-Disposition', f'inline; filename="{att["filename"]}"')
+            self._send_cors_headers()
+            self.end_headers()
+            self.wfile.write(att['file_data'])
+
+        except Exception as e:
+            logging.error(f"[Allegato] Errore download: {e}", exc_info=True)
+            self._send_json_response(500, {'status': 'error', 'message': str(e)})
+
+    def _handle_search_verification(self):
+        """Cerca una verifica funzionale per codice o UUID."""
+        try:
+            from urllib.parse import urlparse, parse_qs as url_parse_qs
+            parsed = urlparse(self.path)
+            params = url_parse_qs(parsed.query)
+            code = (params.get('code', [''])[0]).strip()
+
+            if not code:
+                self._send_json_response(400, {'status': 'error', 'message': 'Parametro code mancante'})
+                return
+
+            import database
+            verif = database.get_functional_verification_by_code(code)
+            if not verif:
+                # Prova anche come UUID
+                verif = database.get_functional_verification_by_uuid(code)
+
+            if verif:
+                # Conta allegati
+                att_count = database.get_attachments_count(verif['id'], 'functional')
+                self._send_json_response(200, {
+                    'status': 'ok',
+                    'found': True,
+                    'verification': {
+                        'id': verif['id'],
+                        'uuid': verif['uuid'],
+                        'verification_code': verif.get('verification_code', ''),
+                        'verification_date': verif.get('verification_date', ''),
+                        'profile_key': verif.get('profile_key', ''),
+                        'overall_status': verif.get('overall_status', ''),
+                        'technician_name': verif.get('technician_name', ''),
+                        'notes': verif.get('notes', ''),
+                        'attachments_count': att_count,
+                    },
+                })
+            else:
+                self._send_json_response(200, {'status': 'ok', 'found': False})
+        except Exception as e:
+            logging.error(f"[Verifica] Errore ricerca: {e}", exc_info=True)
+            self._send_json_response(500, {'status': 'error', 'message': str(e)})
+
+    def _handle_recent_verifications(self):
+        """Restituisce le verifiche funzionali recenti (ultime 20)."""
+        try:
+            from urllib.parse import urlparse, parse_qs as url_parse_qs
+            parsed = urlparse(self.path)
+            params = url_parse_qs(parsed.query)
+            device_id = params.get('device_id', [''])[0]
+
+            import database
+            if device_id:
+                verifications = database.get_functional_verifications_for_device(int(device_id))
+            else:
+                # Ultime 20 verifiche
+                from datetime import datetime as dt, timedelta
+                end_date = dt.now().strftime('%Y-%m-%d')
+                start_date = (dt.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+                verifications = database.get_functional_verifications_by_date_range(start_date, end_date)
+
+            result = []
+            for v in (verifications or [])[:20]:
+                v_dict = dict(v) if not isinstance(v, dict) else v
+                att_count = database.get_attachments_count(v_dict['id'], 'functional')
+                result.append({
+                    'id': v_dict['id'],
+                    'uuid': v_dict.get('uuid', ''),
+                    'verification_code': v_dict.get('verification_code', ''),
+                    'verification_date': v_dict.get('verification_date', ''),
+                    'profile_key': v_dict.get('profile_key', ''),
+                    'overall_status': v_dict.get('overall_status', ''),
+                    'technician_name': v_dict.get('technician_name', ''),
+                    'attachments_count': att_count,
+                })
+
+            self._send_json_response(200, {
+                'status': 'ok',
+                'count': len(result),
+                'verifications': result,
+            })
+        except Exception as e:
+            logging.error(f"[Verifica] Errore lista recenti: {e}", exc_info=True)
+            self._send_json_response(500, {'status': 'error', 'message': str(e)})
+
+    def _send_json_response(self, status_code: int, data: dict):
+        """Helper per inviare risposte JSON."""
+        try:
+            self.send_response(status_code)
+            self.send_header('Content-type', 'application/json')
+            self._send_cors_headers()
+            self.end_headers()
+            self.wfile.write(json.dumps(data, default=str).encode('utf-8'))
+        except (ConnectionResetError, BrokenPipeError, OSError):
+            pass
     
     def _get_scanner_html(self):
         """Restituisce la pagina HTML per lo scanner QR (modalità foto, decodifica server-side)."""
