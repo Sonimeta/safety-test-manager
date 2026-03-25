@@ -44,3 +44,10 @@ data/udi_cache.json
 # ===== PyInstaller =====
 *.manifest
 *.spec
+
+# ===== Deploy compilato (non caricare EXE e dipendenze) =====
+server_deploy/DEPLOY_PACKAGE/
+server_deploy/.env
+
+# ===== SSL chiave privata (MAI caricare!) =====
+ssl/server.key

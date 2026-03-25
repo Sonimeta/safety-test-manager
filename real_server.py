@@ -199,7 +199,9 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["Cache-Control"] = "no-store"
-        # Nascondi informazioni sul server
+        # Nascondi informazioni sul server (rimuovi header uvicorn e sostituisci)
+        if "server" in response.headers:
+            del response.headers["server"]
         response.headers["Server"] = "SyncAPI"
         
         return response
