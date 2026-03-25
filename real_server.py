@@ -11,14 +11,43 @@ from datetime import datetime, timezone, date, timedelta
 import logging
 import base64
 import os
+import sys
 import json
 import hashlib
+import time
+import collections
 from dotenv import load_dotenv
 # Sicurezza
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, InvalidHash
 from jose import JWTError, ExpiredSignatureError, jwt
-load_dotenv()
+
+# --- CARICAMENTO .env ROBUSTO (compatibile con PyInstaller) ---
+# Cerca .env in: 1) directory di lavoro corrente, 2) cartella padre dell'exe
+# Questo permette di avviare sia da start_server.bat che con doppio clic sull'exe.
+def _find_and_load_env():
+    """Cerca e carica il file .env in modo compatibile con PyInstaller."""
+    search_dirs = [
+        os.getcwd(),  # Directory di lavoro corrente (es. C:\SyncAPI)
+    ]
+    # Se siamo in un exe PyInstaller, aggiungi la cartella padre dell'exe
+    if getattr(sys, 'frozen', False):
+        exe_dir = os.path.dirname(sys.executable)
+        search_dirs.append(exe_dir)
+        search_dirs.append(os.path.dirname(exe_dir))  # Cartella padre (es. C:\SyncAPI se exe è in C:\SyncAPI\SyncAPI_Server\)
+    
+    for d in search_dirs:
+        env_path = os.path.join(d, '.env')
+        if os.path.isfile(env_path):
+            load_dotenv(env_path)
+            print(f"[CONFIG] File .env caricato da: {env_path}")
+            return
+    
+    # Fallback: tenta load_dotenv() standard
+    load_dotenv()
+    print("[CONFIG] ATTENZIONE: .env non trovato nei percorsi attesi, uso variabili d'ambiente di sistema.")
+
+_find_and_load_env()
 
 # --- CONFIGURAZIONE LOGGING MIGLIORATA ---
 logging.basicConfig(
@@ -50,6 +79,132 @@ TABLES_TO_SYNC = ["customers", "mti_instruments", "signatures", "profiles", "pro
 
 # --- AVVIO APPLICAZIONE API ---
 app = FastAPI(title="Safety Test Sync API", version="1.0.0+STABLE")
+
+# --- RATE LIMITER (protezione brute-force e DDoS) ---
+class RateLimiter:
+    """
+    Rate limiter in-memory per IP.
+    - Endpoint generici: max 60 richieste/minuto per IP
+    - Endpoint /token (login): max 5 tentativi/minuto per IP (anti brute-force)
+    - Blocco temporaneo: IP bloccato per 15 minuti dopo troppi tentativi di login
+    """
+    def __init__(self):
+        # {ip: deque([timestamp, ...])} per richieste generiche
+        self.requests = collections.defaultdict(lambda: collections.deque())
+        # {ip: deque([timestamp, ...])} per tentativi di login
+        self.login_attempts = collections.defaultdict(lambda: collections.deque())
+        # {ip: timestamp_sblocco} per IP bloccati
+        self.blocked_ips = {}
+        
+        # Limiti configurabili
+        self.GENERAL_LIMIT = 60       # richieste/minuto generiche
+        self.GENERAL_WINDOW = 60      # finestra in secondi
+        self.LOGIN_LIMIT = 5          # tentativi login/minuto
+        self.LOGIN_WINDOW = 60        # finestra in secondi
+        self.BLOCK_DURATION = 900     # blocco 15 minuti (in secondi)
+        self.LOGIN_BLOCK_THRESHOLD = 10  # dopo 10 tentativi falliti → blocco
+    
+    def _cleanup(self, deq: collections.deque, window: float):
+        """Rimuove i timestamp più vecchi della finestra."""
+        now = time.time()
+        while deq and deq[0] < now - window:
+            deq.popleft()
+    
+    def is_blocked(self, ip: str) -> bool:
+        """Verifica se un IP è temporaneamente bloccato."""
+        if ip in self.blocked_ips:
+            if time.time() < self.blocked_ips[ip]:
+                return True
+            else:
+                del self.blocked_ips[ip]
+        return False
+    
+    def check_general(self, ip: str) -> bool:
+        """Controlla il rate limit generico. Ritorna True se la richiesta è permessa."""
+        if self.is_blocked(ip):
+            return False
+        self._cleanup(self.requests[ip], self.GENERAL_WINDOW)
+        if len(self.requests[ip]) >= self.GENERAL_LIMIT:
+            return False
+        self.requests[ip].append(time.time())
+        return True
+    
+    def check_login(self, ip: str) -> bool:
+        """Controlla il rate limit per login. Ritorna True se il tentativo è permesso."""
+        if self.is_blocked(ip):
+            return False
+        self._cleanup(self.login_attempts[ip], self.LOGIN_WINDOW)
+        if len(self.login_attempts[ip]) >= self.LOGIN_LIMIT:
+            # Se supera la soglia di blocco, blocca l'IP
+            if len(self.login_attempts[ip]) >= self.LOGIN_BLOCK_THRESHOLD:
+                self.blocked_ips[ip] = time.time() + self.BLOCK_DURATION
+                logger.warning(f"🚫 IP {ip} BLOCCATO per {self.BLOCK_DURATION}s - troppi tentativi di login")
+            return False
+        self.login_attempts[ip].append(time.time())
+        return True
+    
+    def get_retry_after(self, ip: str, is_login: bool = False) -> int:
+        """Ritorna i secondi da attendere prima di riprovare."""
+        if ip in self.blocked_ips:
+            return max(1, int(self.blocked_ips[ip] - time.time()))
+        return self.LOGIN_WINDOW if is_login else self.GENERAL_WINDOW
+
+rate_limiter = RateLimiter()
+
+# --- MIDDLEWARE DI SICUREZZA ---
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import JSONResponse
+from fastapi import Request
+
+class SecurityMiddleware(BaseHTTPMiddleware):
+    """
+    Middleware che applica:
+    1. Rate limiting per IP
+    2. Rate limiting aggressivo su /token (anti brute-force)
+    3. Headers di sicurezza su tutte le risposte
+    """
+    async def dispatch(self, request: Request, call_next):
+        # Ottieni IP del client
+        client_ip = request.client.host if request.client else "unknown"
+        path = request.url.path
+        
+        # Rate limit specifico per /token (login)
+        if path == "/token" and request.method == "POST":
+            if not rate_limiter.check_login(client_ip):
+                retry_after = rate_limiter.get_retry_after(client_ip, is_login=True)
+                logger.warning(f"⚠️ Rate limit LOGIN superato per IP {client_ip}")
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": f"Troppi tentativi di login. Riprova tra {retry_after} secondi."},
+                    headers={"Retry-After": str(retry_after)}
+                )
+        
+        # Rate limit generico (escluso /health per monitoring)
+        elif path != "/health":
+            if not rate_limiter.check_general(client_ip):
+                retry_after = rate_limiter.get_retry_after(client_ip)
+                logger.warning(f"⚠️ Rate limit GENERALE superato per IP {client_ip}")
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": f"Troppe richieste. Riprova tra {retry_after} secondi."},
+                    headers={"Retry-After": str(retry_after)}
+                )
+        
+        # Processa la richiesta
+        response = await call_next(request)
+        
+        # Aggiungi headers di sicurezza
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Cache-Control"] = "no-store"
+        # Nascondi informazioni sul server
+        response.headers["Server"] = "SyncAPI"
+        
+        return response
+
+app.add_middleware(SecurityMiddleware)
 
 # --- UTILITY DI SICUREZZA ---
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -1374,4 +1529,38 @@ def root():
 # Blocco per l'esecuzione diretta
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import asyncio
+    import platform
+    
+    # Fix per Windows: evita "Exception in callback _ProactorBasePipeTransport._call_connection_lost()"
+    if platform.system() == "Windows":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    
+    host = os.getenv("SERVER_HOST", "0.0.0.0")
+    port = int(os.getenv("SERVER_PORT", 8000))
+    
+    # --- CONFIGURAZIONE SSL/HTTPS ---
+    ssl_certfile = os.getenv("SSL_CERTFILE")
+    ssl_keyfile = os.getenv("SSL_KEYFILE")
+    
+    uvicorn_kwargs = {
+        "host": host,
+        "port": port,
+        "log_level": "info",
+    }
+    
+    if ssl_certfile and ssl_keyfile:
+        if os.path.isfile(ssl_certfile) and os.path.isfile(ssl_keyfile):
+            uvicorn_kwargs["ssl_certfile"] = ssl_certfile
+            uvicorn_kwargs["ssl_keyfile"] = ssl_keyfile
+            logger.info(f"🔒 HTTPS abilitato con certificato: {ssl_certfile}")
+        else:
+            logger.error(f"✗ File SSL non trovati: cert={ssl_certfile}, key={ssl_keyfile}")
+            logger.error("  Il server partirà in HTTP (NON SICURO)!")
+    else:
+        logger.warning("⚠ SSL non configurato - il server partirà in HTTP (NON SICURO per IP pubblico!)")
+    
+    protocol = "https" if "ssl_certfile" in uvicorn_kwargs else "http"
+    logger.info(f"🚀 Avvio server su {protocol}://{host}:{port}")
+    
+    uvicorn.run(app, **uvicorn_kwargs)

@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (
     QFormLayout, QFrame, QGraphicsDropShadowEffect, QSizePolicy, QSpacerItem
 )
 import requests
+from app.http_client import http_session
 
 # Config di fallback se non esiste il modulo app.config
 try:
@@ -169,7 +170,7 @@ class LoginDialog(QDialog):
 
         try:
             self.setEnabled(False)
-            response = requests.post(
+            response = http_session.post(
                 token_url,
                 data={"username": username, "password": password},
                 timeout=10,
@@ -183,6 +184,13 @@ class LoginDialog(QDialog):
                     self.setEnabled(True)
                     return
                 self.accept()
+            elif response.status_code == 429:
+                try:
+                    retry = response.json().get("detail", "Troppi tentativi. Riprova tra qualche minuto.")
+                except ValueError:
+                    retry = "Troppi tentativi di login. Riprova tra qualche minuto."
+                QMessageBox.warning(self, "Troppi tentativi", retry)
+                self.setEnabled(True)
             elif response.status_code in (401, 422):
                 QMessageBox.warning(self, "Login fallito", "Nome utente o password non corretti.")
                 self.setEnabled(True)

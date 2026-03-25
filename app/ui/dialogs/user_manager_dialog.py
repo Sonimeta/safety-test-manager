@@ -2,6 +2,7 @@
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QTableWidget, QTableWidgetItem, 
                                QHBoxLayout, QPushButton, QMessageBox, QAbstractItemView, QHeaderView)
 import requests
+from app.http_client import http_session
 from app import auth_manager, config
 from .user_detail_dialog import UserDetailDialog
 
@@ -42,7 +43,7 @@ class UserManagerDialog(QDialog):
     def load_users(self):
         try:
             users_url = f"{config.SERVER_URL}/users"
-            response = requests.get(users_url, headers=auth_manager.get_auth_headers())
+            response = http_session.get(users_url, headers=auth_manager.get_auth_headers())
             response.raise_for_status()
             self.users_data = response.json()
             
@@ -68,7 +69,7 @@ class UserManagerDialog(QDialog):
                 return
             try:
                 users_url = f"{config.SERVER_URL}/users"
-                response = requests.post(users_url, json=user_data, headers=auth_manager.get_auth_headers())
+                response = http_session.post(users_url, json=user_data, headers=auth_manager.get_auth_headers())
                 response.raise_for_status()
                 QMessageBox.information(self, "Successo", f"Utente '{user_data['username']}' creato.")
                 self.load_users()
@@ -122,7 +123,7 @@ class UserManagerDialog(QDialog):
             try:
                 # L'API per la modifica deve essere estesa per accettare first_name e last_name
                 user_url = f"{config.SERVER_URL}/users/{username_to_edit}"
-                response = requests.put(user_url, json=payload, headers=auth_manager.get_auth_headers())
+                response = http_session.put(user_url, json=payload, headers=auth_manager.get_auth_headers())
                 response.raise_for_status()
                 QMessageBox.information(self, "Successo", f"Utente '{username_to_edit}' aggiornato.")
                 self.load_users()
@@ -146,7 +147,7 @@ class UserManagerDialog(QDialog):
         if reply == QMessageBox.Yes:
             try:
                 user_url = f"{config.SERVER_URL}/users/{username}"
-                response = requests.delete(user_url, headers=auth_manager.get_auth_headers())
+                response = http_session.delete(user_url, headers=auth_manager.get_auth_headers())
                 response.raise_for_status()
                 QMessageBox.information(self, "Successo", f"Utente '{username}' eliminato.")
                 self.load_users()

@@ -553,12 +553,12 @@ class TestRunnerWidget(QWidget):
             self.parent_window.statusBar().showMessage("Comunicazione con lo strumento in corso...")
             try:
                 test_function_map = {
-                    "Tensione alimentazione": "esegui_test_tensione_rete",
-                    "Resistenza conduttore di terra": "esegui_test_resistenza_terra",
-                    "Corrente dispersione diretta dispositivo": "esegui_test_dispersione_diretta",
-                    "Corrente dispersione diretta P.A.": "esegui_test_dispersione_parti_applicate",
+                    "tensione alimentazione": "esegui_test_tensione_rete",
+                    "resistenza conduttore di terra": "esegui_test_resistenza_terra",
+                    "corrente dispersione diretta dispositivo": "esegui_test_dispersione_diretta",
+                    "corrente dispersione diretta p.a.": "esegui_test_dispersione_parti_applicate",
                 }
-                method_name = test_function_map.get(current_test.name)
+                method_name = test_function_map.get(current_test.name.lower())
                 if not method_name:
                     raise NotImplementedError(f"Funzione di test non implementata per '{current_test.name}'.")
                 with FlukeESA612(self.mti_info.get('com_port')) as fluke:
@@ -600,8 +600,8 @@ class TestRunnerWidget(QWidget):
                 self.fluke_connection = FlukeESA612(self.mti_info.get('com_port'))
                 self.fluke_connection.connect()
             
-            test_function_map = {"Tensione alimentazione": "esegui_test_tensione_rete", "Resistenza conduttore di terra": "esegui_test_resistenza_terra", "Corrente dispersione diretta dispositivo": "esegui_test_dispersione_diretta", "Corrente dispersione diretta P.A.": "esegui_test_dispersione_parti_applicate"}
-            method_name = test_function_map.get(test.name)
+            test_function_map = {"tensione alimentazione": "esegui_test_tensione_rete", "resistenza conduttore di terra": "esegui_test_resistenza_terra", "corrente dispersione diretta dispositivo": "esegui_test_dispersione_diretta", "corrente dispersione diretta p.a.": "esegui_test_dispersione_parti_applicate"}
+            method_name = test_function_map.get(test.name.lower())
             if not method_name: raise NotImplementedError(f"Test non implementato: '{test.name}'.")
             
             target_function = getattr(self.fluke_connection, method_name)

@@ -1,5 +1,6 @@
 # app/sync_manager.py (Versione Robusta con Backup, Transazioni, Retry e Heartbeat)
 import requests
+from app.http_client import http_session
 import json
 import logging
 from datetime import datetime, timezone, date
@@ -151,7 +152,7 @@ def _check_server_health() -> bool:
         headers = auth_manager.get_auth_headers()
         health_url = f"{config.SERVER_URL}/health"
         
-        response = requests.get(
+        response = http_session.get(
             health_url,
             timeout=HEARTBEAT_TIMEOUT,
             headers=headers
@@ -512,7 +513,7 @@ def _make_sync_request_with_retry(payload: dict, headers: dict, sync_url: str) -
             
             logging.info(f"🌐 Tentativo sincronizzazione {retry_manager.attempt + 1}/{retry_manager.max_retries + 1}")
             
-            response = requests.post(
+            response = http_session.post(
                 sync_url,
                 json=payload,
                 timeout=REQUEST_TIMEOUT,

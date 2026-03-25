@@ -1,6 +1,7 @@
 # app/ui/dialogs/signature_manager_dialog.py
 
 import requests
+from app.http_client import http_session
 import logging
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QPushButton, QLabel, 
                                QFileDialog, QMessageBox, QGroupBox)
@@ -58,7 +59,7 @@ class SignatureManagerDialog(QDialog):
         self.preview_label.setText("CARICAMENTO...")
         try:
             url = f"{config.SERVER_URL}/signatures/{self.username}"
-            response = requests.get(url, headers=auth_manager.get_auth_headers(), timeout=10)
+            response = http_session.get(url, headers=auth_manager.get_auth_headers(), timeout=10)
             
             if response.status_code == 200:
                 pixmap = QPixmap()
@@ -95,7 +96,7 @@ class SignatureManagerDialog(QDialog):
             with open(file_path, 'rb') as f:
                 mime, _ = mimetypes.guess_type(file_path)
                 files = {'file': (os.path.basename(file_path), f, mime or 'application/octet-stream')}
-                response = requests.post(url, files=files, headers=auth_manager.get_auth_headers())
+                response = http_session.post(url, files=files, headers=auth_manager.get_auth_headers())
             
             response.raise_for_status() # Lancia un errore se la richiesta fallisce
             
@@ -126,7 +127,7 @@ class SignatureManagerDialog(QDialog):
 
         try:
             url = f"{config.SERVER_URL}/signatures/{self.username}"
-            response = requests.delete(url, headers=auth_manager.get_auth_headers())
+            response = http_session.delete(url, headers=auth_manager.get_auth_headers())
             response.raise_for_status()
             
             QMessageBox.information(self, "OPERAZIONE COMPLETATA", "FIRMA RIMOSSA DAL SERVER.")

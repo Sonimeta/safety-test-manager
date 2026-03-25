@@ -16,6 +16,7 @@ from app import config, auth_manager
 import qtawesome as qta
 import database
 import requests
+from app.http_client import http_session
 import logging
 
 # Costanti sorgente
@@ -116,7 +117,7 @@ def _fetch_online_deleted_data() -> dict | None:
             return None
         
         url = f"{config.SERVER_URL}/admin/deleted-data"
-        response = requests.get(url, headers=headers, timeout=15)
+        response = http_session.get(url, headers=headers, timeout=15)
         
         if response.status_code == 200:
             return response.json()
@@ -606,7 +607,7 @@ class DeletedDataDialog(QDialog):
             if not headers:
                 return False
             url = f"{config.SERVER_URL}/admin/deleted-data/{table_name}/{record_id}"
-            response = requests.delete(url, headers=headers, timeout=15)
+            response = http_session.delete(url, headers=headers, timeout=15)
             return response.status_code == 200
         except Exception as e:
             logging.error(f"Errore hard delete online {table_name}/{record_id}: {e}")
@@ -619,7 +620,7 @@ class DeletedDataDialog(QDialog):
             if not headers:
                 return 0
             url = f"{config.SERVER_URL}/admin/deleted-data/{table_name}"
-            response = requests.delete(url, headers=headers, timeout=30)
+            response = http_session.delete(url, headers=headers, timeout=30)
             if response.status_code == 200:
                 data = response.json()
                 return data.get('deleted_count', 0)

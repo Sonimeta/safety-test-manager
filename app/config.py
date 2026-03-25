@@ -37,7 +37,7 @@ def get_app_data_dir():
     # Crea la cartella se non esiste
     os.makedirs(app_data_path, exist_ok=True)
     return app_data_path
-VERSIONE = "10.0.5"
+VERSIONE = "10.0.6"
 BASE_DIR = get_base_dir() # La cartella del programma
 APP_DATA_DIR = get_app_data_dir() # La cartella dei dati utente
 
@@ -69,7 +69,31 @@ def load_server_url():
         return parser.get('server', 'url', fallback='http://localhost:8000')
     return 'http://localhost:8000'
 
+def load_ssl_ca_cert():
+    """
+    Legge il percorso del certificato CA personalizzato da config.ini.
+    Serve per connessioni HTTPS con certificato self-signed.
+    
+    Returns:
+        str | None: Percorso assoluto al file .crt, o None se non configurato.
+    """
+    parser = configparser.ConfigParser()
+    if os.path.exists(CONFIG_INI_PATH):
+        parser.read(CONFIG_INI_PATH)
+        cert_path = parser.get('server', 'ssl_ca_cert', fallback=None)
+        if cert_path:
+            # Se il percorso è relativo, lo risolve rispetto alla cartella del programma
+            if not os.path.isabs(cert_path):
+                cert_path = os.path.join(BASE_DIR, cert_path)
+            if os.path.isfile(cert_path):
+                logging.info(f"🔒 Certificato SSL CA caricato: {cert_path}")
+                return cert_path
+            else:
+                logging.warning(f"⚠ Certificato SSL CA non trovato: {cert_path}")
+    return None
+
 SERVER_URL = load_server_url()
+SSL_CA_CERT = load_ssl_ca_cert()
 PROFILES = {}
 FUNCTIONAL_PROFILES = {}
 

@@ -164,8 +164,8 @@ class FlukeESA612:
 
     # --- FUNZIONI DI TEST DI ALTO LIVELLO ---
     def esegui_test_tensione_rete(self, parametro_test: str, **kwargs):
-        param_map = {"Da Fase a Neutro": "L1-L2", "Da Neutro a Terra": "L2-GND", "Da Fase a Terra": "L1-GND"}
-        fluke_param = param_map.get(parametro_test)
+        param_map = {"da fase a neutro": "L1-L2", "da neutro a terra": "L2-GND", "da fase a terra": "L1-GND"}
+        fluke_param = param_map.get(parametro_test.lower())
         if not fluke_param:
             raise ValueError(f"Parametro test tensione non valido: {parametro_test}")
         self._send_and_check("STD=353")
