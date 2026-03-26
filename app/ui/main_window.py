@@ -409,9 +409,15 @@ class MainWindow(QMainWindow):
     def _show_about_dialog(self):
         """Mostra la finestra Informazioni con versione, autore e licenze terze parti."""
         import os
+        import sys
 
         licenses_text = ""
-        licenses_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "THIRD_PARTY_LICENSES.txt")
+        # Supporta sia esecuzione da sorgente che da PyInstaller frozen
+        if getattr(sys, 'frozen', False):
+            base_dir = sys._MEIPASS
+        else:
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        licenses_path = os.path.join(base_dir, "THIRD_PARTY_LICENSES.txt")
         try:
             with open(licenses_path, "r", encoding="utf-8") as f:
                 licenses_text = f.read()
