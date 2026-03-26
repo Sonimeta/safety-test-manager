@@ -75,7 +75,7 @@ DB_PARAMS = {
     "host": os.getenv("DB_HOST"),
     "port": os.getenv("DB_PORT")
 }
-TABLES_TO_SYNC = ["customers", "mti_instruments", "signatures", "profiles", "profile_tests", "functional_profiles", "destinations", "devices", "verifications", "functional_verifications", "audit_log"]
+TABLES_TO_SYNC = ["customers", "mti_instruments", "signatures", "profiles", "profile_tests", "functional_profiles", "destinations", "devices", "verifications", "functional_verifications", "verification_attachments", "audit_log"]
 
 # --- AVVIO APPLICAZIONE API ---
 app = FastAPI(title="Safety Test Sync API", version="1.0.0+STABLE")
@@ -407,6 +407,12 @@ def _normalize_incoming_value(table_name: str, key: str, value):
         except Exception:
             logging.warning("signature_data non è base64 valido; imposto NULL.")
             return None
+    if table_name == "verification_attachments" and key == "file_data" and isinstance(value, str):
+        try:
+            return base64.b64decode(value)
+        except Exception:
+            logging.warning("file_data non è base64 valido; imposto NULL.")
+            return None
     return value
 
 def get_valid_columns(cursor, table_name: str) -> set:
@@ -462,6 +468,7 @@ class SyncChanges(BaseModel):
     profile_tests: List[SyncRecord] = []
     functional_profiles: List[SyncRecord] = []
     destinations: List[SyncRecord] = []
+    verification_attachments: List[SyncRecord] = []
     audit_log: List[SyncRecord] = []
 
 class SyncPayload(BaseModel):
@@ -674,6 +681,30 @@ def process_client_changes(conn_or_cursor, table_name: str, records: list[dict],
                     continue
                 r["device_id"] = row["id"]
 
+        elif table_name == "verification_attachments":
+            # Risolvi verification_id tramite UUID della verifica padre
+            ver_uuid = r.pop("verification_uuid", None)
+            ver_type = r.get("verification_type", "functional")
+            if ver_uuid:
+                if ver_type == "functional":
+                    cursor.execute("SELECT id FROM functional_verifications WHERE uuid=%s AND is_deleted=FALSE", (ver_uuid,))
+                else:
+                    cursor.execute("SELECT id FROM verifications WHERE uuid=%s AND is_deleted=FALSE", (ver_uuid,))
+                row = cursor.fetchone()
+                if not row:
+                    logging.warning(f"Salto attachment: verifica {ver_uuid} (tipo={ver_type}) assente sul server.")
+                    continue
+                r["verification_id"] = row["id"]
+            # Decodifica file_data da base64
+            if r.get("file_data") and isinstance(r["file_data"], str):
+                try:
+                    r["file_data"] = base64.b64decode(r["file_data"])
+                except Exception:
+                    logging.warning(f"file_data non è base64 valido per attachment {r.get('uuid')}; imposto NULL.")
+                    r["file_data"] = None
+            # Rimuovi file_path (campo locale del client, il server usa file_data BYTEA)
+            r.pop("file_path", None)
+
         for k, v in list(r.items()):
             r[k] = _normalize_incoming_value(table_name, k, v)
 
@@ -864,7 +895,7 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                 if payload.conflict_resolutions:
                     tables_valid = {"customers", "mti_instruments", "profiles", "profile_tests",
                                     "functional_profiles", "destinations", "devices",
-                                    "verifications", "functional_verifications", "signatures", "audit_log"}
+                                    "verifications", "functional_verifications", "verification_attachments", "signatures", "audit_log"}
                     for resolution in payload.conflict_resolutions:
                         res_table = resolution.get('table')
                         uuid_to_delete = resolution.get('uuid_to_delete')
@@ -892,7 +923,7 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
 
                 changes_dict = payload.changes.model_dump()
                 tables_order = ["customers", "mti_instruments", "profiles", "profile_tests", "functional_profiles",
-                                "destinations", "devices", "verifications", "functional_verifications", "signatures", "audit_log"]
+                                "destinations", "devices", "verifications", "functional_verifications", "verification_attachments", "signatures", "audit_log"]
 
                 for table in tables_order:
                     records = changes_dict.get(table, [])
@@ -1015,6 +1046,19 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                         WHERE fv.is_deleted = FALSE
                     """)
                     changes_to_send["functional_verifications"] = cursor.fetchall()
+
+                    # Verification attachments: join con verifica padre per ottenere UUID
+                    cursor.execute("""
+                        SELECT va.*,
+                               COALESCE(fv.uuid, v.uuid) as verification_uuid
+                        FROM verification_attachments va
+                        LEFT JOIN functional_verifications fv 
+                            ON va.verification_id = fv.id AND va.verification_type = 'functional'
+                        LEFT JOIN verifications v 
+                            ON va.verification_id = v.id AND va.verification_type = 'electrical'
+                        WHERE va.is_deleted = FALSE
+                    """)
+                    changes_to_send["verification_attachments"] = cursor.fetchall()
                 else:
                     last_sync_ts = payload.last_sync_timestamp
                     if last_sync_ts is None:
@@ -1069,10 +1113,29 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                     """, (last_sync_dt, new_sync_timestamp))
                     changes_to_send["functional_verifications"] = cursor.fetchall()
 
+                    # Verification attachments: join con verifica padre per ottenere UUID
+                    cursor.execute("""
+                        SELECT va.*,
+                               COALESCE(fv.uuid, v.uuid) as verification_uuid
+                        FROM verification_attachments va
+                        LEFT JOIN functional_verifications fv 
+                            ON va.verification_id = fv.id AND va.verification_type = 'functional'
+                        LEFT JOIN verifications v 
+                            ON va.verification_id = v.id AND va.verification_type = 'electrical'
+                        WHERE va.last_modified > %s AND va.last_modified <= %s
+                    """, (last_sync_dt, new_sync_timestamp))
+                    changes_to_send["verification_attachments"] = cursor.fetchall()
+
                 if "signatures" in changes_to_send:
                     for signature_record in changes_to_send["signatures"]:
                         if signature_record.get("signature_data"):
                             signature_record["signature_data"] = base64.b64encode(signature_record["signature_data"]).decode('utf-8')
+
+                # Base64 encode file_data degli allegati per il trasferimento JSON
+                if "verification_attachments" in changes_to_send:
+                    for att_record in changes_to_send["verification_attachments"]:
+                        if att_record.get("file_data"):
+                            att_record["file_data"] = base64.b64encode(att_record["file_data"]).decode('utf-8')
 
                 for _, rows in changes_to_send.items():
                     for row in rows:
@@ -1558,9 +1621,10 @@ if __name__ == "__main__":
             logger.info(f"🔒 HTTPS abilitato con certificato: {ssl_certfile}")
         else:
             logger.error(f"✗ File SSL non trovati: cert={ssl_certfile}, key={ssl_keyfile}")
-            logger.error("  Il server partirà in HTTP (NON SICURO)!")
+            raise RuntimeError("File SSL non trovati: impossibile avviare il server senza HTTPS!")
     else:
-        logger.warning("⚠ SSL non configurato - il server partirà in HTTP (NON SICURO per IP pubblico!)")
+        logger.error("⚠ SSL non configurato: impossibile avviare il server senza HTTPS!")
+        raise RuntimeError("SSL_CERTFILE e/o SSL_KEYFILE non configurati: impossibile avviare il server senza HTTPS!")
     
     protocol = "https" if "ssl_certfile" in uvicorn_kwargs else "http"
     logger.info(f"🚀 Avvio server su {protocol}://{host}:{port}")

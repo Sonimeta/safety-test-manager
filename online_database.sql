@@ -226,7 +226,27 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_profile_key_unique
     ON profiles(profile_key)
     WHERE is_deleted = FALSE;
 
--- --- 9) Hard Deletes Tombstone (per propagazione eliminazioni definitive) ---
+-- --- 9) Verification Attachments ---
+CREATE TABLE IF NOT EXISTS verification_attachments (
+    id SERIAL PRIMARY KEY,
+    uuid TEXT NOT NULL UNIQUE,
+    verification_id INTEGER NOT NULL,
+    verification_type TEXT NOT NULL DEFAULT 'functional',
+    filename TEXT NOT NULL,
+    file_data BYTEA,
+    mime_type TEXT NOT NULL DEFAULT 'image/jpeg',
+    file_size INTEGER NOT NULL DEFAULT 0,
+    description TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_modified TIMESTAMPTZ NOT NULL,
+    is_synced BOOLEAN NOT NULL DEFAULT TRUE,
+    is_deleted BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE INDEX IF NOT EXISTS idx_verification_attachments_uuid ON verification_attachments(uuid);
+CREATE INDEX IF NOT EXISTS idx_attachments_verification ON verification_attachments(verification_id, verification_type);
+
+-- --- 10) Hard Deletes Tombstone (per propagazione eliminazioni definitive) ---
 CREATE TABLE IF NOT EXISTS hard_deletes (
     id SERIAL PRIMARY KEY,
     table_name VARCHAR(100) NOT NULL,

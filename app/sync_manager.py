@@ -17,7 +17,11 @@ from app import auth_manager, config
 from app.backup_manager import create_backup, get_latest_backup, restore_from_backup
 
 LOCK_FILE = config.LOCK_FILE_DIR
-SYNC_ORDER = ["customers", "mti_instruments", "signatures", "profiles", "profile_tests", "functional_profiles", "destinations", "devices", "verifications", "functional_verifications", "audit_log"]
+
+SYNC_ORDER = [
+    "customers", "mti_instruments", "signatures", "profiles", "profile_tests", "functional_profiles",
+    "destinations", "devices", "verifications", "functional_verifications", "verification_attachments", "audit_log"
+]
 
 # Timeout e retry configuration
 REQUEST_TIMEOUT = 90  # secondi
@@ -324,6 +328,7 @@ class ConflictAnalyzer:
             'functional_profiles': ['profile_key', 'profile_name'],
             'signatures': ['username', 'signature_data'],
             'mti_instruments': ['name', 'serial_number', 'calibration_due_date'],
+            'verification_attachments': ['filename', 'file_data', 'verification_id', 'uuid'],
         }
         return critical_by_table.get(table, [])
 
@@ -625,6 +630,7 @@ def _get_unsynced_local_changes():
     """Recupera tutte le modifiche locali non sincronizzate in modo più compatto."""
     
     # Definiamo le query e le trasformazioni per ogni tabella in una struttura dati
+
     TABLE_SYNC_CONFIG = {
         "customers": ("SELECT * FROM {table} WHERE is_synced = 0", []),
         "mti_instruments": ("SELECT * FROM {table} WHERE is_synced = 0", []),
@@ -633,7 +639,7 @@ def _get_unsynced_local_changes():
         "functional_profiles": ("SELECT * FROM {table} WHERE is_synced = 0", []),
         "destinations": (
             "SELECT d.*, c.uuid as customer_uuid FROM destinations d JOIN customers c ON d.customer_id = c.id WHERE d.is_synced = 0",
-            ["customer_id"] # Colonne da rimuovere prima dell'invio
+            ["customer_id"]
         ),
         "devices": (
             "SELECT d.*, dest.uuid as destination_uuid FROM devices d JOIN destinations dest ON d.destination_id = dest.id WHERE d.is_synced = 0",
@@ -650,6 +656,16 @@ def _get_unsynced_local_changes():
         "profile_tests": (
             "SELECT pt.*, p.uuid as profile_uuid FROM profile_tests pt JOIN profiles p ON pt.profile_id = p.id WHERE pt.is_synced = 0",
             ["profile_id"]
+        ),
+        "verification_attachments": (
+            # Allegati: serve anche la UUID della verifica padre (VE o VFUN)
+            "SELECT va.*, "
+            "COALESCE(fv.uuid, v.uuid) as verification_uuid "
+            "FROM verification_attachments va "
+            "LEFT JOIN functional_verifications fv ON va.verification_id = fv.id AND va.verification_type = 'functional' "
+            "LEFT JOIN verifications v ON va.verification_id = v.id AND va.verification_type = 'electrical' "
+            "WHERE va.is_synced = 0",
+            ["verification_id", "file_path"] # Rimuovi FK numerica e file_path locale
         ),
         "audit_log": ("SELECT * FROM {table} WHERE is_synced = 0", [])
     }
@@ -783,6 +799,63 @@ def _apply_server_changes(conn, changes):
                     cursor.executemany(query, params)
                     applied_counts[table] += cursor.rowcount
                 continue  # importante: salta il flusso generico
+
+            if table == 'verification_attachments':
+                # Salva file su disco, aggiorna DB con path relativo
+                for record in records_from_server:
+                    file_data = record.get('file_data')
+                    rel_path = None
+                    if file_data and record.get('uuid'):
+                        try:
+                            decoded = base64.b64decode(file_data)
+                            # Crea cartella per la verifica
+                            verification_uuid = record.get('verification_uuid')
+                            verification_type = record.get('verification_type', 'functional')
+                            # Recupera l'id della verifica locale tramite UUID
+                            if verification_type == 'functional':
+                                v_row = cursor.execute("SELECT id FROM functional_verifications WHERE uuid = ?", (verification_uuid,)).fetchone()
+                            else:
+                                v_row = cursor.execute("SELECT id FROM verifications WHERE uuid = ?", (verification_uuid,)).fetchone()
+                            if v_row:
+                                verification_id = v_row[0]
+                                folder = os.path.join(config.ATTACHMENTS_DIR, str(verification_id))
+                                os.makedirs(folder, exist_ok=True)
+                                ext = os.path.splitext(record.get('filename', ''))[1] or '.jpg'
+                                safe_filename = f"{record['uuid']}{ext}"
+                                abs_path = os.path.join(folder, safe_filename)
+                                with open(abs_path, 'wb') as f:
+                                    f.write(decoded)
+                                rel_path = os.path.join(str(verification_id), safe_filename)
+                                record['file_path'] = rel_path
+                                record['file_size'] = len(decoded)
+                            else:
+                                logging.warning(f"Impossibile trovare verifica locale per allegato {record['uuid']} (uuid verifica: {verification_uuid})")
+                                continue
+                        except Exception as e:
+                            logging.warning(f"Errore nel salvataggio file allegato {record.get('uuid')}: {e}")
+                            continue
+                    else:
+                        record['file_path'] = None
+
+                    # Prepara record per upsert
+                    record['is_synced'] = 1
+                    # Rimuovi file_data dal record prima di inserire in DB
+                    record.pop('file_data', None)
+                    record.pop('verification_uuid', None)
+
+                    # Upsert nel DB locale
+                    cols = [k for k in record.keys() if k != 'id']
+                    placeholders = ', '.join(['?'] * len(cols))
+                    update_clause = ', '.join([f"{col}=excluded.{col}" for col in cols if col != 'uuid' and col != 'last_modified'])
+                    update_clause += ', last_modified=excluded.last_modified'
+                    query = (
+                        f"INSERT INTO verification_attachments ({', '.join(cols)}) VALUES ({placeholders}) "
+                        f"ON CONFLICT(uuid) DO UPDATE SET {update_clause}"
+                    )
+                    params = tuple(record.get(c) for c in cols)
+                    cursor.execute(query, params)
+                    applied_counts[table] += 1
+                continue  # salta il flusso generico
 
             records_to_insert = []
             records_to_update = []
@@ -1120,7 +1193,8 @@ def _apply_hard_deletes(conn, hard_deletes: dict) -> dict:
     allowed_tables = {
         'customers', 'destinations', 'devices', 'verifications',
         'functional_verifications', 'profiles', 'profile_tests',
-        'functional_profiles', 'mti_instruments', 'audit_log'
+        'functional_profiles', 'mti_instruments', 'audit_log',
+        'verification_attachments'
     }
     
     for table_name, uuids in hard_deletes.items():
@@ -1358,6 +1432,20 @@ def run_sync(full_sync=False):
             norm_rows = [_jsonify_record(dict(r) if not isinstance(r, dict) else r) for r in rows]
             local_changes[table] = norm_rows
             
+        # Per gli allegati: leggi file da disco e codifica in base64
+        for att in local_changes.get("verification_attachments", []):
+            rel_path = att.get("file_path")
+            if rel_path:
+                abs_path = os.path.join(config.ATTACHMENTS_DIR, rel_path)
+                try:
+                    with open(abs_path, "rb") as f:
+                        att["file_data"] = base64.b64encode(f.read()).decode("utf-8")
+                except Exception as e:
+                    logging.warning(f"Impossibile leggere file allegato {abs_path}: {e}")
+                    att["file_data"] = None
+            # Rimuovi file_path dal payload (il server non lo usa)
+            att.pop("file_path", None)
+
         payload = {"last_sync_timestamp": last_sync, "changes": local_changes}
         
         # Includi risoluzioni conflitto pendenti (per serial_conflict)
@@ -1550,9 +1638,10 @@ def run_sync(full_sync=False):
                 "devices": "dispositivi",
                 "verifications": "verifiche elettriche",
                 "functional_verifications": "verifiche funzionali",
+                "verification_attachments": "allegati",
                 "audit_log": "log delle operazioni"
             }
-            
+
             # Mappatura nomi tabelle -> nomi user-friendly (singolare)
             TABLE_DISPLAY_NAMES_SINGULAR = {
                 "customers": "cliente",
@@ -1565,6 +1654,7 @@ def run_sync(full_sync=False):
                 "devices": "dispositivo",
                 "verifications": "verifica elettrica",
                 "functional_verifications": "verifica funzionale",
+                "verification_attachments": "allegato",
                 "audit_log": "log delle operazioni"
             }
             
