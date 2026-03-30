@@ -613,7 +613,7 @@ class FunctionalVerificationViewerDialog(QDialog):
         """Configura la sezione allegati con lista e pulsanti aggiungi/rimuovi/visualizza."""
         import database
 
-        att_group = QGroupBox("📎 ALLEGATI (FOGLI DI MANUTENZIONE)")
+        att_group = QGroupBox("📎 ALLEGATI")
         att_layout = QVBoxLayout(att_group)
 
         # Toolbar allegati

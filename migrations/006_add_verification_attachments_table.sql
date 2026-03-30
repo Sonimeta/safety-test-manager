@@ -1,5 +1,5 @@
 -- Migrazione 006: Tabella per gli allegati alle verifiche funzionali
--- Permette di allegare documenti scannerizzati (es. fogli di manutenzione) alle verifiche.
+-- Permette di allegare documenti scannerizzati alle verifiche.
 -- I file vengono salvati su disco nella cartella attachments/ e nel DB si salva solo il percorso.
 
 CREATE TABLE IF NOT EXISTS verification_attachments (
