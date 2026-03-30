@@ -3817,7 +3817,7 @@ class MainWindow(QMainWindow):
             self.qr_scanner_thread = threading.Thread(target=self._qr_server_loop, daemon=True)
             self.qr_scanner_thread.start()
             
-            self.qr_scanner_url = f"http://{local_ip}:{port}"
+            self.qr_scanner_url = f"https://{local_ip}:{port}"
             
             # Aggiorna UI
             self.qr_scan_btn.setChecked(True)

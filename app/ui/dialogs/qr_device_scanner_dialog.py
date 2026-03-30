@@ -1005,7 +1005,7 @@ class QRDeviceScannerDialog(QDialog):
             self.server_thread.start()
             
             # Genera QR
-            url = f"http://{ip}:{port}"
+            url = f"https://{ip}:{port}"
             self._show_qr_code(url)
             
             self.status_label.setText("✅ Server attivo - Scansiona il QR con il telefono")

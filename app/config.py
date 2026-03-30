@@ -66,8 +66,8 @@ def load_server_url():
     parser = configparser.ConfigParser()
     if os.path.exists(CONFIG_INI_PATH):
         parser.read(CONFIG_INI_PATH)
-        return parser.get('server', 'url', fallback='http://localhost:8000')
-    return 'http://localhost:8000'
+        return parser.get('server', 'url', fallback='https://lcalhost:8000')
+    return 'https://lcalhost:8000'
 
 def load_ssl_ca_cert():
     """

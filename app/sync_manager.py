@@ -665,7 +665,7 @@ def _get_unsynced_local_changes():
             "LEFT JOIN functional_verifications fv ON va.verification_id = fv.id AND va.verification_type = 'functional' "
             "LEFT JOIN verifications v ON va.verification_id = v.id AND va.verification_type = 'electrical' "
             "WHERE va.is_synced = 0",
-            ["verification_id", "file_path"] # Rimuovi FK numerica e file_path locale
+            ["verification_id"]  # Rimuovi solo FK numerica; file_path serve per leggere il file da disco
         ),
         "audit_log": ("SELECT * FROM {table} WHERE is_synced = 0", [])
     }
@@ -805,37 +805,46 @@ def _apply_server_changes(conn, changes):
                 for record in records_from_server:
                     file_data = record.get('file_data')
                     rel_path = None
+
+                    # Risolvi sempre verification_uuid → verification_id locale
+                    verification_uuid = record.get('verification_uuid')
+                    verification_type = record.get('verification_type', 'functional')
+                    if verification_uuid:
+                        if verification_type == 'functional':
+                            v_row = cursor.execute("SELECT id FROM functional_verifications WHERE uuid = ?", (verification_uuid,)).fetchone()
+                        else:
+                            v_row = cursor.execute("SELECT id FROM verifications WHERE uuid = ?", (verification_uuid,)).fetchone()
+                        if v_row:
+                            record['verification_id'] = v_row[0]
+                        else:
+                            logging.warning(f"Impossibile trovare verifica locale per allegato {record.get('uuid')} (uuid verifica: {verification_uuid})")
+                            continue
+                    else:
+                        logging.warning(f"Allegato {record.get('uuid')} senza verification_uuid, saltato.")
+                        continue
+
+                    # Salva file su disco se presente
                     if file_data and record.get('uuid'):
                         try:
                             decoded = base64.b64decode(file_data)
-                            # Crea cartella per la verifica
-                            verification_uuid = record.get('verification_uuid')
-                            verification_type = record.get('verification_type', 'functional')
-                            # Recupera l'id della verifica locale tramite UUID
-                            if verification_type == 'functional':
-                                v_row = cursor.execute("SELECT id FROM functional_verifications WHERE uuid = ?", (verification_uuid,)).fetchone()
-                            else:
-                                v_row = cursor.execute("SELECT id FROM verifications WHERE uuid = ?", (verification_uuid,)).fetchone()
-                            if v_row:
-                                verification_id = v_row[0]
-                                folder = os.path.join(config.ATTACHMENTS_DIR, str(verification_id))
-                                os.makedirs(folder, exist_ok=True)
-                                ext = os.path.splitext(record.get('filename', ''))[1] or '.jpg'
-                                safe_filename = f"{record['uuid']}{ext}"
-                                abs_path = os.path.join(folder, safe_filename)
-                                with open(abs_path, 'wb') as f:
-                                    f.write(decoded)
-                                rel_path = os.path.join(str(verification_id), safe_filename)
-                                record['file_path'] = rel_path
-                                record['file_size'] = len(decoded)
-                            else:
-                                logging.warning(f"Impossibile trovare verifica locale per allegato {record['uuid']} (uuid verifica: {verification_uuid})")
-                                continue
+                            verification_id = record['verification_id']
+                            folder = os.path.join(config.ATTACHMENTS_DIR, str(verification_id))
+                            os.makedirs(folder, exist_ok=True)
+                            ext = os.path.splitext(record.get('filename', ''))[1] or '.jpg'
+                            safe_filename = f"{record['uuid']}{ext}"
+                            abs_path = os.path.join(folder, safe_filename)
+                            with open(abs_path, 'wb') as f:
+                                f.write(decoded)
+                            rel_path = os.path.join(str(verification_id), safe_filename)
+                            record['file_path'] = rel_path
+                            record['file_size'] = len(decoded)
                         except Exception as e:
                             logging.warning(f"Errore nel salvataggio file allegato {record.get('uuid')}: {e}")
                             continue
                     else:
-                        record['file_path'] = None
+                        # Nessun file_data: salta il record (file_path è NOT NULL nel DB locale)
+                        logging.warning(f"Allegato {record.get('uuid')} senza file_data, saltato (file_path NOT NULL).")
+                        continue
 
                     # Prepara record per upsert
                     record['is_synced'] = 1
@@ -1433,7 +1442,13 @@ def run_sync(full_sync=False):
             local_changes[table] = norm_rows
             
         # Per gli allegati: leggi file da disco e codifica in base64
-        for att in local_changes.get("verification_attachments", []):
+        # Filtra attachment senza verification_uuid (la FK numerica verification_id
+        # viene rimossa in _get_unsynced_local_changes e sostituita da verification_uuid)
+        attachments = [att for att in local_changes.get("verification_attachments", []) if att.get("verification_uuid")]
+        scartati = len(local_changes.get("verification_attachments", [])) - len(attachments)
+        if scartati > 0:
+            logging.warning(f"Scartati {scartati} allegati senza verification_uuid dalla sync.")
+        for att in attachments:
             rel_path = att.get("file_path")
             if rel_path:
                 abs_path = os.path.join(config.ATTACHMENTS_DIR, rel_path)
@@ -1442,9 +1457,18 @@ def run_sync(full_sync=False):
                         att["file_data"] = base64.b64encode(f.read()).decode("utf-8")
                 except Exception as e:
                     logging.warning(f"Impossibile leggere file allegato {abs_path}: {e}")
-                    att["file_data"] = None
-            # Rimuovi file_path dal payload (il server non lo usa)
+                    att["_skip"] = True  # Marca per rimozione
+            else:
+                logging.warning(f"Allegato {att.get('uuid')} senza file_path, saltato.")
+                att["_skip"] = True  # Marca per rimozione
+        # Rimuovi allegati senza file_data valido
+        attachments = [att for att in attachments if not att.pop("_skip", False)]
+        # Rimuovi file_path dal payload (il server non lo usa, usa file_data BYTEA)
+        for att in attachments:
             att.pop("file_path", None)
+        local_changes["verification_attachments"] = attachments
+        if attachments:
+            logging.info(f"📎 Allegati pronti per la sync: {len(attachments)}")
 
         payload = {"last_sync_timestamp": last_sync, "changes": local_changes}
         
@@ -1481,6 +1505,7 @@ def run_sync(full_sync=False):
             sync_url = f"{config.SERVER_URL}/sync"
             
             logging.info(f"🌐 Connessione al server: {sync_url}")
+            print(f"[DEBUG] URL sincronizzazione usato: {sync_url}")
             
             # Esegui la richiesta con retry e backoff
             server_response, error_msg = _make_sync_request_with_retry(payload, headers, sync_url)

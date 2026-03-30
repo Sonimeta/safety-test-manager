@@ -887,6 +887,15 @@ def generate_pdf_report(filename, verification_id, device_id, report_settings):
         'functional_results': verification.get('structured_results') or {},
     }
 
+    # Recupera allegati per la verifica (tipo electrical)
+    try:
+        attachments = database.get_verification_attachments(verification_id, 'electrical')
+        if attachments:
+            verification_data_for_report['attachments'] = attachments
+            logging.info(f"Trovati {len(attachments)} allegati per report VE ID {verification_id}")
+    except Exception as e:
+        logging.warning(f"Impossibile recuperare allegati per report VE: {e}")
+
     report_generator.create_report(
         filename,
         device_info,
@@ -965,6 +974,15 @@ def generate_functional_pdf_report(filename, verification_id, device_id, report_
         'functional_results': verification.get('structured_results') or verification.get('results') or {},
         'used_instruments': used_instruments,
     }
+
+    # Recupera allegati per la verifica (tipo functional)
+    try:
+        attachments = database.get_verification_attachments(verification_id, 'functional')
+        if attachments:
+            verification_data_for_report['attachments'] = attachments
+            logging.info(f"Trovati {len(attachments)} allegati per report VFUN ID {verification_id}")
+    except Exception as e:
+        logging.warning(f"Impossibile recuperare allegati per report VFUN: {e}")
 
     report_generator.create_report(
         filename,

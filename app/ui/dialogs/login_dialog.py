@@ -18,7 +18,7 @@ try:
     EXTRA_STYLESHEET = load_stylesheet("login.qss")
 except ModuleNotFoundError:
     class DummyConfig:
-        SERVER_URL = "http://localhost:8000"
+        SERVER_URL = "https://localhost:8000"
     config = DummyConfig()
     STYLESHEET = ""
     EXTRA_STYLESHEET = ""

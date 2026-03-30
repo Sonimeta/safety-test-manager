@@ -646,6 +646,65 @@ def _add_functional_sections(story, styles, verification_data):
 
 
 
+def _add_attachments(story, styles, verification_data):
+    """Aggiunge le immagini allegate alla verifica nel report PDF."""
+    attachments = verification_data.get('attachments', [])
+    if not attachments:
+        return
+
+    story.append(PageBreak())
+    story.append(_create_styled_paragraph("Allegati", styles['SectionHeader']))
+    story.append(Spacer(1, SPACER_MEDIUM))
+
+    for att in attachments:
+        file_path = att.get('file_path')
+        if not file_path:
+            continue
+
+        abs_path = os.path.join(config.ATTACHMENTS_DIR, file_path)
+        if not os.path.exists(abs_path):
+            logging.warning(f"File allegato non trovato per il report: {abs_path}")
+            continue
+
+        mime = att.get('mime_type', '')
+        if not mime.startswith('image/'):
+            # File non immagine: mostra solo il nome e la descrizione
+            desc = att.get('description') or att.get('filename', 'Allegato')
+            story.append(_create_styled_paragraph(
+                f"📄 {att.get('filename', 'File')} — {desc} (formato: {mime})",
+                styles['Normal']
+            ))
+            story.append(Spacer(1, SPACER_MEDIUM))
+            continue
+
+        # Immagine: inseriscila nel PDF
+        try:
+            # Descrizione sopra l'immagine
+            desc = att.get('description') or att.get('filename', '')
+            if desc:
+                story.append(_create_styled_paragraph(desc, styles['NormalBold']))
+                story.append(Spacer(1, SPACER_MEDIUM))
+
+            # Calcola le dimensioni dell'immagine mantenendo le proporzioni
+            page_w = A4[0] - 2 * PAGE_MARGIN
+            max_h = 14 * cm  # Altezza massima per l'immagine
+            img = Image(abs_path)
+            iw, ih = img.drawWidth, img.drawHeight
+            if iw > 0 and ih > 0:
+                ratio = min(page_w / iw, max_h / ih, 1.0)  # Non ingrandire oltre l'originale
+                img.drawWidth = iw * ratio
+                img.drawHeight = ih * ratio
+            story.append(img)
+            story.append(Spacer(1, SPACER_LARGE))
+        except Exception as e:
+            logging.warning(f"Impossibile inserire immagine allegata nel report: {e}")
+            story.append(_create_styled_paragraph(
+                f"⚠ Impossibile caricare l'immagine: {att.get('filename', '')}",
+                styles['Normal']
+            ))
+            story.append(Spacer(1, SPACER_MEDIUM))
+
+
 def _add_footer(canvas, doc, device_info, verification_data):
     """Disegna il piè di pagina su ogni pagina."""
     canvas.saveState()
@@ -695,6 +754,8 @@ def create_report(filename, device_info, customer_info, destination_info, mti_in
     _add_electrical_measurements(story, styles, verification_data)
     _add_functional_sections(story, styles, verification_data)
 
+    # --- ALLEGATI (se presenti) ---
+    _add_attachments(story, styles, verification_data)
 
     # Il resto della funzione per costruire il documento rimane invariato
     footer_callback = lambda canvas, doc: _add_footer(canvas, doc, device_info, verification_data)
