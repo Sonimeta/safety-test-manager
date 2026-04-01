@@ -24,3 +24,4 @@ class Test:
 class VerificationProfile:
     name: str
     tests: List[Test]
+    norma: str = ""

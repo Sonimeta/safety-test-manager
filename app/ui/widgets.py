@@ -2416,11 +2416,12 @@ class FunctionalTestRunnerWidget(QWidget):
         collected = self.collect_results()
         structured: dict[str, dict] = {}
 
-        for section in self.profile.sections:
+        for idx, section in enumerate(self.profile.sections):
             section_data: dict = {
                 "title": section.title or section.key,
                 "section_type": section.section_type,
                 "show_in_summary": section.show_in_summary,
+                "order": idx,
             }
             raw_section = collected.get(section.key, {})
 

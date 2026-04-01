@@ -2333,7 +2333,8 @@ def get_all_profiles_from_db():
 
             profiles_dict[profile_key] = VerificationProfile(
                 name=profile_row['name'],
-                tests=tests_list
+                tests=tests_list,
+                norma=profile_row['norma'] if 'norma' in profile_row.keys() else ''
             )
 
     logging.info(f"Caricati {len(profiles_dict)} profili dal database locale.")
@@ -2791,6 +2792,15 @@ def has_functional_verification_today(device_id: int, verification_date: str) ->
     return row[0] > 0 if row else False
 
 
+def _ensure_section_order(structured: dict) -> None:
+    """Assegna il campo 'order' alle sezioni che non ce l'hanno (dati pre-esistenti)."""
+    if not isinstance(structured, dict):
+        return
+    for idx, (key, section) in enumerate(structured.items()):
+        if isinstance(section, dict) and 'order' not in section:
+            section['order'] = idx
+
+
 def get_functional_verifications_for_device(device_id: int) -> list[dict]:
     with DatabaseConnection() as conn:
         rows = conn.execute(
@@ -2813,6 +2823,8 @@ def get_functional_verifications_for_device(device_id: int) -> list[dict]:
             data["structured_results"] = json.loads(data.get("structured_results_json") or "{}")
         except json.JSONDecodeError:
             data["structured_results"] = {}
+        # Assegna campo 'order' alle sezioni che non ce l'hanno (dati pre-esistenti)
+        _ensure_section_order(data["structured_results"])
         # Aggiungi used_instruments_json se presente
         if "used_instruments_json" in row.keys():
             used_instruments_json = row["used_instruments_json"]
@@ -2981,14 +2993,14 @@ def delete_functional_verification(verification_id: int, timestamp: str) -> None
             (timestamp, verification_id),
         )
 
-def add_profile_with_tests(profile_key, profile_name, tests_list, timestamp):
+def add_profile_with_tests(profile_key, profile_name, tests_list, timestamp, norma=""):
     """Aggiunge un nuovo profilo e i suoi test in una singola transazione."""
     with DatabaseConnection() as conn:
         # Inserisci il profilo
         profile_uuid = str(uuid.uuid4())
         cursor = conn.execute(
-            "INSERT INTO profiles (uuid, profile_key, name, last_modified, is_synced, is_deleted) VALUES (?, ?, ?, ?, 0, 0) RETURNING id",
-            (profile_uuid, profile_key, profile_name, timestamp)
+            "INSERT INTO profiles (uuid, profile_key, name, norma, last_modified, is_synced, is_deleted) VALUES (?, ?, ?, ?, ?, 0, 0) RETURNING id",
+            (profile_uuid, profile_key, profile_name, norma or '', timestamp)
         )
         profile_id = cursor.fetchone()[0]
 
@@ -3008,13 +3020,13 @@ def add_profile_with_tests(profile_key, profile_name, tests_list, timestamp):
             )
     return profile_id
 
-def update_profile_with_tests(profile_id, profile_name, tests_list, timestamp):
+def update_profile_with_tests(profile_id, profile_name, tests_list, timestamp, norma=""):
     """Aggiorna un profilo e la sua lista di test."""
     with DatabaseConnection() as conn:
-        # Aggiorna il nome del profilo
+        # Aggiorna il nome e la norma del profilo
         conn.execute(
-            "UPDATE profiles SET name = ?, last_modified = ?, is_synced = 0 WHERE id = ?",
-            (profile_name, timestamp, profile_id)
+            "UPDATE profiles SET name = ?, norma = ?, last_modified = ?, is_synced = 0 WHERE id = ?",
+            (profile_name, norma or '', timestamp, profile_id)
         )
 
         # Approccio semplice: cancella i vecchi test e inserisce i nuovi

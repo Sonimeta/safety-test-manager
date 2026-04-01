@@ -556,7 +556,9 @@ class FunctionalVerificationViewerDialog(QDialog):
 
         structured = data.get('structured_results')
         if isinstance(structured, dict) and structured:
-            for section_key, section_data in structured.items():
+            # Ordina per campo 'order' per mantenere l'ordine originale del profilo
+            sorted_sections = sorted(structured.items(), key=lambda x: x[1].get('order', 999) if isinstance(x[1], dict) else 999)
+            for section_key, section_data in sorted_sections:
                 if not isinstance(section_data, dict):
                     add_row(section_key, '-', 'valore', section_data)
                     continue
@@ -1705,7 +1707,9 @@ class EditVerificationDialog(QDialog):
         self._func_cell_map: list[tuple[str, int | None, int | None]] = []
 
         if isinstance(structured, dict) and structured:
-            for section_key, section_data in structured.items():
+            # Ordina per campo 'order' per mantenere l'ordine originale del profilo
+            sorted_sections = sorted(structured.items(), key=lambda x: x[1].get('order', 999) if isinstance(x[1], dict) else 999)
+            for section_key, section_data in sorted_sections:
                 if not isinstance(section_data, dict):
                     continue
                 section_title = section_data.get('title') or section_key
@@ -1879,6 +1883,11 @@ class EditVerificationDialog(QDialog):
 
         import copy
         updated = copy.deepcopy(structured) if isinstance(structured, dict) else {}
+
+        # Assicura che ogni sezione abbia il campo 'order' (per dati pre-esistenti)
+        for idx, (sec_key, sec_val) in enumerate(updated.items()):
+            if isinstance(sec_val, dict) and 'order' not in sec_val:
+                sec_val['order'] = idx
 
         for table_row, mapping in enumerate(self._func_cell_map):
             value_item = self.func_results_table.item(table_row, 3)

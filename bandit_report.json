@@ -1,0 +1,308 @@
+{
+  "errors": [],
+  "generated_at": "2026-03-31T14:51:37Z",
+  "metrics": {
+    ".\\real_server.py": {
+      "CONFIDENCE.HIGH": 1,
+      "CONFIDENCE.LOW": 3,
+      "CONFIDENCE.MEDIUM": 9,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 2,
+      "SEVERITY.MEDIUM": 11,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 1331,
+      "nosec": 0,
+      "skipped_tests": 0
+    },
+    "_totals": {
+      "CONFIDENCE.HIGH": 1,
+      "CONFIDENCE.LOW": 3,
+      "CONFIDENCE.MEDIUM": 9,
+      "CONFIDENCE.UNDEFINED": 0,
+      "SEVERITY.HIGH": 0,
+      "SEVERITY.LOW": 2,
+      "SEVERITY.MEDIUM": 11,
+      "SEVERITY.UNDEFINED": 0,
+      "loc": 1331,
+      "nosec": 0,
+      "skipped_tests": 0
+    }
+  },
+  "results": [
+    {
+      "code": "748         \n749         query = f\"\"\"\n750             INSERT INTO \"{table_name}\" ({col_names})\n751             VALUES ({placeholders})\n752             ON CONFLICT (uuid) \n753             DO UPDATE SET {update_clause}\n754             WHERE \"{table_name}\".uuid = EXCLUDED.uuid\n755         \"\"\"\n756         \n",
+      "col_offset": 20,
+      "end_col_offset": 25,
+      "filename": ".\\real_server.py",
+      "issue_confidence": "LOW",
+      "issue_cwe": {
+        "id": 89,
+        "link": "https://cwe.mitre.org/data/definitions/89.html"
+      },
+      "issue_severity": "MEDIUM",
+      "issue_text": "Possible SQL injection vector through string-based query construction.",
+      "line_number": 749,
+      "line_range": [
+        749,
+        750,
+        751,
+        752,
+        753,
+        754,
+        755
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+      "test_id": "B608",
+      "test_name": "hardcoded_sql_expressions"
+    },
+    {
+      "code": "782                 update_clause_filtered = \", \".join(update_cols_filtered + ['\"last_modified\" = CURRENT_TIMESTAMP'])\n783                 query_filtered = f\"\"\"\n784                     INSERT INTO \"{table_name}\" ({col_names_filtered})\n785                     VALUES ({placeholders_filtered})\n786                     ON CONFLICT (uuid) \n787                     DO UPDATE SET {update_clause_filtered}\n788                     WHERE \"{table_name}\".uuid = EXCLUDED.uuid\n789                 \"\"\"\n790                 data_tuples_filtered = [tuple(rec.get(col) for col in cols_filtered) for rec in records]\n",
+      "col_offset": 37,
+      "end_col_offset": 33,
+      "filename": ".\\real_server.py",
+      "issue_confidence": "LOW",
+      "issue_cwe": {
+        "id": 89,
+        "link": "https://cwe.mitre.org/data/definitions/89.html"
+      },
+      "issue_severity": "MEDIUM",
+      "issue_text": "Possible SQL injection vector through string-based query construction.",
+      "line_number": 783,
+      "line_range": [
+        783,
+        784,
+        785,
+        786,
+        787,
+        788,
+        789
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+      "test_id": "B608",
+      "test_name": "hardcoded_sql_expressions"
+    },
+    {
+      "code": "819     access_token = create_access_token(data={\"sub\": user['username'], \"role\": user['role'], \"full_name\": full_name}, expires_delta=access_token_expires)\n820     return {\"access_token\": access_token, \"token_type\": \"bearer\"}\n821 \n",
+      "col_offset": 42,
+      "end_col_offset": 54,
+      "filename": ".\\real_server.py",
+      "issue_confidence": "MEDIUM",
+      "issue_cwe": {
+        "id": 259,
+        "link": "https://cwe.mitre.org/data/definitions/259.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "Possible hardcoded password: 'bearer'",
+      "line_number": 820,
+      "line_range": [
+        820
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b105_hardcoded_password_string.html",
+      "test_id": "B105",
+      "test_name": "hardcoded_password_string"
+    },
+    {
+      "code": "908                             cursor.execute(\n909                                 f\"UPDATE {res_table} SET is_deleted = TRUE, last_modified = %s \"\n910                                 f\"WHERE uuid = %s AND is_deleted = FALSE\",\n911                                 (new_sync_timestamp, uuid_to_delete)\n",
+      "col_offset": 34,
+      "end_col_offset": 41,
+      "filename": ".\\real_server.py",
+      "issue_confidence": "MEDIUM",
+      "issue_cwe": {
+        "id": 89,
+        "link": "https://cwe.mitre.org/data/definitions/89.html"
+      },
+      "issue_severity": "MEDIUM",
+      "issue_text": "Possible SQL injection vector through string-based query construction.",
+      "line_number": 909,
+      "line_range": [
+        909,
+        910
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+      "test_id": "B608",
+      "test_name": "hardcoded_sql_expressions"
+    },
+    {
+      "code": "952                             cursor.execute(f\"ROLLBACK TO SAVEPOINT sync_table_{table}\")\n953                         except Exception:\n954                             pass\n955                         logging.error(f\"\u2717 Errore nel processamento della tabella '{table}': {table_error}\", exc_info=True)\n",
+      "col_offset": 24,
+      "end_col_offset": 32,
+      "filename": ".\\real_server.py",
+      "issue_confidence": "HIGH",
+      "issue_cwe": {
+        "id": 703,
+        "link": "https://cwe.mitre.org/data/definitions/703.html"
+      },
+      "issue_severity": "LOW",
+      "issue_text": "Try, Except, Pass detected.",
+      "line_number": 953,
+      "line_range": [
+        953,
+        954
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b110_try_except_pass.html",
+      "test_id": "B110",
+      "test_name": "try_except_pass"
+    },
+    {
+      "code": "1022                         else:\n1023                             cursor.execute(f\"SELECT * FROM {table} WHERE is_deleted = FALSE\")\n1024                             changes_to_send[table] = cursor.fetchall()\n",
+      "col_offset": 45,
+      "end_col_offset": 59,
+      "filename": ".\\real_server.py",
+      "issue_confidence": "MEDIUM",
+      "issue_cwe": {
+        "id": 89,
+        "link": "https://cwe.mitre.org/data/definitions/89.html"
+      },
+      "issue_severity": "MEDIUM",
+      "issue_text": "Possible SQL injection vector through string-based query construction.",
+      "line_number": 1023,
+      "line_range": [
+        1023
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+      "test_id": "B608",
+      "test_name": "hardcoded_sql_expressions"
+    },
+    {
+      "code": "1086                             cursor.execute(\n1087                                 f\"SELECT * FROM {table} WHERE last_modified > %s AND last_modified <= %s\",\n1088                                 (last_sync_dt, new_sync_timestamp)\n",
+      "col_offset": 34,
+      "end_col_offset": 48,
+      "filename": ".\\real_server.py",
+      "issue_confidence": "MEDIUM",
+      "issue_cwe": {
+        "id": 89,
+        "link": "https://cwe.mitre.org/data/definitions/89.html"
+      },
+      "issue_severity": "MEDIUM",
+      "issue_text": "Possible SQL injection vector through string-based query construction.",
+      "line_number": 1087,
+      "line_range": [
+        1087
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+      "test_id": "B608",
+      "test_name": "hardcoded_sql_expressions"
+    },
+    {
+      "code": "1249         cursor = conn.cursor(cursor_factory=RealDictCursor)\n1250         query = f\"UPDATE users SET {', '.join(fields_to_update)} WHERE username = %(username)s RETURNING username, role, first_name, last_name\"\n1251         cursor.execute(query, params)\n",
+      "col_offset": 18,
+      "end_col_offset": 35,
+      "filename": ".\\real_server.py",
+      "issue_confidence": "LOW",
+      "issue_cwe": {
+        "id": 89,
+        "link": "https://cwe.mitre.org/data/definitions/89.html"
+      },
+      "issue_severity": "MEDIUM",
+      "issue_text": "Possible SQL injection vector through string-based query construction.",
+      "line_number": 1250,
+      "line_range": [
+        1250
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+      "test_id": "B608",
+      "test_name": "hardcoded_sql_expressions"
+    },
+    {
+      "code": "1499         cursor.execute(\n1500             f'SELECT uuid FROM \"{table_name}\" WHERE id = %s AND is_deleted = TRUE',\n1501             (record_id,)\n",
+      "col_offset": 14,
+      "end_col_offset": 32,
+      "filename": ".\\real_server.py",
+      "issue_confidence": "MEDIUM",
+      "issue_cwe": {
+        "id": 89,
+        "link": "https://cwe.mitre.org/data/definitions/89.html"
+      },
+      "issue_severity": "MEDIUM",
+      "issue_text": "Possible SQL injection vector through string-based query construction.",
+      "line_number": 1500,
+      "line_range": [
+        1500
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+      "test_id": "B608",
+      "test_name": "hardcoded_sql_expressions"
+    },
+    {
+      "code": "1516         cursor.execute(\n1517             f'DELETE FROM \"{table_name}\" WHERE id = %s AND is_deleted = TRUE',\n1518             (record_id,)\n",
+      "col_offset": 14,
+      "end_col_offset": 27,
+      "filename": ".\\real_server.py",
+      "issue_confidence": "MEDIUM",
+      "issue_cwe": {
+        "id": 89,
+        "link": "https://cwe.mitre.org/data/definitions/89.html"
+      },
+      "issue_severity": "MEDIUM",
+      "issue_text": "Possible SQL injection vector through string-based query construction.",
+      "line_number": 1517,
+      "line_range": [
+        1517
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+      "test_id": "B608",
+      "test_name": "hardcoded_sql_expressions"
+    },
+    {
+      "code": "1556         cursor.execute(\n1557             f'SELECT uuid FROM \"{table_name}\" WHERE is_deleted = TRUE'\n1558         )\n",
+      "col_offset": 14,
+      "end_col_offset": 32,
+      "filename": ".\\real_server.py",
+      "issue_confidence": "MEDIUM",
+      "issue_cwe": {
+        "id": 89,
+        "link": "https://cwe.mitre.org/data/definitions/89.html"
+      },
+      "issue_severity": "MEDIUM",
+      "issue_text": "Possible SQL injection vector through string-based query construction.",
+      "line_number": 1557,
+      "line_range": [
+        1557
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+      "test_id": "B608",
+      "test_name": "hardcoded_sql_expressions"
+    },
+    {
+      "code": "1574         cursor.execute(\n1575             f'DELETE FROM \"{table_name}\" WHERE is_deleted = TRUE'\n1576         )\n",
+      "col_offset": 14,
+      "end_col_offset": 27,
+      "filename": ".\\real_server.py",
+      "issue_confidence": "MEDIUM",
+      "issue_cwe": {
+        "id": 89,
+        "link": "https://cwe.mitre.org/data/definitions/89.html"
+      },
+      "issue_severity": "MEDIUM",
+      "issue_text": "Possible SQL injection vector through string-based query construction.",
+      "line_number": 1575,
+      "line_range": [
+        1575
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b608_hardcoded_sql_expressions.html",
+      "test_id": "B608",
+      "test_name": "hardcoded_sql_expressions"
+    },
+    {
+      "code": "1603     \n1604     host = os.getenv(\"SERVER_HOST\", \"0.0.0.0\")\n1605     port = int(os.getenv(\"SERVER_PORT\", 8000))\n",
+      "col_offset": 36,
+      "end_col_offset": 45,
+      "filename": ".\\real_server.py",
+      "issue_confidence": "MEDIUM",
+      "issue_cwe": {
+        "id": 605,
+        "link": "https://cwe.mitre.org/data/definitions/605.html"
+      },
+      "issue_severity": "MEDIUM",
+      "issue_text": "Possible binding to all interfaces.",
+      "line_number": 1604,
+      "line_range": [
+        1604
+      ],
+      "more_info": "https://bandit.readthedocs.io/en/1.9.4/plugins/b104_hardcoded_bind_all_interfaces.html",
+      "test_id": "B104",
+      "test_name": "hardcoded_bind_all_interfaces"
+    }
+  ]
+}

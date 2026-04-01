@@ -2,10 +2,10 @@
 
 from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Body
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from typing import List, Optional
 import psycopg2
-from psycopg2 import errors
+from psycopg2 import errors, sql
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timezone, date, timedelta
 import logging
@@ -15,6 +15,7 @@ import sys
 import json
 import hashlib
 import time
+import re
 import collections
 from dotenv import load_dotenv
 # Sicurezza
@@ -57,9 +58,17 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- COSTANTI CONFIGURAZIONE ---
-SECRET_KEY = os.getenv("SECRET_KEY") # IN PRODUZIONE, QUESTA CHIAVE DOVREBBE ESSERE GESTITA IN MODO SICURO
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = os.getenv("ALGORITHM")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", 60 * 24 * 30)) # 30 giorni
+
+# Validazione critica: SECRET_KEY e ALGORITHM devono essere configurati
+if not SECRET_KEY or len(SECRET_KEY) < 32:
+    logger.critical("⛔ SECRET_KEY non configurata o troppo corta (min 32 caratteri)! Controlla il file .env")
+    raise RuntimeError("SECRET_KEY non configurata o troppo corta. Impossibile avviare il server in modo sicuro.")
+if not ALGORITHM:
+    logger.critical("⛔ ALGORITHM non configurato! Controlla il file .env")
+    raise RuntimeError("ALGORITHM non configurato. Impossibile avviare il server in modo sicuro.")
 
 # Sync configuration
 SYNC_DATA_VERSION = "1.0"
@@ -199,10 +208,9 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["Cache-Control"] = "no-store"
-        # Nascondi informazioni sul server (rimuovi header uvicorn e sostituisci)
+        # Rimuovi completamente l'header Server per non rivelare alcuna tecnologia
         if "server" in response.headers:
             del response.headers["server"]
-        response.headers["Server"] = "SyncAPI"
         
         return response
 
@@ -427,21 +435,76 @@ def get_valid_columns(cursor, table_name: str) -> set:
     logging.debug(f"Colonne valide per {table_name}: {sorted(valid_cols)}")
     return valid_cols
 
+# --- COSTANTI DI VALIDAZIONE ---
+ALLOWED_ROLES = {"admin", "moderator", "technician", "seg"}
+MAX_USERNAME_LENGTH = 50
+MIN_PASSWORD_LENGTH = 8
+MAX_SIGNATURE_SIZE = 512 * 1024  # 512 KB
+ALLOWED_IMAGE_MIMES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+# Magic bytes per i formati immagine più comuni
+IMAGE_MAGIC_BYTES = {
+    b'\x89PNG': 'image/png',
+    b'\xff\xd8\xff': 'image/jpeg',
+    b'GIF87a': 'image/gif',
+    b'GIF89a': 'image/gif',
+    b'RIFF': 'image/webp',  # WebP inizia con RIFF....WEBP
+}
+
 # --- MODELLI DATI (Pydantic) ---
+
 class User(BaseModel):
     username: str
     role: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
 
+    @field_validator('username')
+    @classmethod
+    def validate_username(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Username non può essere vuoto')
+        if len(v) > MAX_USERNAME_LENGTH:
+            raise ValueError(f'Username troppo lungo (max {MAX_USERNAME_LENGTH} caratteri)')
+        if not re.match(r'^[a-zA-Z0-9_.-]+$', v):
+            raise ValueError('Username può contenere solo lettere, numeri, underscore, punto e trattino')
+        return v.strip()
+
+    @field_validator('role')
+    @classmethod
+    def validate_role(cls, v):
+        if v not in ALLOWED_ROLES:
+            raise ValueError(f'Ruolo non valido. Ruoli consentiti: {", ".join(sorted(ALLOWED_ROLES))}')
+        return v
+
 class UserCreate(User):
     password: str
+
+    @field_validator('password')
+    @classmethod
+    def validate_password(cls, v):
+        if len(v) < MIN_PASSWORD_LENGTH:
+            raise ValueError(f'Password troppo corta (minimo {MIN_PASSWORD_LENGTH} caratteri)')
+        return v
 
 class UserUpdate(BaseModel):
     role: Optional[str] = None
     password: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+
+    @field_validator('role')
+    @classmethod
+    def validate_role(cls, v):
+        if v is not None and v not in ALLOWED_ROLES:
+            raise ValueError(f'Ruolo non valido. Ruoli consentiti: {", ".join(sorted(ALLOWED_ROLES))}')
+        return v
+
+    @field_validator('password')
+    @classmethod
+    def validate_password(cls, v):
+        if v is not None and len(v) < MIN_PASSWORD_LENGTH:
+            raise ValueError(f'Password troppo corta (minimo {MIN_PASSWORD_LENGTH} caratteri)')
+        return v
 
 class Token(BaseModel):
     access_token: str
@@ -734,25 +797,24 @@ def upsert_records(conn, cursor, table_name: str, records: list[dict]):
                     # Converti esplicitamente in booleano
                     record['is_applied_part_test'] = bool(record['is_applied_part_test'])
 
-        cols = records[0].keys()
-        col_names = ", ".join(f'"{c}"' for c in cols)
-        placeholders = ", ".join(["%s"] * len(cols))
+        cols = list(records[0].keys())
         
-        # Remove last_modified from update columns
-        update_cols = [f'"{col}" = EXCLUDED."{col}"' 
-                      for col in cols 
-                      if col != 'uuid' and col != 'last_modified']
-        
-        # Add last_modified update
-        update_clause = ", ".join(update_cols + ['"last_modified" = CURRENT_TIMESTAMP'])
-        
-        query = f"""
-            INSERT INTO "{table_name}" ({col_names})
+        query = sql.SQL("""
+            INSERT INTO {table} ({col_names})
             VALUES ({placeholders})
             ON CONFLICT (uuid) 
             DO UPDATE SET {update_clause}
-            WHERE "{table_name}".uuid = EXCLUDED.uuid
-        """
+            WHERE {table}.uuid = EXCLUDED.uuid
+        """).format(
+            table=sql.Identifier(table_name),
+            col_names=sql.SQL(", ").join(sql.Identifier(c) for c in cols),
+            placeholders=sql.SQL(", ").join(sql.Placeholder() for _ in cols),
+            update_clause=sql.SQL(", ").join(
+                [sql.SQL("{} = EXCLUDED.{}").format(sql.Identifier(col), sql.Identifier(col))
+                 for col in cols if col != 'uuid' and col != 'last_modified']
+                + [sql.SQL('"last_modified" = CURRENT_TIMESTAMP')]
+            )
+        )
         
         logging.debug(f"Executing UPSERT query for {table_name} with columns: {list(cols)}")
         data_tuples = [tuple(rec.get(col) for col in cols) for rec in records]
@@ -774,19 +836,22 @@ def upsert_records(conn, cursor, table_name: str, records: list[dict]):
                 if not cols_filtered:
                     logging.error(f"Nessuna colonna valida rimasta per {table_name} dopo rimozione di {missing_col}")
                     return 0
-                col_names_filtered = ", ".join(f'"{c}"' for c in cols_filtered)
-                placeholders_filtered = ", ".join(["%s"] * len(cols_filtered))
-                update_cols_filtered = [f'"{col}" = EXCLUDED."{col}"' 
-                                      for col in cols_filtered 
-                                      if col != 'uuid' and col != 'last_modified']
-                update_clause_filtered = ", ".join(update_cols_filtered + ['"last_modified" = CURRENT_TIMESTAMP'])
-                query_filtered = f"""
-                    INSERT INTO "{table_name}" ({col_names_filtered})
-                    VALUES ({placeholders_filtered})
+                query_filtered = sql.SQL("""
+                    INSERT INTO {table} ({col_names})
+                    VALUES ({placeholders})
                     ON CONFLICT (uuid) 
-                    DO UPDATE SET {update_clause_filtered}
-                    WHERE "{table_name}".uuid = EXCLUDED.uuid
-                """
+                    DO UPDATE SET {update_clause}
+                    WHERE {table}.uuid = EXCLUDED.uuid
+                """).format(
+                    table=sql.Identifier(table_name),
+                    col_names=sql.SQL(", ").join(sql.Identifier(c) for c in cols_filtered),
+                    placeholders=sql.SQL(", ").join(sql.Placeholder() for _ in cols_filtered),
+                    update_clause=sql.SQL(", ").join(
+                        [sql.SQL("{} = EXCLUDED.{}").format(sql.Identifier(col), sql.Identifier(col))
+                         for col in cols_filtered if col != 'uuid' and col != 'last_modified']
+                        + [sql.SQL('"last_modified" = CURRENT_TIMESTAMP')]
+                    )
+                )
                 data_tuples_filtered = [tuple(rec.get(col) for col in cols_filtered) for rec in records]
                 cursor.executemany(query_filtered, data_tuples_filtered)
                 return cursor.rowcount if cursor.rowcount is not None else len(records)
@@ -817,7 +882,7 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
     
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = create_access_token(data={"sub": user['username'], "role": user['role'], "full_name": full_name}, expires_delta=access_token_expires)
-    return {"access_token": access_token, "token_type": "bearer"}
+    return {"access_token": access_token, "token_type": "bearer"}  # nosec B105 - standard OAuth2 token type
 
 # --- ENDPOINT PROTETTI ---
 @app.post("/sync")
@@ -860,9 +925,13 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
             conflict_resolutions=payload_raw.get("conflict_resolutions")
         )
         
+    except HTTPException:
+        raise
     except Exception as e:
-        logging.error(f"Errore nella preparazione del payload: {e}")
-        raise HTTPException(status_code=400, detail=f"Invalid payload: {str(e)}")
+        # Log sintetico: evita di loggare centinaia di righe di errori Pydantic
+        error_summary = str(e).split('\n')[0] if '\n' in str(e) else str(e)
+        logging.warning(f"Payload sync non valido: {error_summary[:200]}")
+        raise HTTPException(status_code=400, detail="Payload non valido. Verifica il formato dei dati inviati.")
 
     all_conflicts = []
     changes_to_send = {}
@@ -906,8 +975,10 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                             continue
                         try:
                             cursor.execute(
-                                f"UPDATE {res_table} SET is_deleted = TRUE, last_modified = %s "
-                                f"WHERE uuid = %s AND is_deleted = FALSE",
+                                sql.SQL("UPDATE {} SET is_deleted = TRUE, last_modified = %s "
+                                        "WHERE uuid = %s AND is_deleted = FALSE").format(
+                                    sql.Identifier(res_table)
+                                ),
                                 (new_sync_timestamp, uuid_to_delete)
                             )
                             if cursor.rowcount > 0:
@@ -950,8 +1021,8 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                         # Rollback al SAVEPOINT su eccezione
                         try:
                             cursor.execute(f"ROLLBACK TO SAVEPOINT sync_table_{table}")
-                        except Exception:
-                            pass
+                        except Exception as sp_err:
+                            logging.debug(f"Rollback SAVEPOINT sync_table_{table} fallito (atteso se transazione abortita): {sp_err}")
                         logging.error(f"✗ Errore nel processamento della tabella '{table}': {table_error}", exc_info=True)
                         raise
 
@@ -993,7 +1064,10 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                 if is_first_sync:
                     cursor.execute("SELECT * FROM audit_log WHERE is_deleted = FALSE")
                 else:
-                    last_sync_dt = datetime.fromisoformat(payload.last_sync_timestamp)
+                    try:
+                        last_sync_dt = datetime.fromisoformat(payload.last_sync_timestamp)
+                    except (ValueError, TypeError):
+                        raise HTTPException(status_code=400, detail="Formato last_sync_timestamp non valido. Usare formato ISO 8601.")
                     cursor.execute(
                         "SELECT * FROM audit_log WHERE last_modified > %s AND last_modified <= %s",
                         (last_sync_dt, new_sync_timestamp)
@@ -1020,7 +1094,9 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                             """)
                             changes_to_send[table] = cursor.fetchall()
                         else:
-                            cursor.execute(f"SELECT * FROM {table} WHERE is_deleted = FALSE")
+                            cursor.execute(sql.SQL("SELECT * FROM {} WHERE is_deleted = FALSE").format(
+                                sql.Identifier(table)
+                            ))
                             changes_to_send[table] = cursor.fetchall()
 
                     cursor.execute("""
@@ -1063,7 +1139,10 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                     last_sync_ts = payload.last_sync_timestamp
                     if last_sync_ts is None:
                         raise HTTPException(status_code=400, detail="last_sync_timestamp must not be None for incremental sync.")
-                    last_sync_dt = datetime.fromisoformat(last_sync_ts)
+                    try:
+                        last_sync_dt = datetime.fromisoformat(last_sync_ts)
+                    except (ValueError, TypeError):
+                        raise HTTPException(status_code=400, detail="Formato last_sync_timestamp non valido. Usare formato ISO 8601.")
 
                     for table in simple_tables:
                         if table == 'destinations':
@@ -1084,7 +1163,9 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                             changes_to_send[table] = cursor.fetchall()
                         else:
                             cursor.execute(
-                                f"SELECT * FROM {table} WHERE last_modified > %s AND last_modified <= %s",
+                                sql.SQL("SELECT * FROM {} WHERE last_modified > %s AND last_modified <= %s").format(
+                                    sql.Identifier(table)
+                                ),
                                 (last_sync_dt, new_sync_timestamp)
                             )
                             changes_to_send[table] = cursor.fetchall()
@@ -1178,9 +1259,11 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
             "response_checksum": response_checksum,  # Per validazione client
             "sync_version": SYNC_DATA_VERSION
         }
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Errore grave durante la sincronizzazione: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Errore interno del server durante la sincronizzazione.")
 
 @app.get("/users", response_model=List[User])
 def read_users(current_user: User = Depends(get_current_user)):
@@ -1216,9 +1299,15 @@ def create_user(user: UserCreate, current_user: User = Depends(get_current_user)
         return new_user
     except errors.UniqueViolation:
         raise HTTPException(status_code=400, detail="Un utente con questo nome esiste già.")
+    except errors.CheckViolation:
+        if conn: conn.rollback()
+        raise HTTPException(status_code=400, detail="Dati utente non validi. Verificare username e ruolo.")
+    except HTTPException:
+        raise
     except Exception as e:
         if conn: conn.rollback()
-        raise HTTPException(status_code=500, detail=f"Errore del server: {e}")
+        logger.error(f"Errore creazione utente: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Errore interno del server durante la creazione utente.")
     finally:
         if conn: conn.close()
 
@@ -1247,16 +1336,23 @@ def update_user(username: str, user_update: UserUpdate, current_user: User = Dep
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
-        query = f"UPDATE users SET {', '.join(fields_to_update)} WHERE username = %(username)s RETURNING username, role, first_name, last_name"
+        # Costruzione sicura: i nomi dei campi sono hardcoded sopra (non input utente)
+        query = f"UPDATE users SET {', '.join(fields_to_update)} WHERE username = %(username)s RETURNING username, role, first_name, last_name"  # nosec B608 - field names are hardcoded, not user input
         cursor.execute(query, params)
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Utente non trovato.")
         updated_user = cursor.fetchone()
         conn.commit()
         return updated_user
+    except HTTPException:
+        raise
+    except errors.CheckViolation:
+        if conn: conn.rollback()
+        raise HTTPException(status_code=400, detail="Dati non validi. Verificare il ruolo e i campi forniti.")
     except Exception as e:
         if conn: conn.rollback()
-        raise HTTPException(status_code=500, detail=f"Errore del server: {e}")
+        logger.error(f"Errore aggiornamento utente '{username}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Errore interno del server durante l'aggiornamento utente.")
     finally:
         if conn: conn.close()
 
@@ -1274,9 +1370,12 @@ def delete_user(username: str, current_user: User = Depends(get_current_user)):
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Utente non trovato.")
         conn.commit()
+    except HTTPException:
+        raise
     except Exception as e:
         if conn: conn.rollback()
-        raise HTTPException(status_code=500, detail=f"Errore del server: {e}")
+        logger.error(f"Errore eliminazione utente '{username}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Errore interno del server durante l'eliminazione utente.")
     finally:
         if conn: conn.close()
 
@@ -1284,7 +1383,25 @@ def delete_user(username: str, current_user: User = Depends(get_current_user)):
 def upload_signature(username: str, file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
     if current_user.role != 'admin' and current_user.username != username:
         raise HTTPException(status_code=403, detail="Non autorizzato a modificare la firma di un altro utente.")
-    signature_data = file.file.read()
+
+    # Validazione MIME type dichiarato
+    if file.content_type and file.content_type not in ALLOWED_IMAGE_MIMES:
+        raise HTTPException(status_code=400, detail=f"Tipo file non consentito. Formati accettati: PNG, JPEG, GIF, WebP.")
+
+    # Leggi il file con limite di dimensione
+    signature_data = file.file.read(MAX_SIGNATURE_SIZE + 1)
+    if len(signature_data) > MAX_SIGNATURE_SIZE:
+        raise HTTPException(status_code=413, detail=f"File troppo grande. Dimensione massima: {MAX_SIGNATURE_SIZE // 1024} KB.")
+
+    # Validazione magic bytes (contenuto reale del file)
+    is_valid_image = False
+    for magic, mime in IMAGE_MAGIC_BYTES.items():
+        if signature_data[:len(magic)] == magic:
+            is_valid_image = True
+            break
+    if not is_valid_image:
+        raise HTTPException(status_code=400, detail="Il file non è un'immagine valida. Formati accettati: PNG, JPEG, GIF, WebP.")
+
     timestamp = datetime.now(timezone.utc)
     conn = None
     try:
@@ -1320,8 +1437,11 @@ def get_signature(username: str, current_user: User = Depends(get_current_user))
             raise HTTPException(status_code=404, detail="Firma non trovata.")
         from fastapi.responses import Response
         return Response(content=record['signature_data'], media_type="image/png")
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Errore del server: {e}")
+        logger.error(f"Errore recupero firma '{username}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Errore interno del server durante il recupero della firma.")
     finally:
         if conn: conn.close()
 
@@ -1339,9 +1459,12 @@ def delete_signature(username: str, current_user: User = Depends(get_current_use
             (timestamp, username)
         )
         conn.commit()
+    except HTTPException:
+        raise
     except Exception as e:
         if conn: conn.rollback()
-        raise HTTPException(status_code=500, detail=f"Errore del server: {e}")
+        logger.error(f"Errore eliminazione firma '{username}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Errore interno del server durante l'eliminazione della firma.")
     finally:
         if conn: conn.close()
 
@@ -1467,9 +1590,11 @@ def get_all_deleted_data(current_user: User = Depends(get_current_user)):
         logger.info(f"Admin {current_user.username} ha richiesto i dati eliminati. Conteggi: {counts}")
         return result
 
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Errore nel recupero dati eliminati: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Errore del server: {e}")
+        raise HTTPException(status_code=500, detail="Errore interno del server durante il recupero dei dati eliminati.")
     finally:
         if conn: conn.close()
 
@@ -1497,7 +1622,9 @@ def hard_delete_single_record(table_name: str, record_id: int, current_user: Use
         
         # Recupera UUID del record prima di eliminarlo (per tombstone)
         cursor.execute(
-            f'SELECT uuid FROM "{table_name}" WHERE id = %s AND is_deleted = TRUE',
+            sql.SQL('SELECT uuid FROM {} WHERE id = %s AND is_deleted = TRUE').format(
+                sql.Identifier(table_name)
+            ),
             (record_id,)
         )
         row = cursor.fetchone()
@@ -1514,7 +1641,9 @@ def hard_delete_single_record(table_name: str, record_id: int, current_user: Use
         
         # Elimina definitivamente il record
         cursor.execute(
-            f'DELETE FROM "{table_name}" WHERE id = %s AND is_deleted = TRUE',
+            sql.SQL('DELETE FROM {} WHERE id = %s AND is_deleted = TRUE').format(
+                sql.Identifier(table_name)
+            ),
             (record_id,)
         )
         conn.commit()
@@ -1526,7 +1655,7 @@ def hard_delete_single_record(table_name: str, record_id: int, current_user: Use
     except Exception as e:
         if conn: conn.rollback()
         logger.error(f"Errore hard delete: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Errore del server: {e}")
+        raise HTTPException(status_code=500, detail="Errore interno del server durante l'eliminazione.")
     finally:
         if conn: conn.close()
 
@@ -1554,7 +1683,9 @@ def hard_delete_all_records(table_name: str, current_user: User = Depends(get_cu
         
         # Recupera tutti gli UUID dei record da eliminare (per tombstone)
         cursor.execute(
-            f'SELECT uuid FROM "{table_name}" WHERE is_deleted = TRUE'
+            sql.SQL('SELECT uuid FROM {} WHERE is_deleted = TRUE').format(
+                sql.Identifier(table_name)
+            )
         )
         rows = cursor.fetchall()
         uuids = [r['uuid'] for r in rows if r.get('uuid')]
@@ -1572,17 +1703,21 @@ def hard_delete_all_records(table_name: str, current_user: User = Depends(get_cu
         
         # Elimina definitivamente tutti i record soft-deleted
         cursor.execute(
-            f'DELETE FROM "{table_name}" WHERE is_deleted = TRUE'
+            sql.SQL('DELETE FROM {} WHERE is_deleted = TRUE').format(
+                sql.Identifier(table_name)
+            )
         )
         count = cursor.rowcount
         conn.commit()
         
         logger.warning(f"Admin {current_user.username}: hard delete ALL ({count}) da {table_name} - {len(uuids)} tombstone registrati")
         return {"status": "success", "deleted_count": count}
+    except HTTPException:
+        raise
     except Exception as e:
         if conn: conn.rollback()
         logger.error(f"Errore hard delete massivo: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Errore del server: {e}")
+        raise HTTPException(status_code=500, detail="Errore interno del server durante l'eliminazione massiva.")
     finally:
         if conn: conn.close()
 
@@ -1612,6 +1747,7 @@ if __name__ == "__main__":
         "host": host,
         "port": port,
         "log_level": "info",
+        "server_header": False,  # Non inviare l'header 'server: uvicorn'
     }
     
     if ssl_certfile and ssl_keyfile:

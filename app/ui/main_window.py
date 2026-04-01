@@ -62,6 +62,8 @@ class MainWindow(QMainWindow):
     
     def __init__(self, parent=None):
         super().__init__(parent)
+        # Abilita il maiuscolo automatico per questa finestra
+        self.setProperty("_stm_uppercase_window", True)
         self.setWindowTitle(f"Safety Test Manager - {config.VERSIONE}")
         app_icon = QIcon("logo.png") 
         self.setWindowIcon(app_icon)

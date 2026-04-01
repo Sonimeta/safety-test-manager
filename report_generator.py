@@ -141,7 +141,17 @@ def _add_header(story, styles, verification_data):
         story.append(_create_styled_paragraph("Report di Verifica Funzionale", styles['ReportTitle']))
     else:
         story.append(_create_styled_paragraph("Report di Verifica di Sicurezza Elettrica", styles['ReportTitle']))
-        story.append(_create_styled_paragraph("(Conforme a CEI EN 62353)", styles['ReportSubTitle']))
+        # Recupera la norma dal profilo associato alla verifica
+        profile_key = verification_data.get('profile_name', '')
+        norma_text = ''
+        if profile_key:
+            profile_obj = config.PROFILES.get(profile_key)
+            if profile_obj and getattr(profile_obj, 'norma', ''):
+                norma_text = profile_obj.norma
+        if norma_text:
+            story.append(_create_styled_paragraph(f"(Conforme a {norma_text})", styles['ReportSubTitle']))
+        else:
+            story.append(_create_styled_paragraph("(Conforme a CEI EN 62353)", styles['ReportSubTitle']))
 
     # --- INIZIO MODIFICA ---
     # Crea uno stile di paragrafo con allineamento a destra
@@ -313,6 +323,9 @@ def _add_summary_sections(story, styles, verification_data):
     for section_key, section_data in results.items():
         if section_data.get('show_in_summary', False):
             summary_sections.append((section_key, section_data))
+    
+    # Ordina per campo 'order' per mantenere l'ordine originale del profilo
+    summary_sections.sort(key=lambda x: x[1].get('order', 999))
     
     if not summary_sections:
         return
@@ -563,11 +576,14 @@ def _add_functional_sections(story, styles, verification_data):
 
     # Se una sezione è marcata per il riepilogo in prima pagina,
     # non va ristampata nel dettaglio della seconda pagina.
-    detail_sections = [
-        (section_key, section_data)
-        for section_key, section_data in results.items()
-        if not section_data.get('show_in_summary', False)
-    ]
+    detail_sections = sorted(
+        [
+            (section_key, section_data)
+            for section_key, section_data in results.items()
+            if not section_data.get('show_in_summary', False)
+        ],
+        key=lambda x: x[1].get('order', 999),
+    )
 
     if not detail_sections:
         return

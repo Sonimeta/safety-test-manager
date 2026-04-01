@@ -4,8 +4,9 @@ import sys
 import os
 from PySide6.QtCore import Qt, QTimer, QLocale, QTranslator, QLibraryInfo, QEvent
 from PySide6.QtWidgets import (QApplication, QMessageBox, QDialog, QSplashScreen,
-                               QStyle, QLineEdit, QListWidgetItem, QComboBox,
-                               QTableWidgetItem)
+                               QStyle, QLineEdit, QComboBox,
+                               QListWidget, QListWidgetItem,
+                               QTableWidget, QTableWidgetItem)
 from PySide6.QtGui import QPixmap, QKeyEvent
 from PySide6.QtGui import QGuiApplication, QFontDatabase
 from PySide6.QtGui import QFont
@@ -22,13 +23,26 @@ from app import services
 from app.functional_templates import FUNCTIONAL_PROFILE_TEMPLATES
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PATCH GLOBALE: Forza testo MAIUSCOLO in tutta l'applicazione
-# Copre: QLineEdit (input), QListWidgetItem, QComboBox, QTableWidgetItem
+# PATCH MAIUSCOLO SELETTIVO: Forza testo MAIUSCOLO solo in finestre marcate
+# con la proprietà Qt "_stm_uppercase_window" = True.
+# Attivo solo in: Schermata Principale (MainWindow) e Gestione Anagrafiche.
+# Copre: QLineEdit (input) e QComboBox
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def _to_upper(text):
-    """Converte in maiuscolo solo stringhe non vuote."""
-    return text.upper() if isinstance(text, str) and text else text
+def _is_uppercase_context(widget):
+    """Restituisce True se il widget si trova in una finestra marcata per il maiuscolo.
+    
+    Risale la catena dei parent e si ferma alla prima finestra (QDialog/QMainWindow).
+    Solo se quella finestra ha la proprietà _stm_uppercase_window = True il maiuscolo è attivo.
+    Questo evita che dialog figli di MainWindow ereditino il maiuscolo automaticamente.
+    """
+    parent = widget
+    while parent:
+        # Se troviamo una finestra (dialog o main window), controlliamo solo lei
+        if parent.isWindow():
+            return bool(parent.property("_stm_uppercase_window"))
+        parent = parent.parent()
+    return False
 
 
 # ---------- QLineEdit ----------
@@ -45,8 +59,8 @@ def _is_password_field(le):
 
 
 def _uppercase_keyPressEvent(self, event):
-    """Intercetta la digitazione e converte ogni carattere in maiuscolo."""
-    if _is_password_field(self):
+    """Intercetta la digitazione e converte ogni carattere in maiuscolo (solo in finestre marcate)."""
+    if _is_password_field(self) or not _is_uppercase_context(self):
         return _orig_keyPressEvent(self, event)
 
     if event.type() == QEvent.Type.KeyPress:
@@ -77,16 +91,16 @@ def _uppercase_keyPressEvent(self, event):
 
 
 def _uppercase_setText(self, text):
-    """Converte il testo in maiuscolo quando impostato programmaticamente."""
-    if _is_password_field(self) or not text or not isinstance(text, str):
+    """Converte il testo in maiuscolo quando impostato programmaticamente (solo in finestre marcate)."""
+    if _is_password_field(self) or not text or not isinstance(text, str) or not _is_uppercase_context(self):
         _orig_setText(self, text)
     else:
         _orig_setText(self, text.upper())
 
 
 def _uppercase_focusOutEvent(self, event):
-    """Rete di sicurezza: converte in maiuscolo quando il campo perde il focus."""
-    if not _is_password_field(self):
+    """Rete di sicurezza: converte in maiuscolo quando il campo perde il focus (solo in finestre marcate)."""
+    if not _is_password_field(self) and _is_uppercase_context(self):
         text = self.text()
         if text and text != text.upper():
             pos = self.cursorPosition()
@@ -100,52 +114,6 @@ QLineEdit.setText = _uppercase_setText
 QLineEdit.focusOutEvent = _uppercase_focusOutEvent
 
 
-# ---------- QListWidgetItem ----------
-_orig_QLWI_init = QListWidgetItem.__init__
-_orig_QLWI_setText = QListWidgetItem.setText
-
-
-def _uppercase_QLWI_init(self, *args, **kwargs):
-    """Converte il testo dell'item in maiuscolo alla creazione."""
-    new_args = list(args)
-    for i, a in enumerate(new_args):
-        if isinstance(a, str):
-            new_args[i] = a.upper()
-            break  # solo il primo arg stringa è il testo
-    _orig_QLWI_init(self, *new_args, **kwargs)
-
-
-def _uppercase_QLWI_setText(self, text):
-    _orig_QLWI_setText(self, _to_upper(text))
-
-
-QListWidgetItem.__init__ = _uppercase_QLWI_init
-QListWidgetItem.setText = _uppercase_QLWI_setText
-
-
-# ---------- QTableWidgetItem ----------
-_orig_QTWI_init = QTableWidgetItem.__init__
-_orig_QTWI_setText = QTableWidgetItem.setText
-
-
-def _uppercase_QTWI_init(self, *args, **kwargs):
-    """Converte il testo della cella in maiuscolo alla creazione."""
-    new_args = list(args)
-    for i, a in enumerate(new_args):
-        if isinstance(a, str):
-            new_args[i] = a.upper()
-            break
-    _orig_QTWI_init(self, *new_args, **kwargs)
-
-
-def _uppercase_QTWI_setText(self, text):
-    _orig_QTWI_setText(self, _to_upper(text))
-
-
-QTableWidgetItem.__init__ = _uppercase_QTWI_init
-QTableWidgetItem.setText = _uppercase_QTWI_setText
-
-
 # ---------- QComboBox ----------
 _orig_QCB_addItem = QComboBox.addItem
 _orig_QCB_addItems = QComboBox.addItems
@@ -153,33 +121,46 @@ _orig_QCB_setCurrentText = QComboBox.setCurrentText
 _orig_QCB_insertItem = QComboBox.insertItem
 
 
+def _to_upper(text):
+    """Converte in maiuscolo solo stringhe non vuote."""
+    return text.upper() if isinstance(text, str) and text else text
+
+
 def _uppercase_QCB_addItem(self, *args, **kwargs):
-    """Converte il testo dell'opzione in maiuscolo."""
-    args = list(args)
-    if args:
-        if isinstance(args[0], str):
-            args[0] = args[0].upper()              # addItem(text, ...)
-        elif len(args) > 1 and isinstance(args[1], str):
-            args[1] = args[1].upper()              # addItem(icon, text, ...)
+    """Converte il testo dell'opzione in maiuscolo (solo in finestre marcate)."""
+    if _is_uppercase_context(self):
+        args = list(args)
+        if args:
+            if isinstance(args[0], str):
+                args[0] = args[0].upper()
+            elif len(args) > 1 and isinstance(args[1], str):
+                args[1] = args[1].upper()
     _orig_QCB_addItem(self, *args, **kwargs)
 
 
 def _uppercase_QCB_addItems(self, texts):
-    _orig_QCB_addItems(self, [_to_upper(t) for t in texts])
+    if _is_uppercase_context(self):
+        _orig_QCB_addItems(self, [_to_upper(t) for t in texts])
+    else:
+        _orig_QCB_addItems(self, texts)
 
 
 def _uppercase_QCB_setCurrentText(self, text):
-    _orig_QCB_setCurrentText(self, _to_upper(text))
+    if _is_uppercase_context(self):
+        _orig_QCB_setCurrentText(self, _to_upper(text))
+    else:
+        _orig_QCB_setCurrentText(self, text)
 
 
 def _uppercase_QCB_insertItem(self, index, *args, **kwargs):
-    """insertItem(index, text) o insertItem(index, icon, text)."""
-    args = list(args)
-    if args:
-        if isinstance(args[0], str):
-            args[0] = args[0].upper()
-        elif len(args) > 1 and isinstance(args[1], str):
-            args[1] = args[1].upper()
+    """insertItem(index, text) o insertItem(index, icon, text) — solo in finestre marcate."""
+    if _is_uppercase_context(self):
+        args = list(args)
+        if args:
+            if isinstance(args[0], str):
+                args[0] = args[0].upper()
+            elif len(args) > 1 and isinstance(args[1], str):
+                args[1] = args[1].upper()
     _orig_QCB_insertItem(self, index, *args, **kwargs)
 
 
@@ -187,6 +168,50 @@ QComboBox.addItem = _uppercase_QCB_addItem
 QComboBox.addItems = _uppercase_QCB_addItems
 QComboBox.setCurrentText = _uppercase_QCB_setCurrentText
 QComboBox.insertItem = _uppercase_QCB_insertItem
+
+
+# ---------- QListWidget (uppercase item text al momento dell'inserimento) ----------
+_orig_QLW_addItem = QListWidget.addItem
+_orig_QLW_addItems = QListWidget.addItems
+
+
+def _uppercase_QLW_addItem(self, item_or_text):
+    """Converte il testo dell'item in maiuscolo al momento dell'inserimento nella lista (solo in finestre marcate)."""
+    if _is_uppercase_context(self):
+        if isinstance(item_or_text, str):
+            item_or_text = item_or_text.upper()
+        elif isinstance(item_or_text, QListWidgetItem):
+            text = item_or_text.text()
+            if text and isinstance(text, str):
+                item_or_text.setText(text.upper())
+    _orig_QLW_addItem(self, item_or_text)
+
+
+def _uppercase_QLW_addItems(self, texts):
+    if _is_uppercase_context(self):
+        _orig_QLW_addItems(self, [_to_upper(t) for t in texts])
+    else:
+        _orig_QLW_addItems(self, texts)
+
+
+QListWidget.addItem = _uppercase_QLW_addItem
+QListWidget.addItems = _uppercase_QLW_addItems
+
+
+# ---------- QTableWidget (uppercase cell text al momento dell'inserimento) ----------
+_orig_QTW_setItem = QTableWidget.setItem
+
+
+def _uppercase_QTW_setItem(self, row, col, item):
+    """Converte il testo della cella in maiuscolo al momento dell'inserimento (solo in finestre marcate)."""
+    if item and _is_uppercase_context(self):
+        text = item.text()
+        if text and isinstance(text, str):
+            item.setText(text.upper())
+    _orig_QTW_setItem(self, row, col, item)
+
+
+QTableWidget.setItem = _uppercase_QTW_setItem
 # ═══════════════════════════════════════════════════════════════════════════════
 
 load_dotenv()

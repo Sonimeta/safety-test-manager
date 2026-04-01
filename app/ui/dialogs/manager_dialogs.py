@@ -86,6 +86,8 @@ class ColoredItemDelegate(QStyledItemDelegate):
 class DbManagerDialog(QDialog):
     def __init__(self, role, parent=None):
         super().__init__(parent)
+        # Abilita il maiuscolo automatico per questa finestra
+        self.setProperty("_stm_uppercase_window", True)
         self.main_window = parent
         self._pending_navigation_data = None # Nuovo attributo per memorizzare i dati di navigazione
         self.user_role = role
@@ -2021,6 +2023,8 @@ class DbManagerDialog(QDialog):
 class InstrumentManagerDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
+        # Abilita il maiuscolo automatico per questa finestra
+        self.setProperty("_stm_uppercase_window", True)
         self.setWindowTitle("GESTIONE ANAGRAFICA STRUMENTI")
         self.setMinimumSize(800, 500)
         # Applica il tema corrente

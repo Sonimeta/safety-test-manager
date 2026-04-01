@@ -1519,15 +1519,15 @@ def force_full_push():
 # SERVIZI PER PROFILI DI VERIFICA
 # ==============================================================================
 
-def add_profile_with_tests(profile_key, profile_name, tests_list):
+def add_profile_with_tests(profile_key, profile_name, tests_list, norma=""):
     """Wrapper di servizio per aggiungere un nuovo profilo."""
     timestamp = datetime.now(timezone.utc).isoformat()
-    return database.add_profile_with_tests(profile_key, profile_name, tests_list, timestamp)
+    return database.add_profile_with_tests(profile_key, profile_name, tests_list, timestamp, norma=norma)
 
-def update_profile_with_tests(profile_id, profile_name, tests_list):
+def update_profile_with_tests(profile_id, profile_name, tests_list, norma=""):
     """Wrapper di servizio per aggiornare un profilo."""
     timestamp = datetime.now(timezone.utc).isoformat()
-    database.update_profile_with_tests(profile_id, profile_name, tests_list, timestamp)
+    database.update_profile_with_tests(profile_id, profile_name, tests_list, timestamp, norma=norma)
 
 def delete_profile(profile_id):
     """Wrapper di servizio per eliminare un profilo."""

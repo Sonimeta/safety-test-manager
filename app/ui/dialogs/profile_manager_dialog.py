@@ -35,6 +35,10 @@ class ProfileDetailDialog(QDialog):
 
         self.profile_name_edit = QLineEdit(self.profile.name)
         form_layout.addRow("NOME PROFILO:", self.profile_name_edit)
+
+        self.norma_edit = QLineEdit(self.profile.norma)
+        self.norma_edit.setPlaceholderText("es. CEI EN 62353")
+        form_layout.addRow("NORMA DI RIFERIMENTO:", self.norma_edit)
         layout.addLayout(form_layout)
 
         layout.addWidget(QLabel("TEST DEL PROFILO:"))
@@ -164,6 +168,7 @@ class ProfileDetailDialog(QDialog):
             return
 
         self.profile.name = self.profile_name_edit.text().strip().upper()
+        self.profile.norma = self.norma_edit.text().strip()
         self.profile.tests = []
         for row in range(self.tests_table.rowCount()):
             name = self.tests_table.cellWidget(row, 0).currentText()
@@ -256,7 +261,7 @@ class ProfileManagerDialog(QDialog):
                 QMessageBox.critical(self, "ERRORE", "UN PROFILO CON UN NOME SIMILE ESISTE GIÀ.")
                 return
             
-            services.add_profile_with_tests(new_key, new_profile.name, new_profile.tests)
+            services.add_profile_with_tests(new_key, new_profile.name, new_profile.tests, norma=new_profile.norma)
             self.profiles_changed = True
             self.load_profiles_from_db()
 
@@ -277,7 +282,7 @@ class ProfileManagerDialog(QDialog):
         dialog = ProfileDetailDialog(profile=profile_to_edit, parent=self)
         if dialog.exec():
             updated_profile = dialog.profile
-            services.update_profile_with_tests(profile_id, updated_profile.name, updated_profile.tests)
+            services.update_profile_with_tests(profile_id, updated_profile.name, updated_profile.tests, norma=updated_profile.norma)
             self.profiles_changed = True
             # Ricarica i profili globali e poi la lista
             config.load_verification_profiles()
@@ -331,7 +336,8 @@ class ProfileManagerDialog(QDialog):
                 )
             )
 
-        return VerificationProfile(name=profile_name, tests=tests)
+        norma = str(payload.get("norma") or "").strip()
+        return VerificationProfile(name=profile_name, tests=tests, norma=norma)
 
     def import_profiles(self):
         filename, _ = QFileDialog.getOpenFileName(

@@ -133,6 +133,7 @@ CREATE TABLE IF NOT EXISTS profiles (
     uuid VARCHAR(255) NOT NULL UNIQUE,
     profile_key VARCHAR(255) NOT NULL,  -- UNIQUE rimosso, verrà gestito da indice parziale
     name VARCHAR(255) NOT NULL,
+    norma VARCHAR(255) NOT NULL DEFAULT '',
     last_modified TIMESTAMPTZ NOT NULL,
     is_synced BOOLEAN NOT NULL DEFAULT FALSE,
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE
