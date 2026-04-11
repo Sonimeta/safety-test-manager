@@ -102,6 +102,19 @@ def login(username, password):
     return None
 
 
+def login_response(username, password):
+    """Effettua login e ritorna la risposta HTTP completa (o None in caso di errore rete)."""
+    try:
+        return requests.post(
+            f"{SERVER_URL}/token",
+            data={"username": username, "password": password},
+            verify=SSL_VERIFY,
+            timeout=TIMEOUT
+        )
+    except Exception:
+        return None
+
+
 # ============================================================
 # TEST 1: AUTENTICAZIONE
 # ============================================================
@@ -813,13 +826,34 @@ def test_security_headers():
 # ============================================================
 # TEST 9: RATE LIMITING
 # ============================================================
-def test_rate_limiting():
+def test_rate_limiting(admin_username=None, admin_password=None):
     print_header("TEST 9: Rate Limiting (anti brute-force)")
 
-    # 9.1 Login rate limiting (limite: 5/minuto)
-    test_info("Test rate limiting login: invio 7 tentativi rapidi...")
+    # 9.1 Login validi NON devono essere limitati dal meccanismo anti brute-force
+    if admin_username and admin_password:
+        test_info("Verifica: login validi consecutivi non devono ricevere 429...")
+        valid_ok = True
+        valid_attempts = 3
+        for i in range(valid_attempts):
+            resp = login_response(admin_username, admin_password)
+            if resp is None:
+                valid_ok = False
+                test_fail("Errore rete durante verifica login validi")
+                break
+            if resp.status_code != 200:
+                valid_ok = False
+                test_fail(f"Login valido #{i+1} rifiutato con {resp.status_code} (atteso 200)")
+                break
+        if valid_ok:
+            test_pass(f"{valid_attempts} login validi consecutivi accettati (nessun 429)")
+    else:
+        test_skip("Credenziali admin non fornite: salto verifica login validi non rate-limited")
+
+    # 9.2 Solo i login FALLITI devono attivare il limit
+    test_info("Verifica: invio login falliti rapidi per attivare 429...")
     got_429 = False
-    for i in range(7):
+    first_429 = None
+    for i in range(8):
         try:
             resp = requests.post(
                 f"{SERVER_URL}/token",
@@ -828,18 +862,40 @@ def test_rate_limiting():
             )
             if resp.status_code == 429:
                 got_429 = True
+                first_429 = resp
                 # Verifica header Retry-After
                 retry_after = resp.headers.get("Retry-After")
                 if retry_after:
-                    test_pass(f"Rate limit login attivato al tentativo #{i+1} con Retry-After: {retry_after}s")
+                    test_pass(f"Rate limit su login falliti attivato al tentativo #{i+1} con Retry-After: {retry_after}s")
                 else:
-                    test_warn(f"Rate limit login attivato al tentativo #{i+1} ma senza header Retry-After")
+                    test_warn(f"Rate limit su login falliti attivato al tentativo #{i+1} ma senza header Retry-After")
+                break
+            if resp.status_code == 200:
+                test_fail("Login fallito inatteso accettato con 200")
                 break
         except Exception:
             pass
 
     if not got_429:
-        test_warn("Rate limiting login non rilevato dopo 7 tentativi (limite potrebbe essere più alto)")
+        test_warn("Rate limiting su login falliti non rilevato dopo 8 tentativi")
+
+    # 9.3 Verifica consistenza Retry-After senza attese lunghe
+    if first_429 is not None:
+        retry_after_raw = first_429.headers.get("Retry-After")
+        if retry_after_raw is None:
+            test_warn("Impossibile validare Retry-After: header assente")
+        else:
+            try:
+                retry_after = int(retry_after_raw)
+                if retry_after <= 0:
+                    test_fail(f"Retry-After non valido: {retry_after}")
+                elif retry_after <= 120:
+                    test_pass(f"Retry-After coerente con finestra breve anti brute-force: {retry_after}s")
+                else:
+                    test_pass(f"Retry-After elevato ({retry_after}s): blocco temporaneo hard attivo")
+                    test_info("Skip attesa reale del blocco hard per non rallentare la suite")
+            except ValueError:
+                test_fail(f"Retry-After non numerico: '{retry_after_raw}'")
 
     # Aspetta un po' per evitare di essere bloccati per i test successivi
     time.sleep(2)
@@ -1218,6 +1274,7 @@ if __name__ == "__main__":
     admin_token = None
     user_token = None
     admin_username = args.username
+    admin_password = None
 
     if admin_username:
         admin_password = args.password or getpass.getpass(f"\n  🔑 Password per '{admin_username}': ")
@@ -1247,7 +1304,7 @@ if __name__ == "__main__":
 
     # Rate limiting PRIMA di SQL injection, così l'IP non è già bloccato
     if not args.skip_ratelimit:
-        test_rate_limiting()
+        test_rate_limiting(admin_username, admin_password)
         # Attendi che il rate limiter si resetti prima dei test SQLi
         print(f"\n  ⏳ Attesa 65 secondi per reset rate limiter prima dei test SQLi...")
         time.sleep(65)
