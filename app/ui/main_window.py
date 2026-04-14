@@ -23,7 +23,7 @@ from app.ui.dialogs.advanced_search_dialog import AdvancedSearchDialog
 
 # La main_window importa solo i moduli necessari per la UI e i servizi
 from app import auth_manager, config, services
-from app.config import SYNC_INTERVAL_MINUTES
+from app.config import SYNC_INTERVAL_MINUTES, UPDATE_CHECK_INTERVAL_MINUTES
 from app.ui.dialogs.utility_dialogs import (
     AppliedPartsOrderDialog,
     GlobalSearchDialog,
@@ -32,7 +32,7 @@ from app.ui.dialogs.utility_dialogs import (
     AdvancedReportDialog,
 )
 from app.ui.state_manager import AppState, StateManager
-from app.updater import UpdateChecker
+from app.updater import UpdateChecker, UpdateCheckWorker
 from app.ui.dialogs.update_dialog import UpdateDialog
 from app.ui.dialogs.changelog_dialog import ChangelogDialog
 from app.ui.dialogs.utility_dialogs import ExportCustomerSelectionDialog, SingleCalendarRangeDialog
@@ -124,6 +124,26 @@ class MainWindow(QMainWindow):
         )
         self.statusBar().addPermanentWidget(self._auto_sync_status_label)
         self._auto_sync_status_label.hide()
+
+        # Indicatore aggiornamento disponibile (permanente nella status bar)
+        self._update_check_worker = None
+        self._pending_update_info = None
+        self._update_notification_btn = QPushButton("")
+        self._update_notification_btn.setObjectName("updateNotificationBtn")
+        self._update_notification_btn.setStyleSheet(
+            "QPushButton#updateNotificationBtn {"
+            "  background-color: #2563eb; color: white; font-weight: bold;"
+            "  border: none; border-radius: 4px; padding: 4px 14px;"
+            "  font-size: 12px;"
+            "}"
+            "QPushButton#updateNotificationBtn:hover {"
+            "  background-color: #1d4ed8;"
+            "}"
+        )
+        self._update_notification_btn.setCursor(Qt.PointingHandCursor)
+        self._update_notification_btn.clicked.connect(self._on_update_notification_clicked)
+        self.statusBar().addPermanentWidget(self._update_notification_btn)
+        self._update_notification_btn.hide()
         
         # Indicatore conflitti nella status bar
         self._setup_conflict_indicator()
@@ -149,6 +169,9 @@ class MainWindow(QMainWindow):
         
         # --- INIZIO AGGIUNTA: Timer per sincronizzazione periodica in background ---
         self._setup_periodic_sync_timer()
+
+        # --- Timer per controllo aggiornamenti automatico in background ---
+        self._setup_auto_update_check_timer()
     
     def _init_legacy_widgets(self):
         """Inizializza widget dummy per compatibilità con codice legacy."""
@@ -282,6 +305,13 @@ class MainWindow(QMainWindow):
         self.manage_signature_action = QAction(qta.icon('fa5s.file-signature'), "Gestisci Firma...", self)
         self.manage_signature_action.triggered.connect(self.open_signature_manager)
         settings_menu.addAction(self.manage_signature_action)
+
+        settings_menu.addSeparator()
+
+        # Cambia password (disponibile per tutti gli utenti)
+        self.change_password_action = QAction(qta.icon('fa5s.key'), "Cambia Password...", self)
+        self.change_password_action.triggered.connect(self.open_change_password_dialog)
+        settings_menu.addAction(self.change_password_action)
 
         settings_menu.addSeparator()
 
@@ -559,6 +589,110 @@ class MainWindow(QMainWindow):
         except Exception as e:
             # Qualsiasi errore qui non deve bloccare l'avvio dell'app
             logging.error(f"Errore durante la sincronizzazione automatica all'avvio: {e}", exc_info=True)
+
+    # === CONTROLLO AGGIORNAMENTI AUTOMATICO IN BACKGROUND ===
+
+    def _setup_auto_update_check_timer(self):
+        """
+        Configura il timer per il controllo periodico degli aggiornamenti.
+        Primo check dopo 15 secondi dall'avvio, poi ogni N minuti da config.
+        """
+        self._update_check_timer = QTimer(self)
+        self._update_check_timer.timeout.connect(self._run_background_update_check)
+
+        if not config.UPDATE_URL:
+            logging.info("Controllo aggiornamenti automatico disabilitato: URL non configurato.")
+            return
+
+        if UPDATE_CHECK_INTERVAL_MINUTES <= 0:
+            logging.info("Controllo aggiornamenti automatico disabilitato (check_interval_minutes = 0).")
+            return
+
+        # Primo check dopo 15 secondi dall'avvio
+        QTimer.singleShot(15000, self._run_background_update_check)
+
+        # Poi periodicamente
+        interval_ms = UPDATE_CHECK_INTERVAL_MINUTES * 60 * 1000
+        self._update_check_timer.start(interval_ms)
+        logging.info(f"Timer controllo aggiornamenti avviato: ogni {UPDATE_CHECK_INTERVAL_MINUTES} minuti.")
+
+    def _run_background_update_check(self):
+        """Avvia un worker in background per controllare la presenza di aggiornamenti."""
+        # Se c'è già un check in corso o un aggiornamento già notificato, non fare nulla
+        if self._update_check_worker is not None and self._update_check_worker.isRunning():
+            return
+        if self._pending_update_info is not None:
+            return
+        if not config.UPDATE_URL:
+            return
+
+        logging.debug("Avvio controllo aggiornamenti in background...")
+        self._update_check_worker = UpdateCheckWorker(config.UPDATE_URL, self)
+        self._update_check_worker.update_available.connect(self._on_background_update_found)
+        self._update_check_worker.no_update.connect(self._on_background_no_update)
+        self._update_check_worker.check_error.connect(self._on_background_update_error)
+        self._update_check_worker.finished.connect(self._on_update_check_worker_finished)
+        self._update_check_worker.start()
+
+    def _on_background_update_found(self, update_info: dict):
+        """Chiamato dal worker quando un aggiornamento è disponibile. Mostra una notifica non invasiva."""
+        latest_version = update_info.get('latest_version', '?')
+        logging.info(f"Aggiornamento disponibile rilevato in background: v{latest_version}")
+        self._pending_update_info = update_info
+        self._update_notification_btn.setText(f"⬆ Aggiornamento v{latest_version} disponibile — Clicca per aggiornare")
+        self._update_notification_btn.show()
+        self.statusBar().showMessage(f"Nuova versione disponibile: {latest_version}", 10000)
+
+    def _on_background_no_update(self):
+        """Chiamato dal worker se non ci sono aggiornamenti."""
+        logging.debug("Nessun aggiornamento disponibile (check automatico).")
+
+    def _on_background_update_error(self, error_msg: str):
+        """Chiamato dal worker in caso di errore — silenzioso, solo log."""
+        logging.debug(f"Errore check aggiornamenti in background: {error_msg}")
+
+    def _on_update_check_worker_finished(self):
+        """Pulizia del worker dopo il completamento."""
+        if self._update_check_worker is not None:
+            self._update_check_worker.deleteLater()
+            self._update_check_worker = None
+
+    def _on_update_notification_clicked(self):
+        """L'utente clicca sulla notifica di aggiornamento nella status bar."""
+        update_info = self._pending_update_info
+        if not update_info:
+            return
+
+        latest_version = update_info.get('latest_version', '?')
+        changelog = update_info.get('changelog', '')
+
+        # Componi messaggio con changelog se disponibile
+        msg = (f"È disponibile la versione <b>{latest_version}</b>.<br>"
+               f"Versione installata: <b>{config.VERSIONE}</b>.<br><br>")
+        if changelog:
+            msg += f"<b>Novità:</b><br>{changelog}<br><br>"
+        msg += "Vuoi scaricarla e installarla ora?"
+
+        reply = QMessageBox.question(
+            self,
+            "Aggiornamento Disponibile",
+            msg,
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes
+        )
+        if reply == QMessageBox.Yes:
+            try:
+                checker = UpdateChecker(config.UPDATE_URL)
+                # Riusa le info già recuperate
+                checker.update_info = update_info
+                self.download_and_install_update(checker, update_info)
+            except Exception as e:
+                QMessageBox.critical(self, "Errore Aggiornamento", str(e))
+        else:
+            # L'utente ha detto no — nascondi la notifica ma non re-notificare
+            # fino al prossimo ciclo: resetta _pending_update_info
+            # per permettere di ri-notificare al prossimo check
+            pass
 
     def open_advanced_search(self):
         """
@@ -3227,6 +3361,16 @@ class MainWindow(QMainWindow):
     def open_user_manager(self):
         dialog = UserManagerDialog(self)
         dialog.exec()
+
+    def open_change_password_dialog(self):
+        from app.ui.dialogs.change_password_dialog import ChangePasswordDialog
+        dialog = ChangePasswordDialog(self)
+        if dialog.exec() == ChangePasswordDialog.Accepted:
+            # Dopo il cambio password, esegui il logout automatico
+            QMessageBox.information(self, "LOGOUT", "LA PASSWORD È STATA CAMBIATA.\nVERRAI DISCONNESSO PER EFFETTUARE IL LOGIN CON LA NUOVA PASSWORD.")
+            auth_manager.logout()
+            self.relogin_requested = True
+            self.close()
 
     def configure_com_port(self):
         current_port = self.settings.value("global_com_port", "COM1")

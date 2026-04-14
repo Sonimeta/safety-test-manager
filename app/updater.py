@@ -10,7 +10,34 @@ from packaging import version
 import re
 import shutil
 
+from PySide6.QtCore import QThread, Signal
 from app import config
+
+
+class UpdateCheckWorker(QThread):
+    """
+    Worker che controlla la disponibilità di aggiornamenti in background.
+    Emette un segnale con le info se un aggiornamento è disponibile.
+    """
+    update_available = Signal(dict)   # Emesso con le info sull'aggiornamento
+    no_update = Signal()              # Emesso se non ci sono aggiornamenti
+    check_error = Signal(str)         # Emesso in caso di errore (silenzioso)
+
+    def __init__(self, update_url: str, parent=None):
+        super().__init__(parent)
+        self.update_url = update_url
+
+    def run(self):
+        try:
+            checker = UpdateChecker(self.update_url)
+            update_info = checker.check_for_updates()
+            if update_info:
+                self.update_available.emit(update_info)
+            else:
+                self.no_update.emit()
+        except Exception as e:
+            logging.debug(f"Controllo aggiornamenti in background fallito: {e}")
+            self.check_error.emit(str(e))
 
 
 class UpdateChecker:

@@ -55,12 +55,6 @@ class SingleCalendarRangeDialog(QDialog):
         self.range_format = QTextCharFormat()
         self.range_format.setBackground(QBrush(QColor("#dbeafe")))
     
-    def get_date_range(self):
-        """
-        Restituisce le date di inizio e fine selezionate come oggetti QDate.
-        """
-        return self.start_date, self.end_date
-
     def _on_date_clicked(self, date):
         if self.start_date and self.end_date:
             self.previous_range = (self.start_date, self.end_date)
@@ -1295,13 +1289,14 @@ class DestinationDetailDialog(QDialog):
         }
 
 class DestinationSelectionDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, label_text=None):
         super().__init__(parent)
         self.setWindowTitle("SELEZIONA NUOVA DESTINAZIONE")
         self.setMinimumWidth(500)
         self.selected_destination_id = None
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Seleziona la nuova destinazione per il dispositivo:"))
+        display_label = label_text or "Seleziona la nuova destinazione per il dispositivo:"
+        layout.addWidget(QLabel(display_label))
         self.combo = QComboBox()
         self.combo.setEditable(True)
         self.combo.completer().setFilterMode(Qt.MatchContains)
@@ -1581,11 +1576,26 @@ class EditVerificationDialog(QDialog):
         form.addRow("Data verifica:", self.date_edit)
 
         self.status_combo = QComboBox()
-        self.status_combo.addItems(["PASSATO", "CONFORME CON ANNOTAZIONE", "FALLITO"])
+        if self.verification_type == "FUNZIONALE":
+            self.status_combo.addItems(["CONFORME", "CONFORME CON ANNOTAZIONE", "NON CONFORME"])
+        else:
+            self.status_combo.addItems(["PASSATO", "CONFORME CON ANNOTAZIONE", "FALLITO"])
         current_status = str(self.data.get('overall_status', '')).upper()
         idx = self.status_combo.findText(current_status)
         if idx >= 0:
             self.status_combo.setCurrentIndex(idx)
+        else:
+            # Mappatura tra nomenclature alternative
+            status_aliases = {
+                "CONFORME": "PASSATO",
+                "PASSATO": "CONFORME",
+                "NON CONFORME": "FALLITO",
+                "FALLITO": "NON CONFORME",
+            }
+            alias = status_aliases.get(current_status, '')
+            alias_idx = self.status_combo.findText(alias)
+            if alias_idx >= 0:
+                self.status_combo.setCurrentIndex(alias_idx)
         form.addRow("Esito globale:", self.status_combo)
 
         self.technician_edit = QLineEdit(self.data.get('technician_name', ''))

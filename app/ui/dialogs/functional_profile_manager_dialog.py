@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QStackedWidget,
     QTableWidget,
     QTableWidgetItem,
@@ -58,14 +59,41 @@ FIELD_TYPES = [
     "integer",
     "choice",
     "bool",
+    "date",
+    "time",
+    "percentage",
+    "rating",
+    "pass_fail",
+    "header",
+    "calculated",
 ]
+
+# Informazioni descrittive per ogni tipo di campo
+FIELD_TYPE_INFO: dict[str, dict] = {
+    "text":       {"label": "Testo",               "icon": "fa5s.font",            "color": "#2563eb", "category": "Base",        "desc": "Campo di testo breve (una riga)"},
+    "multiline":  {"label": "Testo Multilinea",     "icon": "fa5s.align-left",      "color": "#16a34a", "category": "Base",        "desc": "Campo di testo lungo (più righe)"},
+    "number":     {"label": "Numero Decimale",      "icon": "fa5s.hashtag",         "color": "#f59e0b", "category": "Numerico",    "desc": "Numero con decimali (es: 3.14)"},
+    "integer":    {"label": "Numero Intero",        "icon": "fa5s.sort-numeric-up", "color": "#8b5cf6", "category": "Numerico",    "desc": "Numero senza decimali (es: 42)"},
+    "percentage": {"label": "Percentuale",          "icon": "fa5s.percentage",      "color": "#0891b2", "category": "Numerico",    "desc": "Valore percentuale da 0% a 100%"},
+    "choice":     {"label": "Scelta Multipla",      "icon": "fa5s.list",            "color": "#ec4899", "category": "Selezione",   "desc": "Menù a tendina con opzioni personalizzate"},
+    "bool":       {"label": "Booleano (Sì/No)",     "icon": "fa5s.check-square",    "color": "#10b981", "category": "Selezione",   "desc": "Scelta tra due opzioni (es: OK/KO)"},
+    "pass_fail":  {"label": "Esito (Pass/Fail)",    "icon": "fa5s.clipboard-check", "color": "#059669", "category": "Selezione",   "desc": "Esito rapido: PASS, FAIL, N.A."},
+    "rating":     {"label": "Valutazione (Rating)",  "icon": "fa5s.star",            "color": "#eab308", "category": "Selezione",   "desc": "Scala numerica (es: da 1 a 5 stelle)"},
+    "date":       {"label": "Data",                 "icon": "fa5s.calendar-alt",    "color": "#6366f1", "category": "Data/Ora",    "desc": "Selettore di data (GG/MM/AAAA)"},
+    "time":       {"label": "Ora",                  "icon": "fa5s.clock",           "color": "#7c3aed", "category": "Data/Ora",    "desc": "Selettore di orario (HH:MM)"},
+    "header":     {"label": "Intestazione/Separatore", "icon": "fa5s.heading",      "color": "#64748b", "category": "Layout",      "desc": "Testo statico di intestazione (non compilabile)"},
+    "calculated": {"label": "Campo Calcolato",      "icon": "fa5s.calculator",      "color": "#0d9488", "category": "Avanzato",    "desc": "Valore calcolato da formula (sola lettura)"},
+}
+
+# Ordine delle categorie per il selettore visivo
+FIELD_TYPE_CATEGORIES = ["Base", "Numerico", "Selezione", "Data/Ora", "Layout", "Avanzato"]
 
 
 class FieldEditorDialog(QDialog):
     def __init__(self, field: Optional[FunctionalField] = None, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Editor Campo")
-        self.setMinimumSize(500, 500)
+        self.setMinimumSize(650, 480)
         # Applica il tema corrente
         self.setStyleSheet(config.get_current_stylesheet())
         self.field = field or FunctionalField(key="", label="", field_type="text")
@@ -74,77 +102,184 @@ class FieldEditorDialog(QDialog):
         # - campo esistente (key già valorizzata) → NON toccare la chiave
         self._key_user_edited = bool(self.field.key)
 
-        main_layout = QVBoxLayout(self)
-        
-        header_label = QLabel("<h3>Configurazione Campo</h3>")
-        main_layout.addWidget(header_label)
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(0, 0, 0, 0)
+
+        # --- Scroll Area per rendere il contenuto scorrevole ---
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        scroll_content = QWidget()
+        main_layout = QVBoxLayout(scroll_content)
+        main_layout.setContentsMargins(12, 8, 12, 8)
+        main_layout.setSpacing(6)
+        scroll.setWidget(scroll_content)
+        outer_layout.addWidget(scroll)
         
         form_widget = QGroupBox("Informazioni Base")
         form = QFormLayout(form_widget)
-
-        self.key_edit = QLineEdit(self.field.key)
-        self.key_edit.setPlaceholderText("es: esito, valore_misurato")
-        form.addRow("Chiave *:", self.key_edit)
+        form.setSpacing(4)
 
         self.label_edit = QLineEdit(self.field.label)
         self.label_edit.setPlaceholderText("Etichetta visualizzata all'utente")
         form.addRow("Etichetta *:", self.label_edit)
 
-        self.type_combo = QComboBox()
-        self.type_combo.addItem(qta.icon('fa5s.font', color='#2563eb'), "Testo (text)", "text")
-        self.type_combo.addItem(qta.icon('fa5s.align-left', color='#16a34a'), "Testo Multilinea (multiline)", "multiline")
-        self.type_combo.addItem(qta.icon('fa5s.hashtag', color='#f59e0b'), "Numero (number)", "number")
-        self.type_combo.addItem(qta.icon('fa5s.sort-numeric-up', color='#8b5cf6'), "Intero (integer)", "integer")
-        self.type_combo.addItem(qta.icon('fa5s.list', color='#ec4899'), "Scelta (choice)", "choice")
-        self.type_combo.addItem(qta.icon('fa5s.check-square', color='#10b981'), "Booleano (bool)", "bool")
-        
-        if self.field.field_type in FIELD_TYPES:
-            for i in range(self.type_combo.count()):
-                if self.type_combo.itemData(i) == self.field.field_type:
-                    self.type_combo.setCurrentIndex(i)
-                    break
-        form.addRow("Tipo Campo *:", self.type_combo)
-        
+        self.key_edit = QLineEdit(self.field.key)
+        self.key_edit.setPlaceholderText("Generata automaticamente dall'etichetta")
+        form.addRow("Chiave *:", self.key_edit)
+
+        # --- Selettore tipo campo visivo (compatto, 4 colonne) ---
+        type_group = QGroupBox("Tipo Campo *")
+        type_group_layout = QVBoxLayout(type_group)
+        type_group_layout.setSpacing(2)
+        type_group_layout.setContentsMargins(6, 6, 6, 6)
+        self.type_grid = QGridLayout()
+        self.type_grid.setSpacing(3)
+        self.type_grid.setContentsMargins(0, 0, 0, 0)
+        self._type_buttons: dict[str, QPushButton] = {}
+        col = 0
+        row_idx = 0
+        max_cols = 4
+
+        for category in FIELD_TYPE_CATEGORIES:
+            # Se non siamo alla prima categoria, aggiungi un piccolo separatore
+            if row_idx > 0 and col == 0:
+                pass  # lo spazio viene già dato dalla riga precedente
+            elif col > 0:
+                row_idx += 1
+                col = 0
+
+            for ft, info in FIELD_TYPE_INFO.items():
+                if info["category"] != category:
+                    continue
+                btn = QPushButton(qta.icon(info["icon"], color=info["color"]), info['label'])
+                btn.setCheckable(True)
+                btn.setToolTip(f"{info['category']} — {info['desc']}")
+                btn.setFixedHeight(26)
+                btn.setStyleSheet(
+                    "QPushButton { text-align: left; padding: 2px 5px; border: 1px solid #ccc; border-radius: 3px; font-size: 11px; }"
+                    "QPushButton:checked { border: 2px solid " + info["color"] + "; background: rgba(37,99,235,0.08); font-weight: bold; }"
+                )
+                btn.clicked.connect(lambda checked, t=ft: self._select_type(t))
+                self.type_grid.addWidget(btn, row_idx, col)
+                self._type_buttons[ft] = btn
+                col += 1
+                if col >= max_cols:
+                    col = 0
+                    row_idx += 1
+            if col > 0:
+                row_idx += 1
+                col = 0
+
+        type_group_layout.addLayout(self.type_grid)
+
+        self.type_desc_label = QLabel("")
+        self.type_desc_label.setWordWrap(True)
+        self.type_desc_label.setStyleSheet("color: #64748b; font-style: italic; padding: 2px; font-size: 11px;")
+        type_group_layout.addWidget(self.type_desc_label)
+
+        form.addRow(type_group)
         main_layout.addWidget(form_widget)
         
-        # Opzioni avanzate
-        advanced_group = QGroupBox("Opzioni Avanzate")
-        advanced_form = QFormLayout(advanced_group)
+        # --- Pannello opzioni dinamiche ---
+        self.options_group = QGroupBox("Opzioni Campo")
+        self.options_form = QFormLayout(self.options_group)
 
         self.required_check = QCheckBox("Campo obbligatorio")
         self.required_check.setChecked(self.field.required)
-        advanced_form.addRow(self.required_check)
+        self.options_form.addRow(self.required_check)
 
         self.readonly_check = QCheckBox("Sola lettura (non modificabile)")
         self.readonly_check.setChecked(self.field.read_only)
-        advanced_form.addRow(self.readonly_check)
+        self.options_form.addRow(self.readonly_check)
 
         self.unit_edit = QLineEdit(self.field.unit or "")
-        self.unit_edit.setPlaceholderText("es: bpm, mV, V")
-        advanced_form.addRow("Unità di misura:", self.unit_edit)
+        self.unit_edit.setPlaceholderText("es: bpm, mV, V, °C")
+        self.unit_row_label = QLabel("Unità di misura:")
+        self.options_form.addRow(self.unit_row_label, self.unit_edit)
 
         self.options_edit = QLineEdit(",".join(self.field.options or []))
         self.options_edit.setPlaceholderText("es: OK,KO,N.A. (separati da virgola)")
-        advanced_form.addRow("Opzioni (per choice/bool):", self.options_edit)
+        self.options_row_label = QLabel("Opzioni:")
+        self.options_form.addRow(self.options_row_label, self.options_edit)
+
+        # Presets rapidi per opzioni
+        presets_layout = QHBoxLayout()
+        presets_label = QLabel("Presets:")
+        presets_label.setStyleSheet("color: #64748b; font-size: 11px;")
+        presets_layout.addWidget(presets_label)
+        for preset_name, preset_values in [
+            ("OK/KO", "OK,KO"),
+            ("OK/KO/N.A.", "OK,KO,N.A."),
+            ("Sì/No", "Sì,No"),
+            ("Conforme/Non Conforme", "Conforme,Non Conforme"),
+            ("1-5", "1,2,3,4,5"),
+        ]:
+            preset_btn = QPushButton(preset_name)
+            preset_btn.setMaximumHeight(24)
+            preset_btn.setStyleSheet("font-size: 10px; padding: 2px 6px;")
+            preset_btn.clicked.connect(lambda _, v=preset_values: self.options_edit.setText(v))
+            presets_layout.addWidget(preset_btn)
+        presets_layout.addStretch()
+        self.presets_widget = QWidget()
+        self.presets_widget.setLayout(presets_layout)
+        self.options_form.addRow("", self.presets_widget)
 
         self.default_edit = QLineEdit("" if self.field.default is None else str(self.field.default))
         self.default_edit.setPlaceholderText("Valore predefinito")
-        advanced_form.addRow("Valore predefinito:", self.default_edit)
+        self.default_row_label = QLabel("Valore predefinito:")
+        self.options_form.addRow(self.default_row_label, self.default_edit)
 
         self.help_edit = QLineEdit(self.field.help_text or "")
         self.help_edit.setPlaceholderText("Suggerimento per l'utente")
-        advanced_form.addRow("Suggerimento:", self.help_edit)
+        self.options_form.addRow("Suggerimento:", self.help_edit)
 
+        self.placeholder_edit = QLineEdit(self.field.placeholder or "")
+        self.placeholder_edit.setPlaceholderText("Testo visualizzato nel campo vuoto")
+        self.placeholder_row_label = QLabel("Placeholder:")
+        self.options_form.addRow(self.placeholder_row_label, self.placeholder_edit)
+
+        # Opzioni numeriche (min, max, step)
+        numeric_row = QHBoxLayout()
+        self.min_spin = QLineEdit(str(self.field.min_value) if self.field.min_value is not None else "")
+        self.min_spin.setPlaceholderText("Min")
+        self.max_spin = QLineEdit(str(self.field.max_value) if self.field.max_value is not None else "")
+        self.max_spin.setPlaceholderText("Max")
+        self.step_spin = QLineEdit(str(self.field.step) if self.field.step is not None else "")
+        self.step_spin.setPlaceholderText("Passo")
+        numeric_row.addWidget(QLabel("Min:"))
+        numeric_row.addWidget(self.min_spin)
+        numeric_row.addWidget(QLabel("Max:"))
+        numeric_row.addWidget(self.max_spin)
+        numeric_row.addWidget(QLabel("Passo:"))
+        numeric_row.addWidget(self.step_spin)
+        self.numeric_widget = QWidget()
+        self.numeric_widget.setLayout(numeric_row)
+        self.numeric_row_label = QLabel("Limiti numerici:")
+        self.options_form.addRow(self.numeric_row_label, self.numeric_widget)
+
+        # Rating max
+        self.rating_max_spin = QSpinBox()
+        self.rating_max_spin.setRange(2, 10)
+        self.rating_max_spin.setValue(self.field.rating_max or 5)
+        self.rating_max_label = QLabel("Scala massima:")
+        self.options_form.addRow(self.rating_max_label, self.rating_max_spin)
+
+        # Formula
         self.formula_edit = QLineEdit(self.field.formula or "")
         self.formula_edit.setPlaceholderText("es: field1 + field2")
-        advanced_form.addRow("Formula calcolo:", self.formula_edit)
+        self.formula_row_label = QLabel("Formula calcolo:")
+        self.options_form.addRow(self.formula_row_label, self.formula_edit)
         
         formula_help = QLabel()
         formula_help.setWordWrap(True)
         formula_help.setTextFormat(Qt.RichText)
-        formula_help.setText("<small>Usa i nomi delle chiavi dei campi per riferirti ad altri valori</small>")
-        advanced_form.addRow("", formula_help)
+        formula_help.setText("<small>Usa i nomi delle chiavi dei campi per riferirti ad altri valori. "
+                             "Es: <code>campo_a * campo_b / 100</code></small>")
+        self.formula_help_label = formula_help
+        self.options_form.addRow("", formula_help)
 
+        # Precisione decimali
         self.precision_spin = QSpinBox()
         self.precision_spin.setRange(-1, 6)
         self.precision_spin.setSpecialValueText("Default (3 decimali)")
@@ -152,24 +287,92 @@ class FieldEditorDialog(QDialog):
             self.precision_spin.setValue(self.field.precision)
         else:
             self.precision_spin.setValue(-1)
-        advanced_form.addRow("Decimali (per numeri):", self.precision_spin)
+        self.precision_row_label = QLabel("Decimali:")
+        self.options_form.addRow(self.precision_row_label, self.precision_spin)
         
-        main_layout.addWidget(advanced_group)
+        main_layout.addWidget(self.options_group)
 
         # Collegamenti per generare la chiave automaticamente dalla label,
         # finché l'utente non modifica la chiave a mano.
         self.label_edit.textChanged.connect(self._on_label_changed)
         self.key_edit.textEdited.connect(self._on_key_edited)
 
-        self.type_combo.currentIndexChanged.connect(self._on_type_changed)
-        self._on_type_changed(self.type_combo.currentIndex())
         self.formula_edit.textChanged.connect(self._on_formula_changed)
         self._on_formula_changed(self.formula_edit.text())
 
+        # Pulsanti OK/Cancel fuori dalla scroll area (sempre visibili)
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
-        main_layout.addWidget(buttons)
+        outer_layout.addWidget(buttons)
+
+        # Seleziona il tipo corrente
+        self._select_type(self.field.field_type)
+
+    def _select_type(self, field_type: str):
+        """Seleziona un tipo di campo nel selettore visivo e aggiorna le opzioni visibili."""
+        # Aggiorna toggle buttons
+        for ft, btn in self._type_buttons.items():
+            btn.setChecked(ft == field_type)
+
+        # Aggiorna descrizione
+        info = FIELD_TYPE_INFO.get(field_type, {})
+        self.type_desc_label.setText(info.get("desc", ""))
+
+        # Mostra/nascondi opzioni in base al tipo
+        is_numeric = field_type in {"number", "integer", "percentage"}
+        is_choice = field_type in {"choice", "bool"}
+        is_rating = field_type == "rating"
+        is_header = field_type == "header"
+        is_calculated = field_type == "calculated"
+        has_formula = is_calculated or bool(self.formula_edit.text().strip())
+        is_text_like = field_type in {"text", "multiline"}
+
+        # Visibilità opzioni
+        self.unit_row_label.setVisible(is_numeric or field_type in {"text", "number", "integer", "percentage"})
+        self.unit_edit.setVisible(is_numeric or field_type in {"text", "number", "integer", "percentage"})
+
+        self.options_row_label.setVisible(is_choice)
+        self.options_edit.setVisible(is_choice)
+        self.presets_widget.setVisible(is_choice)
+
+        self.numeric_row_label.setVisible(is_numeric)
+        self.numeric_widget.setVisible(is_numeric)
+
+        self.rating_max_label.setVisible(is_rating)
+        self.rating_max_spin.setVisible(is_rating)
+
+        self.formula_row_label.setVisible(is_calculated or is_numeric)
+        self.formula_edit.setVisible(is_calculated or is_numeric)
+        self.formula_help_label.setVisible(is_calculated or is_numeric)
+
+        self.precision_row_label.setVisible(is_numeric)
+        self.precision_spin.setVisible(is_numeric)
+
+        self.placeholder_row_label.setVisible(is_text_like)
+        self.placeholder_edit.setVisible(is_text_like)
+
+        self.required_check.setVisible(not is_header)
+        self.readonly_check.setVisible(not is_header and not is_calculated)
+
+        self.default_row_label.setVisible(not is_header)
+        self.default_edit.setVisible(not is_header)
+
+        # Auto-imposta opzioni per pass_fail
+        if field_type == "pass_fail" and not self.options_edit.text().strip():
+            self.options_edit.setText("PASS,FAIL,N.A.")
+
+        # Auto-imposta opzioni per bool
+        if field_type == "bool" and not self.options_edit.text().strip():
+            self.options_edit.setText("OK,KO")
+
+        # Header è sempre read-only
+        if is_header:
+            self.readonly_check.setChecked(True)
+
+        # Calculated è sempre read-only
+        if is_calculated:
+            self.readonly_check.setChecked(True)
 
     def _slugify_key(self, text: str) -> str:
         """
@@ -209,16 +412,12 @@ class FieldEditorDialog(QDialog):
         """
         self._key_user_edited = True
 
-    def _on_type_changed(self, index: int):
-        if index < 0 or index >= self.type_combo.count():
-            return
-        new_type = self.type_combo.itemData(index)
-        if not new_type:
-            return
-        is_choice = new_type in {"choice", "bool"}
-        self.options_edit.setEnabled(is_choice)
-        if new_type == "bool" and not self.options_edit.text().strip():
-            self.options_edit.setText("OK,KO")
+    def _get_selected_type(self) -> str:
+        """Restituisce il tipo di campo attualmente selezionato."""
+        for ft, btn in self._type_buttons.items():
+            if btn.isChecked():
+                return ft
+        return "text"
 
     def _on_formula_changed(self, text: str):
         has_formula = bool(text.strip())
@@ -237,20 +436,27 @@ class FieldEditorDialog(QDialog):
             QMessageBox.warning(self, "Campo invalido", "L'etichetta del campo è obbligatoria.")
             return
 
+        field_type = self._get_selected_type()
         options = [opt.strip() for opt in self.options_edit.text().split(",") if opt.strip()]
-        field_type = self.type_combo.currentData()
+
+        # Per pass_fail, forza le opzioni standard
+        if field_type == "pass_fail":
+            if not options:
+                options = ["PASS", "FAIL", "N.A."]
 
         default_value = self.default_edit.text().strip()
         if default_value == "":
             default = None
         else:
             try:
-                if field_type == "number":
+                if field_type in {"number", "percentage"}:
                     default = float(default_value)
                 elif field_type == "integer":
                     default = int(default_value)
                 elif field_type == "bool":
                     default = default_value.lower() in {"true", "si", "sì", "1", "ok"}
+                elif field_type == "rating":
+                    default = int(default_value)
                 else:
                     default = default_value
             except ValueError:
@@ -262,14 +468,48 @@ class FieldEditorDialog(QDialog):
         precision = precision_value if precision_value >= 0 else None
 
         read_only_value = self.readonly_check.isChecked()
-        if formula_value:
+        if formula_value or field_type in {"header", "calculated"}:
             read_only_value = True
+
+        # Parse limiti numerici
+        min_value = None
+        max_value = None
+        step_value = None
+        if field_type in {"number", "integer", "percentage"}:
+            try:
+                if self.min_spin.text().strip():
+                    min_value = float(self.min_spin.text().strip())
+            except ValueError:
+                pass
+            try:
+                if self.max_spin.text().strip():
+                    max_value = float(self.max_spin.text().strip())
+            except ValueError:
+                pass
+            try:
+                if self.step_spin.text().strip():
+                    step_value = float(self.step_spin.text().strip())
+            except ValueError:
+                pass
+
+        # Per percentage, forza range 0-100 se non specificato
+        if field_type == "percentage":
+            if min_value is None:
+                min_value = 0.0
+            if max_value is None:
+                max_value = 100.0
+
+        rating_max = None
+        if field_type == "rating":
+            rating_max = self.rating_max_spin.value()
+
+        placeholder = self.placeholder_edit.text().strip() or None
 
         self.field = FunctionalField(
             key=key,
             label=label,
             field_type=field_type,
-            required=self.required_check.isChecked(),
+            required=self.required_check.isChecked() if field_type != "header" else False,
             unit=self.unit_edit.text().strip() or None,
             options=options,
             read_only=read_only_value,
@@ -277,6 +517,11 @@ class FieldEditorDialog(QDialog):
             help_text=self.help_edit.text().strip() or None,
             formula=formula_value,
             precision=precision,
+            min_value=min_value,
+            max_value=max_value,
+            step=step_value,
+            placeholder=placeholder,
+            rating_max=rating_max,
         )
         super().accept()
 
@@ -438,6 +683,8 @@ class SectionEditorDialog(QDialog):
             fields=[],
             rows=[],
         )
+        # Flag per auto-generazione chiave dal titolo
+        self._key_user_edited = bool(self.section.key)
 
         main_layout = QVBoxLayout(self)
         
@@ -447,14 +694,14 @@ class SectionEditorDialog(QDialog):
 
         form_widget = QGroupBox("Informazioni Base")
         form_layout = QFormLayout(form_widget)
-        
-        self.key_edit = QLineEdit(self.section.key)
-        self.key_edit.setPlaceholderText("es: normative_references")
-        form_layout.addRow("Chiave *:", self.key_edit)
 
         self.title_edit = QLineEdit(self.section.title)
-        self.title_edit.setPlaceholderText("es: Riferimenti Normativi")
+        self.title_edit.setPlaceholderText("es: Controlli Visivi, Misurazioni, Note")
         form_layout.addRow("Titolo *:", self.title_edit)
+        
+        self.key_edit = QLineEdit(self.section.key)
+        self.key_edit.setPlaceholderText("Generata automaticamente dal titolo")
+        form_layout.addRow("Chiave *:", self.key_edit)
 
         self.type_combo = QComboBox()
         self.type_combo.addItem(qta.icon('fa5s.list', color='#2563eb'), "Campi (Fields)", "fields")
@@ -474,9 +721,9 @@ class SectionEditorDialog(QDialog):
         help_label.setTextFormat(Qt.RichText)
         help_label.setText(
             "<small>"
-            "<b>Campi:</b> Form con campi singoli<br>"
-            "<b>Checklist:</b> Lista di elementi da verificare<br>"
-            "<b>Tabella:</b> Tabella con righe e colonne"
+            "<b>Campi:</b> Form con campi singoli (testo, numeri, scelte...)<br>"
+            "<b>Checklist:</b> Lista di elementi da verificare con esito<br>"
+            "<b>Tabella:</b> Tabella con righe e colonne personalizzabili"
             "</small>"
         )
         form_layout.addRow("", help_label)
@@ -511,6 +758,8 @@ class SectionEditorDialog(QDialog):
         self.field_add_btn.setObjectName("autoButton")
         self.field_edit_btn = QPushButton(qta.icon('fa5s.edit'), " Modifica")
         self.field_edit_btn.setObjectName("editButton")
+        self.field_dup_btn = QPushButton(qta.icon('fa5s.copy'), " Duplica")
+        self.field_dup_btn.setToolTip("Duplica il campo selezionato")
         self.field_remove_btn = QPushButton(qta.icon('fa5s.trash'), " Rimuovi")
         self.field_remove_btn.setObjectName("deleteButton")
         self.field_up_btn = QPushButton(qta.icon('fa5s.arrow-up'), "")
@@ -519,6 +768,7 @@ class SectionEditorDialog(QDialog):
         self.field_down_btn.setToolTip("Sposta giù")
         fields_btn_layout.addWidget(self.field_add_btn)
         fields_btn_layout.addWidget(self.field_edit_btn)
+        fields_btn_layout.addWidget(self.field_dup_btn)
         fields_btn_layout.addWidget(self.field_remove_btn)
         fields_btn_layout.addWidget(self.field_up_btn)
         fields_btn_layout.addWidget(self.field_down_btn)
@@ -537,8 +787,13 @@ class SectionEditorDialog(QDialog):
         rows_btn_layout = QHBoxLayout()
         self.row_add_btn = QPushButton(qta.icon('fa5s.plus'), " Aggiungi")
         self.row_add_btn.setObjectName("autoButton")
+        self.row_quick_add_btn = QPushButton(qta.icon('fa5s.bolt'), " Aggiungi Rapido")
+        self.row_quick_add_btn.setToolTip("Aggiungi velocemente una riga con campo esito preconfigurato")
+        self.row_quick_add_btn.setObjectName("autoButton")
         self.row_edit_btn = QPushButton(qta.icon('fa5s.edit'), " Modifica")
         self.row_edit_btn.setObjectName("editButton")
+        self.row_dup_btn = QPushButton(qta.icon('fa5s.copy'), " Duplica")
+        self.row_dup_btn.setToolTip("Duplica la riga selezionata")
         self.row_remove_btn = QPushButton(qta.icon('fa5s.trash'), " Rimuovi")
         self.row_remove_btn.setObjectName("deleteButton")
         self.row_up_btn = QPushButton(qta.icon('fa5s.arrow-up'), "")
@@ -546,7 +801,9 @@ class SectionEditorDialog(QDialog):
         self.row_down_btn = QPushButton(qta.icon('fa5s.arrow-down'), "")
         self.row_down_btn.setToolTip("Sposta giù")
         rows_btn_layout.addWidget(self.row_add_btn)
+        rows_btn_layout.addWidget(self.row_quick_add_btn)
         rows_btn_layout.addWidget(self.row_edit_btn)
+        rows_btn_layout.addWidget(self.row_dup_btn)
         rows_btn_layout.addWidget(self.row_remove_btn)
         rows_btn_layout.addWidget(self.row_up_btn)
         rows_btn_layout.addWidget(self.row_down_btn)
@@ -561,14 +818,20 @@ class SectionEditorDialog(QDialog):
 
         self.field_add_btn.clicked.connect(self.add_field)
         self.field_edit_btn.clicked.connect(self.edit_field)
+        self.field_dup_btn.clicked.connect(self.duplicate_field)
         self.field_remove_btn.clicked.connect(self.remove_field)
         self.field_up_btn.clicked.connect(self.move_field_up)
         self.field_down_btn.clicked.connect(self.move_field_down)
         self.row_add_btn.clicked.connect(self.add_row)
+        self.row_quick_add_btn.clicked.connect(self.quick_add_row)
         self.row_edit_btn.clicked.connect(self.edit_row)
+        self.row_dup_btn.clicked.connect(self.duplicate_row)
         self.row_remove_btn.clicked.connect(self.remove_row)
         self.row_up_btn.clicked.connect(self.move_row_up)
         self.row_down_btn.clicked.connect(self.move_row_down)
+        # Auto-genera chiave dal titolo
+        self.title_edit.textChanged.connect(self._on_title_changed)
+        self.key_edit.textEdited.connect(self._on_key_edited)
         # Usa l'indice per gestire correttamente i valori interni ("fields", "checklist", "table")
         self.type_combo.currentIndexChanged.connect(self._update_stack)
 
@@ -588,6 +851,27 @@ class SectionEditorDialog(QDialog):
             self.stack.setCurrentIndex(0)
         else:
             self.stack.setCurrentIndex(1)
+
+    def _slugify_key(self, text: str) -> str:
+        if not text:
+            return ""
+        value = text.strip().lower()
+        if not value:
+            return ""
+        value = unicodedata.normalize("NFKD", value)
+        value = "".join(c for c in value if not unicodedata.combining(c))
+        value = re.sub(r"[^a-z0-9]+", "_", value)
+        value = value.strip("_")
+        return value
+
+    def _on_title_changed(self, text: str):
+        """Auto-genera chiave dal titolo se non modificata manualmente."""
+        if self._key_user_edited:
+            return
+        self.key_edit.setText(self._slugify_key(text))
+
+    def _on_key_edited(self, _text: str):
+        self._key_user_edited = True
 
     def _refresh_fields(self):
         self.fields_table.setRowCount(0)
@@ -637,6 +921,25 @@ class SectionEditorDialog(QDialog):
         self.section.fields.pop(row_idx)
         self._refresh_fields()
 
+    def duplicate_field(self):
+        """Duplica il campo selezionato con una nuova chiave."""
+        row_idx = self.fields_table.currentRow()
+        if row_idx < 0:
+            QMessageBox.warning(self, "Selezione mancante", "Seleziona un campo da duplicare.")
+            return
+        original = self.section.fields[row_idx]
+        new_field = copy.deepcopy(original)
+        # Genera chiave unica
+        base_key = original.key
+        suffix = 2
+        while any(f.key == f"{base_key}_{suffix}" for f in self.section.fields):
+            suffix += 1
+        new_field.key = f"{base_key}_{suffix}"
+        new_field.label = f"{original.label} (copia)"
+        self.section.fields.insert(row_idx + 1, new_field)
+        self._refresh_fields()
+        self.fields_table.selectRow(row_idx + 1)
+
     def move_field_up(self):
         row_idx = self.fields_table.currentRow()
         if row_idx <= 0:
@@ -668,6 +971,64 @@ class SectionEditorDialog(QDialog):
                 return
             self.section.rows.append(new_row)
             self._refresh_rows()
+
+    def quick_add_row(self):
+        """Aggiunge velocemente una riga con campo esito preconfigurato (OK/KO/N.A.)."""
+        from PySide6.QtWidgets import QInputDialog
+        label, ok = QInputDialog.getText(
+            self,
+            "Aggiungi Riga Rapida",
+            "Nome della verifica (es: Integrità cavo di alimentazione):",
+        )
+        if not ok or not label.strip():
+            return
+        label = label.strip()
+        # Genera chiave dalla label
+        key = self._slugify_key(label)
+        if not key:
+            key = f"riga_{len(self.section.rows) + 1}"
+        # Verifica chiave unica
+        if any(r.key == key for r in self.section.rows):
+            suffix = 2
+            while any(r.key == f"{key}_{suffix}" for r in self.section.rows):
+                suffix += 1
+            key = f"{key}_{suffix}"
+
+        new_row = FunctionalRowDefinition(
+            key=key,
+            label=label,
+            fields=[
+                FunctionalField(
+                    key="esito",
+                    label="Esito",
+                    field_type="pass_fail",
+                    required=True,
+                    options=["PASS", "FAIL", "N.A."],
+                ),
+            ],
+        )
+        self.section.rows.append(new_row)
+        self._refresh_rows()
+
+    def duplicate_row(self):
+        """Duplica la riga selezionata con una nuova chiave."""
+        item = self.rows_list.currentItem()
+        if not item:
+            QMessageBox.warning(self, "Selezione mancante", "Seleziona una riga da duplicare.")
+            return
+        idx = self.rows_list.row(item)
+        original = self.section.rows[idx]
+        new_row = copy.deepcopy(original)
+        # Genera chiave unica
+        base_key = original.key
+        suffix = 2
+        while any(r.key == f"{base_key}_{suffix}" for r in self.section.rows):
+            suffix += 1
+        new_row.key = f"{base_key}_{suffix}"
+        new_row.label = f"{original.label or original.key} (copia)"
+        self.section.rows.insert(idx + 1, new_row)
+        self._refresh_rows()
+        self.rows_list.setCurrentRow(idx + 1)
 
     def edit_row(self):
         item = self.rows_list.currentItem()
@@ -895,8 +1256,13 @@ class FunctionalProfileEditorDialog(QDialog):
         btn_row = QHBoxLayout()
         self.section_add_btn = QPushButton(qta.icon('fa5s.plus'), " Aggiungi")
         self.section_add_btn.setObjectName("autoButton")
+        self.section_quick_btn = QPushButton(qta.icon('fa5s.bolt'), " Aggiungi Preset")
+        self.section_quick_btn.setToolTip("Aggiungi una sezione da modello predefinito")
+        self.section_quick_btn.setObjectName("autoButton")
         self.section_edit_btn = QPushButton(qta.icon('fa5s.edit'), " Modifica")
         self.section_edit_btn.setObjectName("editButton")
+        self.section_dup_btn = QPushButton(qta.icon('fa5s.copy'), " Duplica")
+        self.section_dup_btn.setToolTip("Duplica la sezione selezionata")
         self.section_remove_btn = QPushButton(qta.icon('fa5s.trash'), " Rimuovi")
         self.section_remove_btn.setObjectName("deleteButton")
         self.section_up_btn = QPushButton(qta.icon('fa5s.arrow-up'), "")
@@ -904,7 +1270,9 @@ class FunctionalProfileEditorDialog(QDialog):
         self.section_down_btn = QPushButton(qta.icon('fa5s.arrow-down'), "")
         self.section_down_btn.setToolTip("Sposta giù")
         
-        for btn in (self.section_add_btn, self.section_edit_btn, self.section_remove_btn, self.section_up_btn, self.section_down_btn):
+        for btn in (self.section_add_btn, self.section_quick_btn, self.section_edit_btn,
+                     self.section_dup_btn, self.section_remove_btn,
+                     self.section_up_btn, self.section_down_btn):
             btn_row.addWidget(btn)
         btn_row.addStretch()
         sections_layout.addLayout(btn_row)
@@ -929,7 +1297,9 @@ class FunctionalProfileEditorDialog(QDialog):
         main_layout.addWidget(buttons)
 
         self.section_add_btn.clicked.connect(self.add_section)
+        self.section_quick_btn.clicked.connect(self.quick_add_section)
         self.section_edit_btn.clicked.connect(self.edit_section)
+        self.section_dup_btn.clicked.connect(self.duplicate_section)
         self.section_remove_btn.clicked.connect(self.remove_section)
         self.section_up_btn.clicked.connect(self.move_section_up)
         self.section_down_btn.clicked.connect(self.move_section_down)
@@ -984,16 +1354,23 @@ class FunctionalProfileEditorDialog(QDialog):
                 preview_html += "<ul>"
                 for field in section.fields:
                     required = " <span style='color: red;'>*</span>" if field.required else ""
-                    preview_html += f"<li>{field.label}{required} ({field.field_type})</li>"
+                    type_label = FIELD_TYPE_INFO.get(field.field_type, {}).get("label", field.field_type)
+                    preview_html += f"<li>{field.label}{required} <span style='color:#94a3b8;'>({type_label})</span></li>"
                 preview_html += "</ul>"
             else:
                 preview_html += f"<p>Righe: {len(section.rows)}</p>"
                 if section.rows:
                     preview_html += "<ul>"
-                    for row in section.rows[:3]:  # Mostra solo le prime 3
-                        preview_html += f"<li>{row.label or row.key}</li>"
-                    if len(section.rows) > 3:
-                        preview_html += f"<li>... e altre {len(section.rows) - 3}</li>"
+                    for row in section.rows[:5]:
+                        preview_html += f"<li>{row.label or row.key}"
+                        if row.fields:
+                            field_types = ", ".join(
+                                FIELD_TYPE_INFO.get(f.field_type, {}).get("label", f.field_type) for f in row.fields
+                            )
+                            preview_html += f" <span style='color:#94a3b8;'>({field_types})</span>"
+                        preview_html += "</li>"
+                    if len(section.rows) > 5:
+                        preview_html += f"<li>... e altre {len(section.rows) - 5}</li>"
                     preview_html += "</ul>"
             
             preview_html += "<br>"
@@ -1082,6 +1459,113 @@ class FunctionalProfileEditorDialog(QDialog):
                 return
             self.profile.sections.append(new_section)
             self._refresh_sections()
+
+    def quick_add_section(self):
+        """Aggiunge una sezione da un modello predefinito."""
+        presets = {
+            "Riferimenti Normativi": FunctionalSection(
+                key="riferimenti_normativi",
+                title="Riferimenti Normativi-Procedure",
+                section_type="fields",
+                fields=[
+                    FunctionalField(key="norme_procedure", label="Norme/Procedure", field_type="text"),
+                ],
+            ),
+            "Controlli Visivi (Checklist)": FunctionalSection(
+                key="controlli_visivi",
+                title="Controllo Visivo/Funzionale",
+                section_type="checklist",
+                rows=[
+                    FunctionalRowDefinition(key="integrita_generale", label="Integrità generale apparecchiatura", fields=[
+                        FunctionalField(key="esito", label="Esito", field_type="pass_fail", required=True, options=["PASS", "FAIL", "N.A."]),
+                    ]),
+                    FunctionalRowDefinition(key="serigrafie_etichette", label="Leggibilità serigrafie/etichette", fields=[
+                        FunctionalField(key="esito", label="Esito", field_type="pass_fail", required=True, options=["PASS", "FAIL", "N.A."]),
+                    ]),
+                    FunctionalRowDefinition(key="cavo_alimentazione", label="Integrità cavo di alimentazione", fields=[
+                        FunctionalField(key="esito", label="Esito", field_type="pass_fail", required=True, options=["PASS", "FAIL", "N.A."]),
+                    ]),
+                ],
+            ),
+            "Misurazioni (Tabella)": FunctionalSection(
+                key="misurazioni",
+                title="Misurazioni",
+                section_type="table",
+                rows=[
+                    FunctionalRowDefinition(key="misura_1", label="Misura 1", fields=[
+                        FunctionalField(key="valore_atteso", label="Valore Atteso", field_type="number", unit=""),
+                        FunctionalField(key="valore_misurato", label="Valore Misurato", field_type="number", unit=""),
+                        FunctionalField(key="tolleranza", label="Tolleranza (%)", field_type="percentage"),
+                        FunctionalField(key="esito", label="Esito", field_type="pass_fail", required=True, options=["PASS", "FAIL", "N.A."]),
+                    ]),
+                ],
+            ),
+            "Note e Osservazioni": FunctionalSection(
+                key="note_osservazioni",
+                title="Note e Osservazioni",
+                section_type="fields",
+                fields=[
+                    FunctionalField(key="note", label="Note", field_type="multiline"),
+                    FunctionalField(key="data_verifica", label="Data Verifica", field_type="date"),
+                ],
+            ),
+            "Consumabili (Checklist)": FunctionalSection(
+                key="consumabili",
+                title="Consumabili e Accessori",
+                section_type="checklist",
+                rows=[
+                    FunctionalRowDefinition(key="accessori_presenti", label="Accessori presenti e funzionanti", fields=[
+                        FunctionalField(key="esito", label="Esito", field_type="pass_fail", required=True, options=["PASS", "FAIL", "N.A."]),
+                    ]),
+                ],
+            ),
+        }
+
+        items = list(presets.keys())
+        from PySide6.QtWidgets import QInputDialog
+        chosen, ok = QInputDialog.getItem(
+            self,
+            "Aggiungi Sezione Predefinita",
+            "Seleziona un modello di sezione:",
+            items,
+            0,
+            False,
+        )
+        if not ok or not chosen:
+            return
+
+        preset_section = copy.deepcopy(presets[chosen])
+        # Assicura chiave unica
+        base_key = preset_section.key
+        if any(s.key == base_key for s in self.profile.sections):
+            suffix = 2
+            while any(s.key == f"{base_key}_{suffix}" for s in self.profile.sections):
+                suffix += 1
+            preset_section.key = f"{base_key}_{suffix}"
+            preset_section.title = f"{preset_section.title} ({suffix})"
+
+        self.profile.sections.append(preset_section)
+        self._refresh_sections()
+
+    def duplicate_section(self):
+        """Duplica la sezione selezionata."""
+        item = self.sections_list.currentItem()
+        if not item:
+            QMessageBox.warning(self, "Selezione mancante", "Seleziona una sezione da duplicare.")
+            return
+        idx = self.sections_list.row(item)
+        original = self.profile.sections[idx]
+        new_section = copy.deepcopy(original)
+        # Genera chiave unica
+        base_key = original.key
+        suffix = 2
+        while any(s.key == f"{base_key}_{suffix}" for s in self.profile.sections):
+            suffix += 1
+        new_section.key = f"{base_key}_{suffix}"
+        new_section.title = f"{original.title} (copia)"
+        self.profile.sections.insert(idx + 1, new_section)
+        self._refresh_sections()
+        self.sections_list.setCurrentRow(idx + 1)
 
     def edit_section(self):
         item = self.sections_list.currentItem()

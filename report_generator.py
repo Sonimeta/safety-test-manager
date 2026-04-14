@@ -12,6 +12,7 @@ from PySide6.QtCore import QSettings, Qt, QByteArray, QBuffer, QIODevice
 from PySide6.QtGui import QImage
 from app import config
 import io
+from PIL import Image as PILImage, ExifTags, UnidentifiedImageError
 
 # --- Costanti di Stile e Layout - Design Moderno ---
 COLOR_GRID = colors.HexColor('#e2e8f0')          # Bordi griglia eleganti
@@ -418,7 +419,7 @@ def _add_final_evaluation(story, styles, verification_data):
     story.append(Spacer(1, SPACER_MEDIUM))
     
     overall_status = verification_data.get('overall_status', '')
-    is_pass = overall_status == 'PASSATO'
+    is_pass = overall_status in ('PASSATO', 'CONFORME')
     is_conforme_con_annotazione = overall_status == 'CONFORME CON ANNOTAZIONE'
     
     if is_conforme_con_annotazione:
@@ -600,6 +601,8 @@ def _add_functional_sections(story, styles, verification_data):
             for field in fields:
                 label = field.get('label') or field.get('key', '').replace('_', ' ').title()
                 value = field.get('value', '')
+                if value is None:
+                    value = ''
                 field_rows.append([
                     _create_styled_paragraph(label, styles['NormalBold']),
                     _create_styled_paragraph(str(value), styles['Normal']),
@@ -644,7 +647,10 @@ def _add_functional_sections(story, styles, verification_data):
                 
                 value_map = {entry.get('key'): entry.get('value') for entry in row.get('values', [])}
                 for key in header_keys:
-                    row_cells.append(_create_styled_paragraph(str(value_map.get(key, '')), styles['Normal']))
+                    cell_value = value_map.get(key, '')
+                    if cell_value is None:
+                        cell_value = ''
+                    row_cells.append(_create_styled_paragraph(str(cell_value), styles['Normal']))
                 table_data.append(row_cells)
 
             table = Table(table_data, repeatRows=1)
@@ -660,6 +666,67 @@ def _add_functional_sections(story, styles, verification_data):
 
         story.append(Spacer(1, 0.3 * cm))
 
+
+
+def _preprocess_image_for_pdf(abs_path, max_pixels=2400):
+    """Pre-processa un'immagine con PIL per garantire compatibilità con ReportLab.
+    
+    - Applica la rotazione EXIF (foto da smartphone)
+    - Converte in RGB se necessario (CMYK, palette, RGBA, ecc.)
+    - Ridimensiona se troppo grande per evitare problemi di memoria
+    - Restituisce un BytesIO con l'immagine in formato JPEG/PNG
+    """
+    pil_img = PILImage.open(abs_path)
+    
+    # Forza il caricamento completo per verificare che l'immagine non sia corrotta
+    pil_img.load()
+    
+    # Applica rotazione EXIF (foto da smartphone ruotate)
+    try:
+        exif = pil_img.getexif()
+        if exif:
+            orientation_key = None
+            for tag_id, tag_name in ExifTags.TAGS.items():
+                if tag_name == 'Orientation':
+                    orientation_key = tag_id
+                    break
+            if orientation_key and orientation_key in exif:
+                orientation = exif[orientation_key]
+                if orientation == 3:
+                    pil_img = pil_img.rotate(180, expand=True)
+                elif orientation == 6:
+                    pil_img = pil_img.rotate(270, expand=True)
+                elif orientation == 8:
+                    pil_img = pil_img.rotate(90, expand=True)
+    except Exception:
+        pass  # Ignora errori EXIF, procedi con l'immagine com'è
+    
+    # Ridimensiona se troppo grande (limita il lato più lungo)
+    w, h = pil_img.size
+    if max(w, h) > max_pixels:
+        ratio = max_pixels / max(w, h)
+        new_w = int(w * ratio)
+        new_h = int(h * ratio)
+        pil_img = pil_img.resize((new_w, new_h), PILImage.LANCZOS)
+    
+    # Determina il formato di output
+    has_transparency = pil_img.mode in ('RGBA', 'LA', 'PA') or \
+        (pil_img.mode == 'P' and 'transparency' in pil_img.info)
+    
+    buf = io.BytesIO()
+    if has_transparency:
+        # Mantieni PNG per immagini con trasparenza
+        if pil_img.mode != 'RGBA':
+            pil_img = pil_img.convert('RGBA')
+        pil_img.save(buf, format='PNG', optimize=True)
+    else:
+        # Converti in RGB e salva come JPEG per tutte le altre
+        if pil_img.mode != 'RGB':
+            pil_img = pil_img.convert('RGB')
+        pil_img.save(buf, format='JPEG', quality=85)
+    
+    buf.seek(0)
+    return buf
 
 
 def _add_attachments(story, styles, verification_data):
@@ -693,7 +760,7 @@ def _add_attachments(story, styles, verification_data):
             story.append(Spacer(1, SPACER_MEDIUM))
             continue
 
-        # Immagine: inseriscila nel PDF
+        # Immagine: pre-processa con PIL e inseriscila nel PDF
         try:
             # Descrizione sopra l'immagine
             desc = att.get('description') or att.get('filename', '')
@@ -701,10 +768,13 @@ def _add_attachments(story, styles, verification_data):
                 story.append(_create_styled_paragraph(desc, styles['NormalBold']))
                 story.append(Spacer(1, SPACER_MEDIUM))
 
+            # Pre-processa l'immagine con PIL per garantire compatibilità
+            img_buffer = _preprocess_image_for_pdf(abs_path)
+
             # Calcola le dimensioni dell'immagine mantenendo le proporzioni
             page_w = A4[0] - 2 * PAGE_MARGIN
             max_h = 14 * cm  # Altezza massima per l'immagine
-            img = Image(abs_path)
+            img = Image(img_buffer)
             iw, ih = img.drawWidth, img.drawHeight
             if iw > 0 and ih > 0:
                 ratio = min(page_w / iw, max_h / ih, 1.0)  # Non ingrandire oltre l'originale
@@ -779,5 +849,45 @@ def create_report(filename, device_info, customer_info, destination_info, mti_in
         doc.build(story, onFirstPage=footer_callback, onLaterPages=footer_callback)
         logging.info(f"Report PDF generato con successo: {filename}")
     except Exception as e:
-        logging.error(f"Errore durante la creazione del PDF: {e}", exc_info=True)
-        raise
+        # Se il build fallisce e ci sono allegati, riprova senza allegati
+        if verification_data.get('attachments'):
+            logging.warning(f"Build PDF fallito con allegati, ritento senza allegati: {e}", exc_info=True)
+            doc2 = SimpleDocTemplate(
+                filename,
+                pagesize=A4,
+                rightMargin=PAGE_MARGIN,
+                leftMargin=PAGE_MARGIN,
+                topMargin=PAGE_MARGIN,
+                bottomMargin=PAGE_MARGIN,
+                title="Rapporto di Verifica",
+                pageCompression=1,
+            )
+            story_no_att = []
+            _add_logo(story_no_att, report_settings)
+            _add_header(story_no_att, styles, verification_data)
+            _add_customer_info(story_no_att, styles, customer_info, destination_info)
+            _add_device_info(story_no_att, styles, device_info, verification_data)
+            _add_instrument_info(story_no_att, styles, mti_info, verification_data)
+            _add_summary_sections(story_no_att, styles, verification_data)
+            _add_final_evaluation(story_no_att, styles, verification_data)
+            _add_signature(story_no_att, styles, technician_name, signature_data)
+            story_no_att.append(PageBreak())
+            _add_visual_inspection(story_no_att, styles, verification_data)
+            _add_electrical_measurements(story_no_att, styles, verification_data)
+            _add_functional_sections(story_no_att, styles, verification_data)
+            # Aggiungi nota al posto degli allegati
+            story_no_att.append(PageBreak())
+            story_no_att.append(_create_styled_paragraph(
+                "⚠ Allegati non inclusi: impossibile elaborare le immagini allegate.",
+                styles['Normal']
+            ))
+            try:
+                footer_cb2 = lambda canvas, doc: _add_footer(canvas, doc, device_info, verification_data)
+                doc2.build(story_no_att, onFirstPage=footer_cb2, onLaterPages=footer_cb2)
+                logging.info(f"Report PDF generato senza allegati: {filename}")
+            except Exception as e2:
+                logging.error(f"Errore durante la creazione del PDF (anche senza allegati): {e2}", exc_info=True)
+                raise
+        else:
+            logging.error(f"Errore durante la creazione del PDF: {e}", exc_info=True)
+            raise

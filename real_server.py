@@ -1356,6 +1356,44 @@ def update_user(username: str, user_update: UserUpdate, current_user: User = Dep
     finally:
         if conn: conn.close()
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+    @field_validator('new_password')
+    @classmethod
+    def validate_new_password(cls, v):
+        if len(v) < MIN_PASSWORD_LENGTH:
+            raise ValueError(f'Password troppo corta (minimo {MIN_PASSWORD_LENGTH} caratteri)')
+        return v
+
+@app.post("/me/change-password")
+def change_own_password(req: ChangePasswordRequest, current_user: User = Depends(get_current_user)):
+    """Permette a qualsiasi utente autenticato di cambiare la propria password."""
+    conn = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
+        cursor.execute("SELECT hashed_password FROM users WHERE username = %s", (current_user.username,))
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Utente non trovato.")
+        if not verify_password(req.current_password, row['hashed_password']):
+            raise HTTPException(status_code=401, detail="La password attuale non è corretta.")
+        new_hash = get_password_hash(req.new_password)
+        cursor.execute("UPDATE users SET hashed_password = %s WHERE username = %s", (new_hash, current_user.username))
+        conn.commit()
+        logger.info(f"Utente '{current_user.username}' ha cambiato la propria password.")
+        return {"detail": "Password cambiata con successo."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        if conn: conn.rollback()
+        logger.error(f"Errore cambio password per '{current_user.username}': {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Errore interno del server durante il cambio password.")
+    finally:
+        if conn: conn.close()
+
 @app.delete("/users/{username}", status_code=204)
 def delete_user(username: str, current_user: User = Depends(get_current_user)):
     if current_user.role != 'admin':

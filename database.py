@@ -785,106 +785,278 @@ def get_destination_by_id(destination_id: int):
         ).fetchone()
         return row
 
+def get_unique_departments():
+    """Recupera tutti i reparti unici dal database."""
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT DISTINCT department 
+            FROM devices 
+            WHERE department IS NOT NULL AND TRIM(department) != ''
+            AND is_deleted = 0
+            ORDER BY department
+        """
+        return conn.execute(query).fetchall()
+
+def get_unique_technicians():
+    """Recupera tutti i tecnici unici dalle verifiche elettriche e funzionali."""
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT DISTINCT technician_name FROM (
+                SELECT technician_name FROM verifications 
+                WHERE technician_name IS NOT NULL AND TRIM(technician_name) != '' AND is_deleted = 0
+                UNION
+                SELECT technician_name FROM functional_verifications 
+                WHERE technician_name IS NOT NULL AND TRIM(technician_name) != '' AND is_deleted = 0
+            )
+            ORDER BY technician_name
+        """
+        return conn.execute(query).fetchall()
+
 def advanced_search(criteria: dict):
     """
     Esegue una query di ricerca dinamica nel database.
+    Supporta verifiche elettriche, funzionali o entrambe (UNION ALL).
     """
-    base_query = """
-        SELECT
-            c.name AS "Cliente",
-            d.name AS "Destinazione",
-            dev.description AS "Apparecchio",
-            dev.serial_number AS "Matricola",
-            dev.manufacturer AS "Marca",
-            dev.model AS "Modello",
-            v.verification_date AS "Data Verifica",
-            v.technician_name AS "Tecnico",
-            CASE
-                WHEN v.overall_status = 'PASSATO' THEN 'CONFORME'
-                WHEN v.overall_status = 'CONFORME CON ANNOTAZIONE' THEN 'CONFORME CON ANNOTAZIONE'
-                WHEN v.overall_status = 'FALLITO' THEN 'NON CONFORME'
-                ELSE 'NON VERIFICATO'
-            END AS "Esito",
-            dev.id AS device_id,  -- Aggiunto per la navigazione
-            v.id AS verification_id -- Aggiunto per la navigazione
-        FROM
-            devices dev
-        LEFT JOIN
-            verifications v ON dev.id = v.device_id AND v.is_deleted = 0
-        JOIN
-            destinations d ON dev.destination_id = d.id
-        JOIN
-            customers c ON d.customer_id = c.id
-        WHERE
-            dev.is_deleted = 0
-    """
+    verification_type = criteria.get("verification_type", "QUALSIASI")
+    outcome = (criteria.get("outcome") or "QUALSIASI").upper().strip()
 
-    conditions = []
-    params = []
+    # === Condizioni comuni sui dispositivi/clienti/destinazioni ===
+    dev_conditions = ["dev.is_deleted = 0"]
+    dev_params = []
 
     if criteria.get("customer_name"):
-        conditions.append("c.name LIKE ?")
-        params.append(f"%{criteria['customer_name']}%")
-    
+        dev_conditions.append("c.name LIKE ?")
+        dev_params.append(f"%{criteria['customer_name']}%")
+
     if criteria.get("destination_name"):
-        conditions.append("d.name LIKE ?")
-        params.append(f"%{criteria['destination_name']}%")
+        dev_conditions.append("d.name LIKE ?")
+        dev_params.append(f"%{criteria['destination_name']}%")
 
     if criteria.get("device_description"):
-        conditions.append("dev.description LIKE ?")
-        params.append(f"%{criteria['device_description']}%")
+        dev_conditions.append("dev.description LIKE ?")
+        dev_params.append(f"%{criteria['device_description']}%")
 
     if criteria.get("serial_number"):
-        conditions.append("dev.serial_number LIKE ?")
-        params.append(f"%{criteria['serial_number']}%")
+        dev_conditions.append("dev.serial_number LIKE ?")
+        dev_params.append(f"%{criteria['serial_number']}%")
 
-    if criteria.get("technician_name"):
-        # Se cerco per tecnico, devo assicurarmi che il LEFT JOIN non fallisca
-        # per i dispositivi mai verificati. Aggiungo una condizione che forza
-        # l'esistenza di una verifica.
-        conditions.append("v.id IS NOT NULL")
-        # Questa condizione richiede che esista una verifica
-        conditions.append("v.technician_name LIKE ?")
-        params.append(f"%{criteria['technician_name']}%")
-
-    if conditions:
-        base_query += " AND " + " AND ".join(conditions)
-
-    # --- NUOVA LOGICA PER CRITERI AGGIUNTIVI ---
     if criteria.get("manufacturer"):
-        base_query += " AND dev.manufacturer LIKE ?"
-        params.append(f"%{criteria['manufacturer']}%")
+        dev_conditions.append("dev.manufacturer LIKE ?")
+        dev_params.append(f"%{criteria['manufacturer']}%")
 
     if criteria.get("model"):
-        base_query += " AND dev.model LIKE ?"
-        params.append(f"%{criteria['model']}%")
-    
-    # Filtro per stato dispositivo
+        dev_conditions.append("dev.model LIKE ?")
+        dev_params.append(f"%{criteria['model']}%")
+
+    if criteria.get("department"):
+        dev_conditions.append("dev.department LIKE ?")
+        dev_params.append(f"%{criteria['department']}%")
+
+    if criteria.get("ams_inventory"):
+        dev_conditions.append("dev.ams_inventory LIKE ?")
+        dev_params.append(f"%{criteria['ams_inventory']}%")
+
+    if criteria.get("customer_inventory"):
+        dev_conditions.append("dev.customer_inventory LIKE ?")
+        dev_params.append(f"%{criteria['customer_inventory']}%")
+
     device_status = criteria.get("device_status")
     if device_status and device_status != "QUALSIASI":
         if device_status == "ATTIVO":
-            base_query += " AND (dev.status = 'active' OR dev.status IS NULL)"
+            dev_conditions.append("(dev.status = 'active' OR dev.status IS NULL)")
         elif device_status == "DISMESSO":
-            base_query += " AND dev.status = 'decommissioned'"
+            dev_conditions.append("dev.status = 'decommissioned'")
 
-    if criteria.get("start_date") and criteria.get("end_date"):
-        base_query += " AND v.id IS NOT NULL AND v.verification_date BETWEEN ? AND ?"
-        params.extend([criteria["start_date"], criteria["end_date"]])
+    verification_interval = criteria.get("verification_interval")
+    if verification_interval and str(verification_interval) != "QUALSIASI":
+        try:
+            dev_conditions.append("dev.verification_interval = ?")
+            dev_params.append(int(verification_interval))
+        except (ValueError, TypeError):
+            pass
 
-    outcome = criteria.get("outcome")
-    if outcome and outcome.upper() not in ["QUALSIASI", ""]:
-        if outcome.upper() == "CONFORME":
-            base_query += " AND v.id IS NOT NULL AND v.overall_status = 'PASSATO'"
-        elif outcome.upper() == "NON CONFORME":
-            base_query += " AND v.id IS NOT NULL AND v.overall_status = 'FALLITO'"
-        elif outcome.upper() == "NON VERIFICATO":
-            # Per cercare dispositivi mai verificati
-            base_query += " AND v.id IS NULL"
+    dev_where = " AND ".join(dev_conditions)
 
-    base_query += " ORDER BY c.name, d.name, dev.description;"
+    # === Costruzione query per ramo ELETTRICO e FUNZIONALE ===
+    queries = []
+    all_params = []
+
+    # --- Ramo VERIFICHE ELETTRICHE ---
+    if verification_type in ("QUALSIASI", "ELETTRICA"):
+        e_query = f"""
+            SELECT
+                c.name AS "Cliente",
+                d.name AS "Destinazione",
+                dev.description AS "Apparecchio",
+                dev.department AS "Reparto",
+                dev.serial_number AS "Matricola",
+                dev.manufacturer AS "Marca",
+                dev.model AS "Modello",
+                dev.ams_inventory AS "Inv. AMS",
+                dev.customer_inventory AS "Inv. Cliente",
+                v.verification_date AS "Data Verifica",
+                v.technician_name AS "Tecnico",
+                v.verification_code AS "Codice",
+                COALESCE(p.name, v.profile_name) AS "Profilo",
+                'ELETTRICA' AS "Tipo",
+                v.mti_instrument AS "Strumento",
+                CASE
+                    WHEN v.overall_status = 'PASSATO' THEN 'CONFORME'
+                    WHEN v.overall_status = 'CONFORME CON ANNOTAZIONE' THEN 'CONFORME CON ANNOTAZIONE'
+                    WHEN v.overall_status = 'FALLITO' THEN 'NON CONFORME'
+                    ELSE 'NON VERIFICATO'
+                END AS "Esito",
+                CASE WHEN dev.status = 'decommissioned' THEN 'DISMESSO' ELSE 'ATTIVO' END AS "Stato",
+                dev.id AS device_id,
+                v.id AS verification_id
+            FROM devices dev
+            LEFT JOIN verifications v ON dev.id = v.device_id AND v.is_deleted = 0
+            LEFT JOIN profiles p ON v.profile_name = p.profile_key
+            JOIN destinations d ON dev.destination_id = d.id
+            JOIN customers c ON d.customer_id = c.id
+            WHERE {dev_where}
+        """
+        e_extra = []
+        e_params = list(dev_params)
+
+        if criteria.get("technician_name"):
+            e_extra.append("v.id IS NOT NULL")
+            e_extra.append("v.technician_name LIKE ?")
+            e_params.append(f"%{criteria['technician_name']}%")
+
+        if criteria.get("verification_code"):
+            e_extra.append("v.id IS NOT NULL")
+            e_extra.append("v.verification_code LIKE ?")
+            e_params.append(f"%{criteria['verification_code']}%")
+
+        if criteria.get("instrument"):
+            e_extra.append("v.id IS NOT NULL")
+            e_extra.append("v.mti_instrument LIKE ?")
+            e_params.append(f"%{criteria['instrument']}%")
+
+        profile_key = criteria.get("profile_key")
+        if profile_key and profile_key != "QUALSIASI":
+            e_extra.append("v.id IS NOT NULL")
+            e_extra.append("v.profile_name = ?")
+            e_params.append(profile_key)
+
+        if criteria.get("start_date") and criteria.get("end_date"):
+            e_extra.append("v.id IS NOT NULL")
+            e_extra.append("v.verification_date BETWEEN ? AND ?")
+            e_params.extend([criteria["start_date"], criteria["end_date"]])
+
+        if outcome == "CONFORME":
+            e_extra.append("v.id IS NOT NULL AND v.overall_status = 'PASSATO'")
+        elif outcome == "NON CONFORME":
+            e_extra.append("v.id IS NOT NULL AND (v.overall_status = 'FALLITO' OR v.overall_status = 'NON CONFORME')")
+        elif outcome == "CONFORME CON ANNOTAZIONE":
+            e_extra.append("v.id IS NOT NULL AND v.overall_status = 'CONFORME CON ANNOTAZIONE'")
+        elif outcome == "NON VERIFICATO":
+            e_extra.append("v.id IS NULL")
+            if verification_type == "QUALSIASI":
+                e_extra.append(
+                    "NOT EXISTS (SELECT 1 FROM functional_verifications fv2 "
+                    "WHERE fv2.device_id = dev.id AND fv2.is_deleted = 0)"
+                )
+
+        if e_extra:
+            e_query += " AND " + " AND ".join(e_extra)
+
+        queries.append(e_query)
+        all_params.extend(e_params)
+
+    # --- Ramo VERIFICHE FUNZIONALI ---
+    skip_functional = (outcome == "NON VERIFICATO" and verification_type == "QUALSIASI")
+    if verification_type in ("QUALSIASI", "FUNZIONALE") and not skip_functional:
+        # QUALSIASI → INNER JOIN per evitare duplicati di dispositivi senza verifiche
+        # FUNZIONALE → LEFT JOIN per mostrare anche dispositivi mai verificati funzionalmente
+        join_type = "INNER" if verification_type == "QUALSIASI" else "LEFT"
+
+        f_query = f"""
+            SELECT
+                c.name AS "Cliente",
+                d.name AS "Destinazione",
+                dev.description AS "Apparecchio",
+                dev.department AS "Reparto",
+                dev.serial_number AS "Matricola",
+                dev.manufacturer AS "Marca",
+                dev.model AS "Modello",
+                dev.ams_inventory AS "Inv. AMS",
+                dev.customer_inventory AS "Inv. Cliente",
+                fv.verification_date AS "Data Verifica",
+                fv.technician_name AS "Tecnico",
+                fv.verification_code AS "Codice",
+                COALESCE(fp.name, fv.profile_key) AS "Profilo",
+                'FUNZIONALE' AS "Tipo",
+                fv.mti_instrument AS "Strumento",
+                CASE
+                    WHEN fv.overall_status IN ('PASSATO', 'CONFORME') THEN 'CONFORME'
+                    WHEN fv.overall_status = 'CONFORME CON ANNOTAZIONE' THEN 'CONFORME CON ANNOTAZIONE'
+                    WHEN fv.overall_status IN ('FALLITO', 'NON CONFORME') THEN 'NON CONFORME'
+                    ELSE 'NON VERIFICATO'
+                END AS "Esito",
+                CASE WHEN dev.status = 'decommissioned' THEN 'DISMESSO' ELSE 'ATTIVO' END AS "Stato",
+                dev.id AS device_id,
+                fv.id AS verification_id
+            FROM devices dev
+            {join_type} JOIN functional_verifications fv ON dev.id = fv.device_id AND fv.is_deleted = 0
+            LEFT JOIN functional_profiles fp ON fv.profile_key = fp.profile_key
+            JOIN destinations d ON dev.destination_id = d.id
+            JOIN customers c ON d.customer_id = c.id
+            WHERE {dev_where}
+        """
+        f_extra = []
+        f_params = list(dev_params)
+
+        if criteria.get("technician_name"):
+            f_extra.append("fv.id IS NOT NULL")
+            f_extra.append("fv.technician_name LIKE ?")
+            f_params.append(f"%{criteria['technician_name']}%")
+
+        if criteria.get("verification_code"):
+            f_extra.append("fv.id IS NOT NULL")
+            f_extra.append("fv.verification_code LIKE ?")
+            f_params.append(f"%{criteria['verification_code']}%")
+
+        if criteria.get("instrument"):
+            f_extra.append("fv.id IS NOT NULL")
+            f_extra.append("fv.mti_instrument LIKE ?")
+            f_params.append(f"%{criteria['instrument']}%")
+
+        profile_key = criteria.get("profile_key")
+        if profile_key and profile_key != "QUALSIASI":
+            f_extra.append("fv.id IS NOT NULL")
+            f_extra.append("fv.profile_key = ?")
+            f_params.append(profile_key)
+
+        if criteria.get("start_date") and criteria.get("end_date"):
+            f_extra.append("fv.id IS NOT NULL")
+            f_extra.append("fv.verification_date BETWEEN ? AND ?")
+            f_params.extend([criteria["start_date"], criteria["end_date"]])
+
+        if outcome == "CONFORME":
+            f_extra.append("fv.id IS NOT NULL AND fv.overall_status IN ('PASSATO', 'CONFORME')")
+        elif outcome == "NON CONFORME":
+            f_extra.append("fv.id IS NOT NULL AND fv.overall_status IN ('FALLITO', 'NON CONFORME')")
+        elif outcome == "CONFORME CON ANNOTAZIONE":
+            f_extra.append("fv.id IS NOT NULL AND fv.overall_status = 'CONFORME CON ANNOTAZIONE'")
+        elif outcome == "NON VERIFICATO":
+            f_extra.append("fv.id IS NULL")
+
+        if f_extra:
+            f_query += " AND " + " AND ".join(f_extra)
+
+        queries.append(f_query)
+        all_params.extend(f_params)
+
+    if not queries:
+        return []
+
+    final_query = " UNION ALL ".join(queries)
+    final_query += ' ORDER BY "Cliente", "Destinazione", "Apparecchio", "Data Verifica" DESC'
 
     with DatabaseConnection() as conn:
-        return conn.execute(base_query, tuple(params)).fetchall()
+        return conn.execute(final_query, tuple(all_params)).fetchall()
 
 def get_all_destinations_with_customer():
     """

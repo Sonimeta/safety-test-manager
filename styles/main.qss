@@ -995,20 +995,12 @@ QFrame#changelogVersionFrame {
     border: 1px solid #e0e7f1;
     border-radius: 14px;
     background-color: #f8faff;
-    padding: 16px;
+    padding: 18px;
 }
 
 QLabel#changelogVersionTitle {
     color: #4338ca;
     font-weight: 700;
-}
-
-QTextEdit#changelogChangesText {
-    border: 1px solid #e0e7f1;
-    border-radius: 10px;
-    background-color: #ffffff;
-    padding: 12px;
-    font-size: 13px;
 }
 
 /* === TOOLTIP === */

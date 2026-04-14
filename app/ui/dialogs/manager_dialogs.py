@@ -478,6 +478,8 @@ class DbManagerDialog(QDialog):
         # Imposta un delegate personalizzato per applicare i colori correttamente
         self.device_table.setItemDelegate(ColoredItemDelegate(self.device_table))
         self.setup_table_style(self.device_table)
+        # Abilita la selezione multipla (Ctrl+Click, Shift+Click)
+        self.device_table.setSelectionMode(QAbstractItemView.ExtendedSelection)
         
         buttons_layout = self.create_device_buttons()
         
@@ -774,6 +776,16 @@ class DbManagerDialog(QDialog):
         if not selected_rows: return None
         id_item = table.item(selected_rows[0].row(), 0)
         return int(id_item.text()) if id_item else None
+
+    def get_selected_ids(self, table: QTableWidget):
+        """Restituisce una lista di ID da tutte le righe selezionate."""
+        selected_rows = table.selectionModel().selectedRows()
+        ids = []
+        for index in selected_rows:
+            id_item = table.item(index.row(), 0)
+            if id_item:
+                ids.append(int(id_item.text()))
+        return ids
 
     def reset_views(self, level='customer'):
         if level == 'customer':
@@ -1105,6 +1117,8 @@ class DbManagerDialog(QDialog):
 
     def device_selected(self):
         self.reset_views(level='verification')
+        selected_ids = self.get_selected_ids(self.device_table)
+        selected_count = len(selected_ids)
         dev_id = self.get_selected_id(self.device_table)
         self.edit_dev_btn.setEnabled(False)
         self.del_dev_btn.setEnabled(False)
@@ -1112,7 +1126,22 @@ class DbManagerDialog(QDialog):
         self.decommission_dev_btn.setEnabled(False)
         self.reactivate_dev_btn.setVisible(False)
         self.decommission_dev_btn.setVisible(True)
-        if dev_id:
+
+        if selected_count > 1:
+            # Multi-selezione: abilita solo lo spostamento per dispositivi attivi
+            has_active = False
+            selected_rows = self.device_table.selectionModel().selectedRows()
+            for index in selected_rows:
+                status_item = self.device_table.item(index.row(), 9)
+                status = status_item.text().lower() if status_item else 'attivo'
+                if status == 'attivo':
+                    has_active = True
+                    break
+            self.move_dev_btn.setEnabled(has_active)
+            self.move_dev_btn.setText(f"↔️ Sposta ({selected_count})")
+            self.verification_label.setText(f"ℹ️ {selected_count} dispositivi selezionati - selezionarne uno per vederne le verifiche")
+        elif dev_id:
+            self.move_dev_btn.setText("↔️ Sposta")
             current_row = self.device_table.currentRow()
             status_item = self.device_table.item(current_row, 9)
             status = status_item.text().lower() if status_item else 'attivo'
@@ -1128,6 +1157,8 @@ class DbManagerDialog(QDialog):
             serial = self.device_table.item(current_row, 3).text()
             self.verification_label.setText(f"STORICO VERIFICHE '{dev_desc.upper()}' - SN: '{serial.upper()}'")
             self.load_verifications_table(dev_id)
+        else:
+            self.move_dev_btn.setText("↔️ Sposta")
     
     def load_verifications_table(self, device_id):
         raw_search = (self.verification_search_box.text() or "").strip()
@@ -1169,7 +1200,12 @@ class DbManagerDialog(QDialog):
             self.electrical_table.setItem(row, 1, QTableWidgetItem(str(entry.get('date', '')).upper()))
             status = str(entry.get('status', '')).upper()
             status_item = QTableWidgetItem(status)
-            status_item.setBackground(QColor('#A3BE8C') if status == 'PASSATO' else QColor('#BF616A'))
+            if status in ('PASSATO', 'CONFORME'):
+                status_item.setBackground(QColor('#A3BE8C'))
+            elif status == 'CONFORME CON ANNOTAZIONE':
+                status_item.setBackground(QColor('#EBCB8B'))
+            else:
+                status_item.setBackground(QColor('#BF616A'))
             self.electrical_table.setItem(row, 2, status_item)
             self.electrical_table.setItem(row, 3, QTableWidgetItem(str(entry.get('profile_display', '')).upper()))
             self.electrical_table.setItem(row, 4, QTableWidgetItem(str(entry.get('technician', '')).upper()))
@@ -1219,7 +1255,12 @@ class DbManagerDialog(QDialog):
             self.functional_table.setItem(row, 1, QTableWidgetItem(str(entry.get('date', '')).upper()))
             status = str(entry.get('status', '')).upper()
             status_item = QTableWidgetItem(status)
-            status_item.setBackground(QColor('#A3BE8C') if status == 'PASSATO' else QColor('#BF616A'))
+            if status in ('PASSATO', 'CONFORME'):
+                status_item.setBackground(QColor('#A3BE8C'))
+            elif status == 'CONFORME CON ANNOTAZIONE':
+                status_item.setBackground(QColor('#EBCB8B'))
+            else:
+                status_item.setBackground(QColor('#BF616A'))
             self.functional_table.setItem(row, 2, status_item)
             self.functional_table.setItem(row, 3, QTableWidgetItem(str(entry.get('profile_display', '')).upper()))
             self.functional_table.setItem(row, 4, QTableWidgetItem(str(entry.get('technician', '')).upper()))
@@ -1407,20 +1448,52 @@ class DbManagerDialog(QDialog):
             self.load_devices_table(dest_id)
 
     def move_device(self):
-        dev_id = self.get_selected_id(self.device_table)
+        selected_ids = self.get_selected_ids(self.device_table)
         old_dest_id = self.get_selected_id(self.destination_table)
-        if not dev_id:
-            return QMessageBox.warning(self, "SELEZIONE MANCANTE", "SELEZIONA UN DISPOSITIVO DA SPOSTARE.")
-        dialog = DestinationSelectionDialog(self)
+
+        # Filtra solo i dispositivi attivi tra quelli selezionati
+        active_ids = []
+        selected_rows = self.device_table.selectionModel().selectedRows()
+        for index in selected_rows:
+            id_item = self.device_table.item(index.row(), 0)
+            status_item = self.device_table.item(index.row(), 9)
+            status = status_item.text().lower() if status_item else 'attivo'
+            if id_item and status == 'attivo':
+                active_ids.append(int(id_item.text()))
+
+        if not active_ids:
+            return QMessageBox.warning(self, "SELEZIONE MANCANTE", "SELEZIONA ALMENO UN DISPOSITIVO ATTIVO DA SPOSTARE.")
+
+        count = len(active_ids)
+        if count == 1:
+            label_text = "Seleziona la nuova destinazione per il dispositivo:"
+        else:
+            label_text = f"Seleziona la nuova destinazione per {count} dispositivi:"
+
+        dialog = DestinationSelectionDialog(self, label_text=label_text)
         if dialog.exec():
             new_dest_id = dialog.selected_destination_id
             if new_dest_id and new_dest_id != old_dest_id:
                 try:
-                    services.move_device_to_destination(dev_id, new_dest_id)
+                    moved = 0
+                    errors = []
+                    for dev_id in active_ids:
+                        try:
+                            services.move_device_to_destination(dev_id, new_dest_id)
+                            moved += 1
+                        except Exception as e:
+                            errors.append(f"ID {dev_id}: {str(e)}")
                     self.load_devices_table(old_dest_id)
-                    QMessageBox.information(self, "SUCCESSO", "DISPOSITIVO SPOSTATO.")
+                    if errors:
+                        error_msg = "\n".join(errors)
+                        QMessageBox.warning(self, "SPOSTAMENTO PARZIALE",
+                                          f"{moved}/{count} DISPOSITIVI SPOSTATI.\n\nERRORI:\n{error_msg.upper()}")
+                    elif count == 1:
+                        QMessageBox.information(self, "SUCCESSO", "DISPOSITIVO SPOSTATO.")
+                    else:
+                        QMessageBox.information(self, "SUCCESSO", f"{moved} DISPOSITIVI SPOSTATI.")
                 except Exception as e:
-                    QMessageBox.critical(self, "ERRORE", f"IMPOSSIBILE SPOSTARE IL DISPOSITIVO: {str(e).upper()}")
+                    QMessageBox.critical(self, "ERRORE", f"IMPOSSIBILE SPOSTARE I DISPOSITIVI: {str(e).upper()}")
 
     def import_from_file(self):
         dest_id = self.get_selected_id(self.destination_table)
@@ -1640,6 +1713,22 @@ class DbManagerDialog(QDialog):
         self.setWindowTitle("MANAGER ANAGRAFICHE")
         QMessageBox.critical(self, "ERRORE ESPORTAZIONE", error_message.upper())
 
+    def _filter_latest_verifications_by_device(self, verifications: list) -> list:
+        """Filtra per mantenere solo l'ultima verifica per ogni dispositivo."""
+        latest_by_device = {}
+        for verif in verifications:
+            device_id = verif.get('device_id')
+            if not device_id:
+                continue
+            if device_id not in latest_by_device:
+                latest_by_device[device_id] = verif
+            else:
+                current_date = latest_by_device[device_id].get('verification_date', '')
+                new_date = verif.get('verification_date', '')
+                if new_date > current_date:
+                    latest_by_device[device_id] = verif
+        return list(latest_by_device.values())
+
     def generate_monthly_reports(self):
         dest_id = self.get_selected_id(self.destination_table)
         if not dest_id: 
@@ -1653,45 +1742,39 @@ class DbManagerDialog(QDialog):
         electrical_verifications = services.database.get_verifications_for_destination_by_date_range(dest_id, start_date, end_date)
         functional_verifications = services.database.get_functional_verifications_for_destination_by_date_range(dest_id, start_date, end_date)
         
-        # Filtra per mantenere solo l'ultima verifica per ogni dispositivo
-        # Per le verifiche elettriche: mantieni solo l'ultima per device_id
-        electrical_dict = {}
-        for verif in electrical_verifications:
-            verif_dict = dict(verif)
-            device_id = verif_dict.get('device_id')
-            if device_id:
-                # Se non abbiamo ancora una verifica per questo dispositivo, o se questa è più recente
-                if device_id not in electrical_dict:
-                    electrical_dict[device_id] = verif_dict
-                else:
-                    # Confronta le date per vedere quale è più recente
-                    current_date = electrical_dict[device_id].get('verification_date', '')
-                    new_date = verif_dict.get('verification_date', '')
-                    if new_date > current_date:
-                        electrical_dict[device_id] = verif_dict
+        # Converti in lista di dizionari
+        electrical_list = [dict(v) for v in electrical_verifications]
+        functional_list = [dict(v) for v in functional_verifications]
         
-        # Per le verifiche funzionali: mantieni solo l'ultima per device_id
-        functional_dict = {}
-        for verif in functional_verifications:
-            verif_dict = dict(verif)
-            device_id = verif_dict.get('device_id')
-            if device_id:
-                # Se non abbiamo ancora una verifica per questo dispositivo, o se questa è più recente
-                if device_id not in functional_dict:
-                    functional_dict[device_id] = verif_dict
-                else:
-                    # Confronta le date per vedere quale è più recente
-                    current_date = functional_dict[device_id].get('verification_date', '')
-                    new_date = verif_dict.get('verification_date', '')
-                    if new_date > current_date:
-                        functional_dict[device_id] = verif_dict
+        total_electrical = len(electrical_list)
+        total_functional = len(functional_list)
+        total_all = total_electrical + total_functional
+        
+        if total_all == 0:
+            return QMessageBox.information(self, "NESSUNA VERIFICA", "NESSUNA VERIFICA TROVATA NEL PERIODO SELEZIONATO.")
+        
+        # Chiedi all'utente se includere tutte le verifiche o solo l'ultima per dispositivo
+        filter_choice = QMessageBox.question(
+            self,
+            "SELEZIONE VERIFICHE",
+            f"Trovate {total_all} verifiche nel periodo selezionato "
+            f"({total_electrical} elettriche, {total_functional} funzionali).\n\n"
+            f"Vuoi generare il report solo per l'ultima verifica di ogni dispositivo?",
+            QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel
+        )
+        if filter_choice == QMessageBox.Cancel:
+            return
+        
+        if filter_choice == QMessageBox.Yes:
+            electrical_list = self._filter_latest_verifications_by_device(electrical_list)
+            functional_list = self._filter_latest_verifications_by_device(functional_list)
         
         # Combina le verifiche in una lista unificata con campo "verification_type"
         all_verifications = []
-        for verif_dict in electrical_dict.values():
+        for verif_dict in electrical_list:
             verif_dict['verification_type'] = 'ELETTRICA'
             all_verifications.append(verif_dict)
-        for verif_dict in functional_dict.values():
+        for verif_dict in functional_list:
             verif_dict['verification_type'] = 'FUNZIONALE'
             all_verifications.append(verif_dict)
         

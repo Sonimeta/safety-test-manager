@@ -92,28 +92,20 @@ class BulkReportWorker(QObject):
                 serial_num = (verif.get('serial_number') or '').strip()
                 customer_inv = (verif.get('customer_inventory') or '').strip()
                 
+                # Determina il tipo di verifica e il suffisso del file
+                verification_type = verif.get('verification_type', 'ELETTRICA')  # Default a ELETTRICA per retrocompatibilità
+                file_suffix = "VF" if verification_type == "FUNZIONALE" else "VE"
+                
                 # Determina il nome base in base al formato selezionato
                 if self.naming_format == 'ams_inventory':
                     base_name = ams_inv if ams_inv else serial_num  # Fallback a serial_number se ams_inventory è vuoto
-                    # Se il nome è già stato usato, usa il numero di serie
-                    if base_name and base_name in used_base_names:
-                        base_name = serial_num if serial_num else base_name
                 elif self.naming_format == 'serial_number':
                     base_name = serial_num if serial_num else ams_inv  # Fallback a ams_inventory se serial_number è vuoto
-                    # Se il nome è già stato usato, usa l'inventario AMS
-                    if base_name and base_name in used_base_names:
-                        base_name = ams_inv if ams_inv else base_name
                 elif self.naming_format == 'customer_inventory':
                     base_name = customer_inv if customer_inv else (ams_inv if ams_inv else serial_num)  # Fallback a ams_inventory o serial_number
-                    # Se il nome è già stato usato, usa il numero di serie
-                    if base_name and base_name in used_base_names:
-                        base_name = serial_num if serial_num else (ams_inv if ams_inv else base_name)
                 else:
                     # Default al comportamento precedente
                     base_name = ams_inv if ams_inv else serial_num
-                    # Se il nome è già stato usato, usa il numero di serie
-                    if base_name and base_name in used_base_names:
-                        base_name = serial_num if serial_num else base_name
                 
                 if not base_name:
                     base_name = f"Report_Verifica_{verif_id}" # Nome di fallback
@@ -121,34 +113,29 @@ class BulkReportWorker(QObject):
                 # Pulisce il nome da caratteri non validi per un file
                 safe_base_name = re.sub(r'[\\/*?:"<>|]', '_', base_name)
                 
-                # Se anche il nome pulito è già stato usato, aggiungi l'ID verifica per renderlo unico
+                # Controlla duplicati includendo il suffisso VE/VF (lo stesso nome può essere usato per VE e VF)
+                full_key = f"{safe_base_name} {file_suffix}"
                 original_safe_name = safe_base_name
                 counter = 1
-                while safe_base_name in used_base_names:
+                while full_key in used_base_names:
                     safe_base_name = f"{original_safe_name}_{counter}"
+                    full_key = f"{safe_base_name} {file_suffix}"
                     counter += 1
                 
-                # Aggiunge la data per rendere il nome unico nel mese
                 os.makedirs(self.output_folder, exist_ok=True)
-                verif_date = (verif.get('verification_date') or '').replace('-', '')
-                suffix = f"_{verif_date}" if verif_date else ""
-                
-                # Determina il tipo di verifica e il suffisso del file
-                verification_type = verif.get('verification_type', 'ELETTRICA')  # Default a ELETTRICA per retrocompatibilità
-                file_suffix = "VF" if verification_type == "FUNZIONALE" else "VE"
                 
                 # Crea il nome file completo e verifica che non esista già
-                full_base_name = f"{safe_base_name}{suffix} {file_suffix}"
+                full_base_name = f"{safe_base_name} {file_suffix}"
                 filename = os.path.join(self.output_folder, f"{full_base_name}.pdf")
                 
                 # Se il file esiste già, aggiungi un contatore
                 file_counter = 1
                 while os.path.exists(filename):
-                    filename = os.path.join(self.output_folder, f"{safe_base_name}{suffix}_{file_counter} {file_suffix}.pdf")
+                    filename = os.path.join(self.output_folder, f"{safe_base_name}_{file_counter} {file_suffix}.pdf")
                     file_counter += 1
                 
-                # Registra il nome base usato (senza data e suffisso per il controllo duplicati)
-                used_base_names.add(safe_base_name)
+                # Registra il nome completo (con suffisso VE/VF) per il controllo duplicati
+                used_base_names.add(full_key)
                 # --- FINE NUOVA LOGICA ---
 
                 # Genera il report appropriato in base al tipo

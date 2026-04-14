@@ -672,13 +672,14 @@ class DestinationDetailDialog(QDialog):
         }
 
 class DestinationSelectionDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, label_text=None):
         super().__init__(parent)
         self.setWindowTitle("SELEZIONA NUOVA DESTINAZIONE")
         self.setMinimumWidth(500)
         self.selected_destination_id = None
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel("Seleziona la nuova destinazione per il dispositivo:"))
+        display_label = label_text or "Seleziona la nuova destinazione per il dispositivo:"
+        layout.addWidget(QLabel(display_label))
         self.combo = QComboBox()
         self.combo.setEditable(True)
         self.combo.completer().setFilterMode(Qt.MatchContains)

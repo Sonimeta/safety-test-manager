@@ -37,7 +37,7 @@ def get_app_data_dir():
     # Crea la cartella se non esiste
     os.makedirs(app_data_path, exist_ok=True)
     return app_data_path
-VERSIONE = "10.0.7"
+VERSIONE = "10.0.10"
 BASE_DIR = get_base_dir() # La cartella del programma
 APP_DATA_DIR = get_app_data_dir() # La cartella dei dati utente
 
@@ -107,6 +107,25 @@ def load_update_url():
     return None
 
 UPDATE_URL = load_update_url()
+
+def load_update_check_interval() -> int:
+    """Legge l'intervallo di controllo aggiornamenti automatico da config.ini.
+    
+    Returns:
+        Intervallo in minuti. 0 = disabilitato. Default: 120 minuti (2 ore).
+    """
+    parser = configparser.ConfigParser()
+    if os.path.exists(CONFIG_INI_PATH):
+        parser.read(CONFIG_INI_PATH)
+        try:
+            interval = parser.getint('updater', 'check_interval_minutes', fallback=120)
+            return max(0, interval)
+        except (ValueError, configparser.Error):
+            logging.warning("Valore non valido per updater.check_interval_minutes, uso default 120 minuti")
+            return 120
+    return 120
+
+UPDATE_CHECK_INTERVAL_MINUTES = load_update_check_interval()
 # --- FINE AGGIUNTA PER UPDATER ---
 
 # --- INIZIO AGGIUNTA PER AUTO SYNC ---

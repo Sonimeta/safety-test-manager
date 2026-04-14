@@ -1001,21 +1001,12 @@ QFrame#changelogVersionFrame {
     border: 1px solid #253352;
     border-radius: 14px;
     background-color: #1a2540;
-    padding: 16px;
+    padding: 18px;
 }
 
 QLabel#changelogVersionTitle {
     color: #a5b4fc;
     font-weight: 700;
-}
-
-QTextEdit#changelogChangesText {
-    border: 1px solid #253352;
-    border-radius: 10px;
-    background-color: #0f1728;
-    padding: 12px;
-    font-size: 13px;
-    color: #eef2ff;
 }
 
 /* === TOOLTIP === */

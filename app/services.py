@@ -1751,6 +1751,18 @@ def get_unique_models():
         return [dict(row) for row in rows]
 
 
+def get_unique_departments():
+    """Recupera tutti i reparti unici dal database."""
+    rows = database.get_unique_departments()
+    return [dict(row) for row in rows]
+
+
+def get_unique_technicians():
+    """Recupera tutti i nomi tecnici unici dalle verifiche."""
+    rows = database.get_unique_technicians()
+    return [dict(row) for row in rows]
+
+
 def get_all_unique_device_descriptions() -> list[str]:
     """Recupera tutte le descrizioni uniche dei dispositivi attivi."""
     return database.get_all_unique_device_descriptions()

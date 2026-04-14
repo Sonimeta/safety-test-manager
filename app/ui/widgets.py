@@ -5,7 +5,7 @@ import os
 import re
 import time
 import math
-from PySide6.QtCore import Qt, QTimer, QDate, Signal, QSize, QEvent
+from PySide6.QtCore import Qt, QTimer, QDate, QTime, Signal, QSize, QEvent
 from PySide6.QtGui import QFont, QColor, QPainter, QMovie, QFocusEvent, QWheelEvent, QMouseEvent, QEnterEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QApplication, QDialog, QGroupBox, QHBoxLayout, QLabel,
                                QLineEdit, QMessageBox, QProgressBar, QPushButton,
@@ -13,7 +13,8 @@ from PySide6.QtWidgets import (QApplication, QDialog, QGroupBox, QHBoxLayout, QL
                                QVBoxLayout, QWidget, QHeaderView, QListWidget,
                                QListWidgetItem, QFileDialog, QStyle, QFormLayout,
                                QComboBox, QTextEdit, QScrollArea, QDoubleSpinBox, QSpinBox,
-                               QAbstractScrollArea, QAbstractItemView, QAbstractSpinBox)
+                               QAbstractScrollArea, QAbstractItemView, QAbstractSpinBox,
+                               QDateEdit, QTimeEdit)
 from app import auth_manager, config, services
 import database
 from app.data_models import AppliedPart
@@ -1497,10 +1498,14 @@ class FunctionalTestRunnerWidget(QWidget):
             return bool(widget.currentText() and widget.currentText() != "")
         elif isinstance(widget, (QDoubleSpinBox, QSpinBox)):
             return True  # I numeri hanno sempre un valore
+        elif isinstance(widget, (QDateEdit, QTimeEdit)):
+            return True  # Date/time hanno sempre un valore
         elif isinstance(widget, QTextEdit):
             return bool(widget.toPlainText().strip())
         elif isinstance(widget, QLineEdit):
             return bool(widget.text().strip())
+        elif isinstance(widget, QLabel):
+            return True  # Header/separatori sono sempre "validi"
         return False
 
     def _highlight_field(self, widget, highlight: bool):
@@ -1758,7 +1763,7 @@ class FunctionalTestRunnerWidget(QWidget):
     def _create_widget_for_field(self, field: FunctionalField, in_table: bool = False):
         field_type = (field.field_type or "text").lower()
         default_value = field.default
-        is_formula = bool(field.formula)
+        is_formula = bool(field.formula) or field_type == "calculated"
 
         if is_formula:
             # Per le formule, usa sempre NoAutoSelectLineEdit (non serve NoHoverFocus perché è read-only)
@@ -1766,10 +1771,15 @@ class FunctionalTestRunnerWidget(QWidget):
             widget.setReadOnly(True)
             widget.setAlignment(Qt.AlignRight)
             widget.setPlaceholderText("Calcolato automaticamente")
-        elif field_type in {"choice", "enum", "bool"}:
+        elif field_type in {"choice", "enum", "bool", "pass_fail"}:
             # In tabella evita focus involontario da hover
             widget = NoHoverFocusComboBox() if in_table else QComboBox()
-            options = field.options or ["OK", "KO", "N.A."]
+            if field_type == "pass_fail":
+                options = field.options or ["PASS", "FAIL", "N.A."]
+            elif field_type == "bool":
+                options = field.options or ["OK", "KO", "N.A."]
+            else:
+                options = field.options or ["OK", "KO", "N.A."]
             # Se non c'è un default value, aggiungi un'opzione vuota all'inizio
             if default_value is None or default_value == "":
                 widget.addItem("")
@@ -1778,11 +1788,49 @@ class FunctionalTestRunnerWidget(QWidget):
                 widget.setMinimumWidth(130)
             if default_value in options:
                 widget.setCurrentText(str(default_value))
+        elif field_type == "rating":
+            widget = NoHoverFocusComboBox() if in_table else QComboBox()
+            rating_max = field.rating_max or 5
+            widget.addItem("")
+            for i in range(1, rating_max + 1):
+                stars = "★" * i + "☆" * (rating_max - i)
+                widget.addItem(f"{i} {stars}", str(i))
+            if in_table:
+                widget.setMinimumWidth(140)
+            if default_value not in (None, ""):
+                try:
+                    idx = int(default_value)
+                    if 1 <= idx <= rating_max:
+                        widget.setCurrentIndex(idx)  # 0 is empty, 1 is "1 ★☆..."
+                except (TypeError, ValueError):
+                    pass
         elif field_type in {"number", "numeric", "float"}:
             # In tabella blocca focus involontario da hover
             widget = NoHoverFocusSpinBox() if in_table else NoWheelSpinBox()
             widget.setDecimals(field.precision if field.precision is not None else 3)
-            widget.setRange(-999999.0, 999999.0)
+            min_val = field.min_value if field.min_value is not None else -999999.0
+            max_val = field.max_value if field.max_value is not None else 999999.0
+            widget.setRange(min_val, max_val)
+            if field.step is not None:
+                widget.setSingleStep(field.step)
+            if in_table:
+                widget.setMinimumWidth(120)
+            if default_value not in (None, ""):
+                try:
+                    widget.setValue(float(default_value))
+                except (TypeError, ValueError):
+                    pass
+        elif field_type == "percentage":
+            widget = NoHoverFocusSpinBox() if in_table else NoWheelSpinBox()
+            widget.setDecimals(field.precision if field.precision is not None else 1)
+            min_val = field.min_value if field.min_value is not None else 0.0
+            max_val = field.max_value if field.max_value is not None else 100.0
+            widget.setRange(min_val, max_val)
+            if field.step is not None:
+                widget.setSingleStep(field.step)
+            else:
+                widget.setSingleStep(0.1)
+            widget.setSuffix(" %")
             if in_table:
                 widget.setMinimumWidth(120)
             if default_value not in (None, ""):
@@ -1793,7 +1841,11 @@ class FunctionalTestRunnerWidget(QWidget):
         elif field_type in {"integer", "int"}:
             # In tabella blocca focus involontario da hover
             widget = NoHoverFocusIntSpinBox() if in_table else NoWheelIntSpinBox()
-            widget.setRange(-1000000, 1000000)
+            min_val = int(field.min_value) if field.min_value is not None else -1000000
+            max_val = int(field.max_value) if field.max_value is not None else 1000000
+            widget.setRange(min_val, max_val)
+            if field.step is not None:
+                widget.setSingleStep(int(field.step))
             if in_table:
                 widget.setMinimumWidth(110)
             if default_value not in (None, ""):
@@ -1801,6 +1853,40 @@ class FunctionalTestRunnerWidget(QWidget):
                     widget.setValue(int(default_value))
                 except (TypeError, ValueError):
                     pass
+        elif field_type == "date":
+            widget = QDateEdit()
+            widget.setCalendarPopup(True)
+            widget.setDisplayFormat("dd/MM/yyyy")
+            if default_value not in (None, ""):
+                try:
+                    d = QDate.fromString(str(default_value), "dd/MM/yyyy")
+                    if d.isValid():
+                        widget.setDate(d)
+                    else:
+                        widget.setDate(QDate.currentDate())
+                except Exception:
+                    widget.setDate(QDate.currentDate())
+            else:
+                widget.setDate(QDate.currentDate())
+            if in_table:
+                widget.setMinimumWidth(130)
+        elif field_type == "time":
+            widget = QTimeEdit()
+            widget.setDisplayFormat("HH:mm")
+            if default_value not in (None, ""):
+                try:
+                    t = QTime.fromString(str(default_value), "HH:mm")
+                    if t.isValid():
+                        widget.setTime(t)
+                except Exception:
+                    pass
+            if in_table:
+                widget.setMinimumWidth(100)
+        elif field_type == "header":
+            widget = QLabel(f"<b>{field.label}</b>")
+            widget.setStyleSheet("padding: 6px 4px; color: #475569; background: #f1f5f9; border-radius: 4px;")
+            widget.setWordWrap(True)
+            return widget
         elif field_type in {"multiline", "text_area"}:
             widget = NoHoverFocusTextEdit() if in_table else QTextEdit()
             widget.setFixedHeight(60)
@@ -1814,6 +1900,8 @@ class FunctionalTestRunnerWidget(QWidget):
                 widget.setMinimumWidth(140)
             if default_value not in (None, ""):
                 widget.setText(str(default_value))
+            if field.placeholder:
+                widget.setPlaceholderText(field.placeholder)
 
         if is_formula:
             widget.setProperty("is_formula", True)
@@ -1826,16 +1914,18 @@ class FunctionalTestRunnerWidget(QWidget):
                 elif isinstance(widget, (QDoubleSpinBox, QSpinBox)):
                     widget.setReadOnly(True)
                     widget.setButtonSymbols(QAbstractSpinBox.NoButtons)
+                elif isinstance(widget, (QDateEdit, QTimeEdit)):
+                    widget.setReadOnly(True)
                 else:
                     widget.setDisabled(True)
 
-        if isinstance(widget, (QDoubleSpinBox, QSpinBox)) and field.unit:
+        if isinstance(widget, (QDoubleSpinBox, QSpinBox)) and field.unit and field_type != "percentage":
             widget.setSuffix(f" {field.unit}")
         elif hasattr(widget, "setPlaceholderText") and not is_formula and field.help_text:
             widget.setPlaceholderText(field.help_text)
 
         # Migliora leggibilità: evita controlli schiacciati nelle sezioni con molti campi.
-        if not in_table and isinstance(widget, (QLineEdit, QComboBox, QDoubleSpinBox, QSpinBox)):
+        if not in_table and isinstance(widget, (QLineEdit, QComboBox, QDoubleSpinBox, QSpinBox, QDateEdit, QTimeEdit)):
             widget.setMinimumHeight(34)
 
         return widget
@@ -1888,7 +1978,9 @@ class FunctionalTestRunnerWidget(QWidget):
                 widget = None
                 item = None
 
-                if field.field_type in {"choice", "enum", "bool", "number", "numeric", "float", "integer", "int"} or field.formula:
+                if field.field_type in {"choice", "enum", "bool", "pass_fail", "rating",
+                                       "number", "numeric", "float", "integer", "int",
+                                       "percentage", "date", "time", "header", "calculated"} or field.formula:
                     widget = self._create_widget_for_field(field, in_table=True)
                     self._register_widget_metadata(widget, section.key, field, row.key)
                     if isinstance(widget, QTextEdit):
@@ -1982,14 +2074,26 @@ class FunctionalTestRunnerWidget(QWidget):
             if field.formula:
                 target_width = max(130, label_based_width)
                 resize_mode = QHeaderView.Interactive
-            elif field_type in {"choice", "enum", "bool"}:
+            elif field_type in {"choice", "enum", "bool", "pass_fail"}:
                 target_width = max(140, label_based_width)
                 resize_mode = QHeaderView.Interactive
-            elif field_type in {"number", "numeric", "float", "integer", "int"}:
+            elif field_type == "rating":
+                target_width = max(160, label_based_width)
+                resize_mode = QHeaderView.Interactive
+            elif field_type in {"number", "numeric", "float", "integer", "int", "percentage"}:
                 target_width = max(120, min(label_based_width, 180))
+                resize_mode = QHeaderView.Interactive
+            elif field_type == "date":
+                target_width = max(140, label_based_width)
+                resize_mode = QHeaderView.Interactive
+            elif field_type == "time":
+                target_width = max(110, label_based_width)
                 resize_mode = QHeaderView.Interactive
             elif field_type in {"multiline", "text_area"}:
                 target_width = max(220, label_based_width)
+                resize_mode = QHeaderView.Stretch
+            elif field_type == "header":
+                target_width = max(200, label_based_width)
                 resize_mode = QHeaderView.Stretch
             else:
                 target_width = max(170, label_based_width)
@@ -2348,15 +2452,26 @@ class FunctionalTestRunnerWidget(QWidget):
 
     def _extract_widget_value(self, widget):
         if isinstance(widget, QComboBox):
+            # Per rating, restituisci il dato numerico se presente
+            data = widget.currentData()
+            if data is not None:
+                return data
             return widget.currentText()
         if isinstance(widget, QDoubleSpinBox):
             return widget.value()
         if isinstance(widget, QSpinBox):
             return widget.value()
+        if isinstance(widget, QDateEdit):
+            return widget.date().toString("dd/MM/yyyy")
+        if isinstance(widget, QTimeEdit):
+            return widget.time().toString("HH:mm")
         if isinstance(widget, QTextEdit):
             return widget.toPlainText().strip()
         if isinstance(widget, QLineEdit):
             return widget.text().strip()
+        if isinstance(widget, QLabel):
+            # Header/separator - non ha valore compilabile
+            return None
         return None
 
     def collect_results(self) -> dict:

@@ -8,10 +8,14 @@ from typing import Any, Dict, List, Optional
 class FunctionalField:
     """
     Descrive un singolo input per una sezione di verifica funzionale.
+
+    Tipi supportati:
+      text, multiline, number, integer, choice, bool,
+      date, time, percentage, rating, pass_fail, header, calculated
     """
     key: str
     label: str
-    field_type: str  # text, number, choice, bool, multiline
+    field_type: str  # text, number, choice, bool, multiline, date, time, percentage, rating, pass_fail, header, calculated
     required: bool = False
     unit: Optional[str] = None
     options: List[str] = field(default_factory=list)
@@ -20,6 +24,11 @@ class FunctionalField:
     help_text: Optional[str] = None
     formula: Optional[str] = None
     precision: Optional[int] = None
+    min_value: Optional[float] = None
+    max_value: Optional[float] = None
+    step: Optional[float] = None
+    placeholder: Optional[str] = None
+    rating_max: Optional[int] = None  # Valore massimo per rating (default 5)
 
 
 @dataclass
@@ -71,6 +80,26 @@ class FunctionalResult:
     data: Dict[str, Any]
 
 
+def _safe_float(value: Any) -> Optional[float]:
+    """Converte un valore in float, restituisce None in caso di errore."""
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _safe_int(value: Any) -> Optional[int]:
+    """Converte un valore in int, restituisce None in caso di errore."""
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 def functional_field_from_dict(data: Dict[str, Any]) -> FunctionalField:
     precision_value: Optional[int] = None
     if "precision" in data:
@@ -96,6 +125,11 @@ def functional_field_from_dict(data: Dict[str, Any]) -> FunctionalField:
         help_text=data.get("help_text"),
         formula=formula_value,
         precision=precision_value,
+        min_value=_safe_float(data.get("min_value")),
+        max_value=_safe_float(data.get("max_value")),
+        step=_safe_float(data.get("step")),
+        placeholder=data.get("placeholder"),
+        rating_max=_safe_int(data.get("rating_max")),
     )
 
 
