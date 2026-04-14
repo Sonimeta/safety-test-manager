@@ -100,18 +100,18 @@ class RateLimiter:
     def __init__(self):
         # {ip: deque([timestamp, ...])} per richieste generiche
         self.requests = collections.defaultdict(lambda: collections.deque())
-        # {ip: deque([timestamp, ...])} per tentativi di login
-        self.login_attempts = collections.defaultdict(lambda: collections.deque())
+        # {ip: deque([timestamp, ...])} per tentativi di login FALLITI
+        self.failed_login_attempts = collections.defaultdict(lambda: collections.deque())
         # {ip: timestamp_sblocco} per IP bloccati
         self.blocked_ips = {}
         
         # Limiti configurabili
         self.GENERAL_LIMIT = 60       # richieste/minuto generiche
         self.GENERAL_WINDOW = 60      # finestra in secondi
-        self.LOGIN_LIMIT = 5          # tentativi login/minuto
-        self.LOGIN_WINDOW = 60        # finestra in secondi
+        self.LOGIN_FAIL_LIMIT = 5     # tentativi FALLITI/minuto
+        self.LOGIN_WINDOW = 60        # finestra in secondi (fallimenti login)
         self.BLOCK_DURATION = 900     # blocco 15 minuti (in secondi)
-        self.LOGIN_BLOCK_THRESHOLD = 10  # dopo 10 tentativi falliti → blocco
+        self.LOGIN_BLOCK_THRESHOLD = 10  # dopo 10 fallimenti recenti -> blocco
     
     def _cleanup(self, deq: collections.deque, window: float):
         """Rimuove i timestamp più vecchi della finestra."""
@@ -127,6 +127,10 @@ class RateLimiter:
             else:
                 del self.blocked_ips[ip]
         return False
+
+    def is_login_blocked(self, ip: str) -> bool:
+        """Alias semantico usato nel login endpoint."""
+        return self.is_blocked(ip)
     
     def check_general(self, ip: str) -> bool:
         """Controlla il rate limit generico. Ritorna True se la richiesta è permessa."""
@@ -138,25 +142,46 @@ class RateLimiter:
         self.requests[ip].append(time.time())
         return True
     
-    def check_login(self, ip: str) -> bool:
-        """Controlla il rate limit per login. Ritorna True se il tentativo è permesso."""
-        if self.is_blocked(ip):
-            return False
-        self._cleanup(self.login_attempts[ip], self.LOGIN_WINDOW)
-        if len(self.login_attempts[ip]) >= self.LOGIN_LIMIT:
-            # Se supera la soglia di blocco, blocca l'IP
-            if len(self.login_attempts[ip]) >= self.LOGIN_BLOCK_THRESHOLD:
-                self.blocked_ips[ip] = time.time() + self.BLOCK_DURATION
-                logger.warning(f"🚫 IP {ip} BLOCCATO per {self.BLOCK_DURATION}s - troppi tentativi di login")
-            return False
-        self.login_attempts[ip].append(time.time())
-        return True
+    def record_failed_login(self, ip: str) -> tuple[bool, int]:
+        """
+        Registra un login fallito.
+        Ritorna (is_blocked_now, retry_after_seconds).
+        """
+        now = time.time()
+        self._cleanup(self.failed_login_attempts[ip], self.LOGIN_WINDOW)
+        self.failed_login_attempts[ip].append(now)
+
+        # Blocco duro dopo troppi fallimenti nella finestra.
+        if len(self.failed_login_attempts[ip]) >= self.LOGIN_BLOCK_THRESHOLD:
+            self.blocked_ips[ip] = now + self.BLOCK_DURATION
+            logger.warning(f"🚫 IP {ip} BLOCCATO per {self.BLOCK_DURATION}s - troppi login falliti")
+            return True, self.get_login_retry_after(ip)
+
+        # Rate limit morbido sui soli fallimenti.
+        if len(self.failed_login_attempts[ip]) >= self.LOGIN_FAIL_LIMIT:
+            return False, self.get_login_retry_after(ip)
+
+        return False, 0
+
+    def clear_failed_login_attempts(self, ip: str):
+        """Pulisce lo storico dei login falliti dopo un login riuscito."""
+        self.failed_login_attempts.pop(ip, None)
     
     def get_retry_after(self, ip: str, is_login: bool = False) -> int:
         """Ritorna i secondi da attendere prima di riprovare."""
         if ip in self.blocked_ips:
             return max(1, int(self.blocked_ips[ip] - time.time()))
         return self.LOGIN_WINDOW if is_login else self.GENERAL_WINDOW
+
+    def get_login_retry_after(self, ip: str) -> int:
+        """Ritorna retry-after specifico per login falliti o blocco attivo."""
+        if ip in self.blocked_ips:
+            return max(1, int(self.blocked_ips[ip] - time.time()))
+        if ip not in self.failed_login_attempts or not self.failed_login_attempts[ip]:
+            return self.LOGIN_WINDOW
+        oldest = self.failed_login_attempts[ip][0]
+        remaining = int(self.LOGIN_WINDOW - (time.time() - oldest))
+        return max(1, remaining)
 
 rate_limiter = RateLimiter()
 
@@ -169,27 +194,15 @@ class SecurityMiddleware(BaseHTTPMiddleware):
     """
     Middleware che applica:
     1. Rate limiting per IP
-    2. Rate limiting aggressivo su /token (anti brute-force)
-    3. Headers di sicurezza su tutte le risposte
+    2. Headers di sicurezza su tutte le risposte
     """
     async def dispatch(self, request: Request, call_next):
         # Ottieni IP del client
         client_ip = request.client.host if request.client else "unknown"
         path = request.url.path
-        
-        # Rate limit specifico per /token (login)
-        if path == "/token" and request.method == "POST":
-            if not rate_limiter.check_login(client_ip):
-                retry_after = rate_limiter.get_retry_after(client_ip, is_login=True)
-                logger.warning(f"⚠️ Rate limit LOGIN superato per IP {client_ip}")
-                return JSONResponse(
-                    status_code=429,
-                    content={"detail": f"Troppi tentativi di login. Riprova tra {retry_after} secondi."},
-                    headers={"Retry-After": str(retry_after)}
-                )
-        
+
         # Rate limit generico (escluso /health per monitoring)
-        elif path != "/health":
+        if path != "/health":
             if not rate_limiter.check_general(client_ip):
                 retry_after = rate_limiter.get_retry_after(client_ip)
                 logger.warning(f"⚠️ Rate limit GENERALE superato per IP {client_ip}")
@@ -541,6 +554,14 @@ class SyncPayload(BaseModel):
     sync_version: Optional[str] = "1.0"  # Versione del sync
     conflict_resolutions: Optional[List[dict]] = None  # Risoluzioni serial_conflict dal client
 
+
+class SyncConflictDetectedError(Exception):
+    """Eccezione interna per forzare rollback totale e risposta 409 su conflitti di sync."""
+
+    def __init__(self, conflicts: List[dict]):
+        super().__init__("Conflitti di sincronizzazione rilevati")
+        self.conflicts = conflicts
+
 # --- DEPENDENCY PER LA SICUREZZA ---
 def get_current_user(token: str = Depends(oauth2_scheme)):
     credentials_exception = HTTPException(status_code=401, detail="Could not validate credentials", headers={"WWW-Authenticate": "Bearer"})
@@ -550,11 +571,19 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
         role: Optional[str] = payload.get("role")
         if username is None or role is None:
             raise credentials_exception
+        first_name = payload.get("first_name")
+        last_name = payload.get("last_name")
+        # Retrocompatibilità: token emessi prima della fix contenevano solo full_name.
+        if first_name is None and last_name is None:
+            full_name: str = payload.get("full_name", "")
+            parts = full_name.split(" ", 1)
+            first_name = parts[0] if parts else ""
+            last_name = parts[1] if len(parts) > 1 else ""
         return User(
-            username=username, 
-            role=role, 
-            first_name=payload.get("first_name"), 
-            last_name=payload.get("last_name")
+            username=username,
+            role=role,
+            first_name=first_name or None,
+            last_name=last_name or None,
         )
     except ExpiredSignatureError:
         logger.warning("Token di accesso scaduto")
@@ -587,13 +616,16 @@ async def health_check():
         }
     except Exception as e:
         logger.error(f"✗ Health check fallito: {e}")
-        return {
-            "status": "unhealthy",
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "version": SYNC_DATA_VERSION,
-            "database": "disconnected",
-            "error": str(e)
-        }
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "unhealthy",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "version": SYNC_DATA_VERSION,
+                "database": "disconnected",
+                "detail": "Database non disponibile"
+            }
+        )
 
 # --- FUNZIONI DATABASE SERVER ---
 def get_db_connection():
@@ -784,6 +816,45 @@ def process_client_changes(conn_or_cursor, table_name: str, records: list[dict],
     upserted = upsert_records(conn, cursor, table_name, cleaned_records)
     return conflicts, upserted, uuid_map
 
+
+def _validate_serial_conflict_resolution(cursor, table_name: str, uuid_to_keep: str, uuid_to_delete: str) -> tuple[bool, str | None, str | None]:
+    """
+    Valida che la risoluzione rappresenti un conflitto serial reale e risolvibile.
+    Restituisce: (is_valid, reason_if_invalid, shared_serial_if_valid)
+    """
+    if table_name != "devices":
+        return False, "Solo la tabella 'devices' supporta conflict_resolutions", None
+    if not uuid_to_keep or not uuid_to_delete:
+        return False, "uuid_to_keep/uuid_to_delete mancanti", None
+    if uuid_to_keep == uuid_to_delete:
+        return False, "uuid_to_keep e uuid_to_delete non possono coincidere", None
+
+    cursor.execute(
+        """
+        SELECT uuid, serial_number, is_deleted
+        FROM devices
+        WHERE uuid IN (%s, %s)
+        FOR UPDATE
+        """,
+        (uuid_to_keep, uuid_to_delete)
+    )
+    rows = cursor.fetchall()
+    by_uuid = {r["uuid"]: r for r in rows}
+
+    keep_row = by_uuid.get(uuid_to_keep)
+    delete_row = by_uuid.get(uuid_to_delete)
+    if not keep_row or not delete_row:
+        return False, "Uno o entrambi i record non esistono", None
+    if keep_row.get("is_deleted") or delete_row.get("is_deleted"):
+        return False, "Uno o entrambi i record risultano già eliminati", None
+
+    keep_serial = (keep_row.get("serial_number") or "").strip().upper()
+    delete_serial = (delete_row.get("serial_number") or "").strip().upper()
+    if not keep_serial or keep_serial != delete_serial:
+        return False, "I record non condividono lo stesso serial_number (nessun serial_conflict reale)", None
+
+    return True, None, keep_serial
+
 def upsert_records(conn, cursor, table_name: str, records: list[dict]):
     """Esegue un'operazione di 'UPSERT' per una lista di record."""
     if not records:
@@ -866,22 +937,62 @@ def upsert_records(conn, cursor, table_name: str, records: list[dict]):
 
 # --- ENDPOINT DI AUTENTICAZIONE ---
 @app.post("/token", response_model=Token)
-def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
+def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestForm = Depends()):
+    client_ip = request.client.host if request.client else "unknown"
+
+    # Anti brute-force: blocco gestito sui login FALLITI (non su tutte le POST /token).
+    if rate_limiter.is_login_blocked(client_ip):
+        retry_after = rate_limiter.get_login_retry_after(client_ip)
+        logger.warning(f"⚠️ Login rifiutato: IP {client_ip} attualmente bloccato")
+        raise HTTPException(
+            status_code=429,
+            detail=f"Troppi tentativi di login falliti. Riprova tra {retry_after} secondi.",
+            headers={"Retry-After": str(retry_after)}
+        )
+
     conn = get_db_connection()
     cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("SELECT * FROM users WHERE username = %s", (form_data.username,))
     user = cursor.fetchone()
     conn.close()
+
     if not user or not verify_password(form_data.password, user['hashed_password']):
+        is_blocked_now, retry_after = rate_limiter.record_failed_login(client_ip)
+        if is_blocked_now:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Troppi tentativi di login falliti. IP bloccato per {retry_after} secondi.",
+                headers={"Retry-After": str(retry_after)}
+            )
+
+        if retry_after > 0:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Troppi tentativi di login falliti. Riprova tra {retry_after} secondi.",
+                headers={"Retry-After": str(retry_after)}
+            )
+
         raise HTTPException(status_code=401, detail="Incorrect username or password", headers={"WWW-Authenticate": "Bearer"})
+
+    # Login riuscito: azzera lo storico fallimenti per questo IP.
+    rate_limiter.clear_failed_login_attempts(client_ip)
     
     first_name = user.get('first_name') or ''
     last_name = user.get('last_name') or ''
     full_name = f"{first_name} {last_name}".strip()
     if not full_name: full_name = user['username']
-    
+
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(data={"sub": user['username'], "role": user['role'], "full_name": full_name}, expires_delta=access_token_expires)
+    access_token = create_access_token(
+        data={
+            "sub": user['username'],
+            "role": user['role'],
+            "first_name": first_name,
+            "last_name": last_name,
+            "full_name": full_name,
+        },
+        expires_delta=access_token_expires
+    )
     return {"access_token": access_token, "token_type": "bearer"}  # nosec B105 - standard OAuth2 token type
 
 # --- ENDPOINT PROTETTI ---
@@ -962,32 +1073,50 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                 # dall'utente. Applichiamo PRIMA di processare i record normali
                 # così il serial_number check non rileva più il conflitto.
                 if payload.conflict_resolutions:
-                    tables_valid = {"customers", "mti_instruments", "profiles", "profile_tests",
-                                    "functional_profiles", "destinations", "devices",
-                                    "verifications", "functional_verifications", "verification_attachments", "signatures", "audit_log"}
+                    # Sicurezza: le risoluzioni supportano solo serial_conflict su devices.
+                    # In caso di payload non valido non applichiamo modifiche e proseguiamo.
+                    allowed_roles_for_resolution = {"admin", "moderator", "technician", "seg"}
+                    if current_user.role not in allowed_roles_for_resolution:
+                        raise HTTPException(status_code=403, detail="Ruolo non autorizzato ad applicare conflict_resolutions")
+
                     for resolution in payload.conflict_resolutions:
                         res_table = resolution.get('table')
+                        uuid_to_keep = resolution.get('uuid_to_keep')
                         uuid_to_delete = resolution.get('uuid_to_delete')
-                        if not res_table or not uuid_to_delete:
+                        if not res_table or not uuid_to_keep or not uuid_to_delete:
+                            logging.warning("Risoluzione conflitto ignorata: campi obbligatori mancanti")
                             continue
-                        if res_table not in tables_valid:
-                            logging.warning(f"Tabella non valida nella risoluzione conflitto: {res_table}")
+
+                        is_valid_resolution, invalid_reason, shared_serial = _validate_serial_conflict_resolution(
+                            cursor,
+                            res_table,
+                            uuid_to_keep,
+                            uuid_to_delete
+                        )
+                        if not is_valid_resolution:
+                            logging.warning(
+                                f"Risoluzione conflitto rifiutata ({res_table}, delete={uuid_to_delete}): {invalid_reason}"
+                            )
                             continue
+
                         try:
                             cursor.execute(
-                                sql.SQL("UPDATE {} SET is_deleted = TRUE, last_modified = %s "
-                                        "WHERE uuid = %s AND is_deleted = FALSE").format(
-                                    sql.Identifier(res_table)
-                                ),
-                                (new_sync_timestamp, uuid_to_delete)
+                                """
+                                UPDATE devices
+                                SET is_deleted = TRUE, last_modified = %s
+                                WHERE uuid = %s
+                                  AND is_deleted = FALSE
+                                  AND serial_number = %s
+                                """,
+                                (new_sync_timestamp, uuid_to_delete, shared_serial)
                             )
                             if cursor.rowcount > 0:
                                 logging.info(
-                                    f"✓ Risoluzione conflitto applicata: soft-delete {uuid_to_delete} in {res_table}"
+                                    f"✓ Risoluzione serial_conflict applicata: keep={uuid_to_keep}, delete={uuid_to_delete}, serial={shared_serial}"
                                 )
                             else:
                                 logging.info(
-                                    f"Risoluzione conflitto: {uuid_to_delete} in {res_table} già eliminato o non trovato"
+                                    f"Risoluzione serial_conflict non applicata: {uuid_to_delete} già eliminato/non valido"
                                 )
                         except Exception as e:
                             logging.error(f"Errore applicazione risoluzione conflitto: {e}")
@@ -1044,12 +1173,10 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                         detailed_conflicts.append(detailed_response)
                         
                         logging.info(f"Conflitto in {conflict['table']} (UUID: {conflict['uuid']}) - Severity: {severity}")
-                    
-                    return {
-                        "status": "conflict",
-                        "conflict_count": len(detailed_conflicts),
-                        "conflicts": detailed_conflicts
-                    }
+
+                    # Importante: siamo in `with conn:`. Solleviamo eccezione per forzare
+                    # rollback completo della transazione, evitando commit parziali.
+                    raise SyncConflictDetectedError(detailed_conflicts)
 
                 logging.info("Fase PUSH completata con successo.")
                 logging.info("Fase PULL: Invio aggiornamenti al client...")
@@ -1259,6 +1386,15 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
             "response_checksum": response_checksum,  # Per validazione client
             "sync_version": SYNC_DATA_VERSION
         }
+    except SyncConflictDetectedError as sync_conflict:
+        return JSONResponse(
+            status_code=409,
+            content={
+                "status": "conflict",
+                "conflict_count": len(sync_conflict.conflicts),
+                "conflicts": sync_conflict.conflicts,
+            }
+        )
     except HTTPException:
         raise
     except Exception as e:
