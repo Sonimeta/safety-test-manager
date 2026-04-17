@@ -220,7 +220,9 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        response.headers["Cache-Control"] = "no-store"
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
         # Rimuovi completamente l'header Server per non rivelare alcuna tecnologia
         if "server" in response.headers:
             del response.headers["server"]
@@ -545,6 +547,8 @@ class SyncChanges(BaseModel):
     functional_profiles: List[SyncRecord] = []
     destinations: List[SyncRecord] = []
     verification_attachments: List[SyncRecord] = []
+    system_verifications: List[SyncRecord] = []
+    system_verification_devices: List[SyncRecord] = []
     audit_log: List[SyncRecord] = []
 
 class SyncPayload(BaseModel):
@@ -773,6 +777,34 @@ def process_client_changes(conn_or_cursor, table_name: str, records: list[dict],
                 row = cursor.fetchone()
                 if not row:
                     logging.warning(f"Salto functional_verification: device {dev_uuid} assente sul server.")
+                    continue
+                r["device_id"] = row["id"]
+
+        elif table_name == "system_verifications":
+            dest_uuid = r.pop("destination_uuid", None)
+            if dest_uuid:
+                cursor.execute("SELECT id FROM destinations WHERE uuid=%s AND is_deleted=FALSE", (dest_uuid,))
+                row = cursor.fetchone()
+                if not row:
+                    logging.warning(f"Salto system_verification: destination {dest_uuid} assente sul server.")
+                    continue
+                r["destination_id"] = row["id"]
+
+        elif table_name == "system_verification_devices":
+            sv_uuid = r.pop("system_verification_uuid", None)
+            if sv_uuid:
+                cursor.execute("SELECT id FROM system_verifications WHERE uuid=%s AND is_deleted=FALSE", (sv_uuid,))
+                row = cursor.fetchone()
+                if not row:
+                    logging.warning(f"Salto system_verification_device: system_verification {sv_uuid} assente sul server.")
+                    continue
+                r["system_verification_id"] = row["id"]
+            dev_uuid = r.pop("device_uuid", None)
+            if dev_uuid:
+                cursor.execute("SELECT id FROM devices WHERE uuid=%s AND is_deleted=FALSE", (dev_uuid,))
+                row = cursor.fetchone()
+                if not row:
+                    logging.warning(f"Salto system_verification_device: device {dev_uuid} assente sul server.")
                     continue
                 r["device_id"] = row["id"]
 
@@ -1123,7 +1155,8 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
 
                 changes_dict = payload.changes.model_dump()
                 tables_order = ["customers", "mti_instruments", "profiles", "profile_tests", "functional_profiles",
-                                "destinations", "devices", "verifications", "functional_verifications", "verification_attachments", "signatures", "audit_log"]
+                                "destinations", "devices", "verifications", "functional_verifications", "verification_attachments",
+                                "system_verifications", "system_verification_devices", "signatures", "audit_log"]
 
                 for table in tables_order:
                     records = changes_dict.get(table, [])
@@ -1262,6 +1295,24 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                         WHERE va.is_deleted = FALSE
                     """)
                     changes_to_send["verification_attachments"] = cursor.fetchall()
+
+                    # System verifications
+                    cursor.execute("""
+                        SELECT sv.*, dest.uuid as destination_uuid
+                        FROM system_verifications sv
+                        INNER JOIN destinations dest ON sv.destination_id = dest.id
+                        WHERE sv.is_deleted = FALSE
+                    """)
+                    changes_to_send["system_verifications"] = cursor.fetchall()
+
+                    cursor.execute("""
+                        SELECT svd.*, sv.uuid as system_verification_uuid, d.uuid as device_uuid
+                        FROM system_verification_devices svd
+                        INNER JOIN system_verifications sv ON svd.system_verification_id = sv.id
+                        INNER JOIN devices d ON svd.device_id = d.id
+                        WHERE svd.is_deleted = FALSE
+                    """)
+                    changes_to_send["system_verification_devices"] = cursor.fetchall()
                 else:
                     last_sync_ts = payload.last_sync_timestamp
                     if last_sync_ts is None:
@@ -1333,6 +1384,24 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                         WHERE va.last_modified > %s AND va.last_modified <= %s
                     """, (last_sync_dt, new_sync_timestamp))
                     changes_to_send["verification_attachments"] = cursor.fetchall()
+
+                    # System verifications (incremental)
+                    cursor.execute("""
+                        SELECT sv.*, dest.uuid as destination_uuid
+                        FROM system_verifications sv
+                        INNER JOIN destinations dest ON sv.destination_id = dest.id
+                        WHERE sv.last_modified > %s AND sv.last_modified <= %s
+                    """, (last_sync_dt, new_sync_timestamp))
+                    changes_to_send["system_verifications"] = cursor.fetchall()
+
+                    cursor.execute("""
+                        SELECT svd.*, sv.uuid as system_verification_uuid, d.uuid as device_uuid
+                        FROM system_verification_devices svd
+                        INNER JOIN system_verifications sv ON svd.system_verification_id = sv.id
+                        INNER JOIN devices d ON svd.device_id = d.id
+                        WHERE svd.last_modified > %s AND svd.last_modified <= %s
+                    """, (last_sync_dt, new_sync_timestamp))
+                    changes_to_send["system_verification_devices"] = cursor.fetchall()
 
                 if "signatures" in changes_to_send:
                     for signature_record in changes_to_send["signatures"]:

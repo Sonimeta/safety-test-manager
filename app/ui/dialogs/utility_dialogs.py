@@ -148,8 +148,10 @@ class AdvancedReportDialog(QDialog):
         options_layout = QFormLayout(options_group)
         self.electrical_check = QCheckBox("Verifiche Elettriche")
         self.functional_check = QCheckBox("Verifiche Funzionali")
+        self.system_check = QCheckBox("Verifiche di Sistema")
         self.electrical_check.setChecked(True)
         self.functional_check.setChecked(True)
+        self.system_check.setChecked(True)
 
         self.latest_only_check = QCheckBox("Solo ultima verifica per dispositivo")
         self.latest_only_check.setChecked(True)
@@ -175,7 +177,11 @@ class AdvancedReportDialog(QDialog):
         self.merge_pdf_browse_btn = QPushButton("Sfoglia...")
         self.merge_pdf_browse_btn.clicked.connect(self._browse_merge_pdf)
 
-        options_layout.addRow(self.electrical_check, self.functional_check)
+        type_row = QHBoxLayout()
+        type_row.addWidget(self.electrical_check)
+        type_row.addWidget(self.functional_check)
+        type_row.addWidget(self.system_check)
+        options_layout.addRow("Tipi:", type_row)
         options_layout.addRow(self.latest_only_check)
         options_layout.addRow("Formato nome file:", self.naming_format_combo)
         options_layout.addRow(self.merge_pdf_check)
@@ -298,6 +304,7 @@ class AdvancedReportDialog(QDialog):
             "end_date": self.end_date,
             "include_electrical": self.electrical_check.isChecked(),
             "include_functional": self.functional_check.isChecked(),
+            "include_system": self.system_check.isChecked(),
             "latest_only": self.latest_only_check.isChecked(),
             "naming_format": self.naming_format_combo.currentData(),
             "output_folder": self.output_path_edit.text().strip(),
@@ -316,7 +323,7 @@ class AdvancedReportDialog(QDialog):
         if not options["start_date"] or not options["end_date"]:
             QMessageBox.warning(self, "DATI MANCANTI", "Seleziona un intervallo di date.")
             return
-        if not options["include_electrical"] and not options["include_functional"]:
+        if not options["include_electrical"] and not options["include_functional"] and not options.get("include_system"):
             QMessageBox.warning(self, "DATI MANCANTI", "Seleziona almeno un tipo di verifica.")
             return
         if options["scope"] == "customer" and not options["customer_id"]:

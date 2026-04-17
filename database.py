@@ -1931,6 +1931,239 @@ def get_unverified_devices_for_destination_in_period(destination_id: int, start_
 
         return conn.execute(unverified_devices_query, params).fetchall()
 
+# --- Gestione Verifiche di Sistema (System Verifications) ---
+
+def save_system_verification(uuid_val, system_name, destination_id, profile_name,
+                              results, overall_status, visual_inspection_data,
+                              mti_info, technician_name, technician_username,
+                              device_ids, timestamp, verification_date=None,
+                              verification_code=None):
+    """
+    Salva una verifica di sistema (più dispositivi verificati insieme).
+    Crea il record nella tabella system_verifications e le associazioni
+    nella tabella system_verification_devices.
+    """
+    if verification_date is None:
+        verification_date = datetime.now().strftime('%Y-%m-%d')
+
+    results_json = json.dumps(results)
+    visual_json = json.dumps(visual_inspection_data)
+    mti_data = mti_info if isinstance(mti_info, dict) else {}
+
+    with DatabaseConnection() as conn:
+        cursor = conn.cursor()
+
+        if not verification_code:
+            verification_code = generate_verification_code(
+                conn,
+                verification_date,
+                technician_name,
+                technician_username,
+                suffix="VS",
+                table_name="system_verifications",
+            )
+
+        sql_query = """
+            INSERT INTO system_verifications (
+                uuid, system_name, destination_id, verification_date, profile_name,
+                results_json, overall_status, visual_inspection_json,
+                mti_instrument, mti_serial, mti_version, mti_cal_date,
+                technician_name, technician_username,
+                verification_code,
+                last_modified, is_deleted, is_synced
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
+        """
+        params = (
+            uuid_val, system_name, destination_id, verification_date, profile_name,
+            results_json, overall_status, visual_json,
+            mti_data.get('instrument'),
+            mti_data.get('serial'),
+            mti_data.get('version'),
+            mti_data.get('cal_date'),
+            technician_name, technician_username,
+            verification_code,
+            timestamp
+        )
+        cursor.execute(sql_query, params)
+        new_id = cursor.lastrowid
+
+        # Inserisci i dispositivi associati
+        for order_idx, device_id in enumerate(device_ids):
+            dev_uuid = str(uuid.uuid4())
+            cursor.execute("""
+                INSERT INTO system_verification_devices (
+                    uuid, system_verification_id, device_id, device_order,
+                    last_modified, is_deleted, is_synced
+                ) VALUES (?, ?, ?, ?, ?, 0, 0)
+            """, (dev_uuid, new_id, device_id, order_idx, timestamp))
+
+        return verification_code, new_id
+
+
+def get_system_verifications_for_destination(destination_id: int):
+    """Recupera tutte le verifiche di sistema per una destinazione."""
+    with DatabaseConnection() as conn:
+        rows = conn.execute("""
+            SELECT sv.*,
+                   dest.name AS destination_name,
+                   (SELECT COUNT(*) FROM system_verification_devices svd
+                    WHERE svd.system_verification_id = sv.id AND svd.is_deleted = 0) AS device_count
+            FROM system_verifications sv
+            JOIN destinations dest ON sv.destination_id = dest.id
+            WHERE sv.destination_id = ? AND sv.is_deleted = 0
+            ORDER BY sv.verification_date DESC
+        """, (destination_id,)).fetchall()
+    return [_decode_json_fields(r, ['results_json', 'visual_inspection_json']) for r in rows]
+
+
+def get_system_verification_by_id(sv_id: int):
+    """Recupera una verifica di sistema con tutti i dettagli."""
+    with DatabaseConnection() as conn:
+        row = conn.execute("""
+            SELECT sv.*,
+                   dest.name AS destination_name,
+                   c.name AS customer_name,
+                   c.id AS customer_id
+            FROM system_verifications sv
+            JOIN destinations dest ON sv.destination_id = dest.id
+            JOIN customers c ON dest.customer_id = c.id
+            WHERE sv.id = ? AND sv.is_deleted = 0
+        """, (sv_id,)).fetchone()
+        if not row:
+            return None
+        return _decode_json_fields(row, ['results_json', 'visual_inspection_json'])
+
+
+def get_system_verification_devices(sv_id: int):
+    """Recupera i dispositivi associati a una verifica di sistema."""
+    with DatabaseConnection() as conn:
+        return conn.execute("""
+            SELECT d.*, svd.device_order
+            FROM system_verification_devices svd
+            JOIN devices d ON svd.device_id = d.id
+            WHERE svd.system_verification_id = ? AND svd.is_deleted = 0
+            ORDER BY svd.device_order
+        """, (sv_id,)).fetchall()
+
+
+def get_system_verifications_for_device(device_id: int):
+    """Recupera tutte le verifiche di sistema a cui un dispositivo ha partecipato."""
+    with DatabaseConnection() as conn:
+        rows = conn.execute("""
+            SELECT sv.*,
+                   dest.name AS destination_name,
+                   (SELECT COUNT(*) FROM system_verification_devices svd2
+                    WHERE svd2.system_verification_id = sv.id AND svd2.is_deleted = 0) AS device_count
+            FROM system_verifications sv
+            JOIN system_verification_devices svd ON sv.id = svd.system_verification_id
+            JOIN destinations dest ON sv.destination_id = dest.id
+            WHERE svd.device_id = ? AND sv.is_deleted = 0 AND svd.is_deleted = 0
+            ORDER BY sv.verification_date DESC
+        """, (device_id,)).fetchall()
+    return [_decode_json_fields(r, ['results_json', 'visual_inspection_json']) for r in rows]
+
+
+def soft_delete_system_verification(sv_id: int, timestamp: str):
+    """Esegue un soft delete di una verifica di sistema."""
+    with DatabaseConnection() as conn:
+        cursor = conn.execute(
+            "UPDATE system_verifications SET is_deleted=1, last_modified=?, is_synced=0 WHERE id=?",
+            (timestamp, sv_id)
+        )
+    if cursor.rowcount > 0:
+        logging.warning(f"Verifica di sistema ID {sv_id} marcata come eliminata.")
+        return True
+    return False
+
+
+def update_system_verification(sv_id: int, verification_date: str, overall_status: str,
+                                technician_name: str, timestamp: str, *,
+                                system_name: str | None = None,
+                                results: list | None = None,
+                                visual_inspection_data: dict | None = None,
+                                mti_instrument: str | None = None,
+                                mti_serial: str | None = None,
+                                mti_version: str | None = None,
+                                mti_cal_date: str | None = None) -> bool:
+    """Aggiorna i campi modificabili di una verifica di sistema."""
+    sets = [
+        "verification_date = ?", "overall_status = ?",
+        "technician_name = ?", "last_modified = ?", "is_synced = 0",
+    ]
+    params: list = [verification_date, overall_status, technician_name, timestamp]
+
+    if system_name is not None:
+        sets.append("system_name = ?")
+        params.append(system_name)
+    if results is not None:
+        sets.append("results_json = ?")
+        params.append(json.dumps(results))
+    if visual_inspection_data is not None:
+        sets.append("visual_inspection_json = ?")
+        params.append(json.dumps(visual_inspection_data))
+    if mti_instrument is not None:
+        sets.append("mti_instrument = ?")
+        params.append(mti_instrument)
+    if mti_serial is not None:
+        sets.append("mti_serial = ?")
+        params.append(mti_serial)
+    if mti_version is not None:
+        sets.append("mti_version = ?")
+        params.append(mti_version)
+    if mti_cal_date is not None:
+        sets.append("mti_cal_date = ?")
+        params.append(mti_cal_date)
+
+    params.append(sv_id)
+    with DatabaseConnection() as conn:
+        cursor = conn.execute(
+            f"UPDATE system_verifications SET {', '.join(sets)} WHERE id = ? AND is_deleted = 0",
+            tuple(params),
+        )
+    if cursor.rowcount > 0:
+        logging.info(f"Verifica di sistema ID {sv_id} aggiornata.")
+        return True
+    return False
+
+
+def get_system_verifications_for_destination_by_date_range(destination_id: int, start_date: str, end_date: str) -> list:
+    """Recupera tutte le verifiche di sistema per una destinazione in un intervallo di date."""
+    with DatabaseConnection() as conn:
+        rows = conn.execute("""
+            SELECT sv.*,
+                   dest.name AS destination_name,
+                   c.name AS customer_name,
+                   (SELECT COUNT(*) FROM system_verification_devices svd
+                    WHERE svd.system_verification_id = sv.id AND svd.is_deleted = 0) AS device_count
+            FROM system_verifications sv
+            JOIN destinations dest ON sv.destination_id = dest.id
+            JOIN customers c ON dest.customer_id = c.id
+            WHERE sv.destination_id = ? AND sv.is_deleted = 0
+            AND sv.verification_date BETWEEN ? AND ?
+            ORDER BY sv.verification_date DESC
+        """, (destination_id, start_date, end_date)).fetchall()
+    return [_decode_json_fields(r, ['results_json', 'visual_inspection_json']) for r in rows]
+
+
+def get_system_verifications_by_date_range(start_date: str, end_date: str) -> list:
+    """Recupera tutte le verifiche di sistema in un intervallo di date."""
+    with DatabaseConnection() as conn:
+        rows = conn.execute("""
+            SELECT sv.*,
+                   dest.name AS destination_name,
+                   c.name AS customer_name,
+                   (SELECT COUNT(*) FROM system_verification_devices svd
+                    WHERE svd.system_verification_id = sv.id AND svd.is_deleted = 0) AS device_count
+            FROM system_verifications sv
+            JOIN destinations dest ON sv.destination_id = dest.id
+            JOIN customers c ON dest.customer_id = c.id
+            WHERE sv.is_deleted = 0
+            AND sv.verification_date BETWEEN ? AND ?
+            ORDER BY sv.verification_date DESC
+        """, (start_date, end_date)).fetchall()
+    return [_decode_json_fields(r, ['results_json', 'visual_inspection_json']) for r in rows]
+
+
 # --- Gestione Strumenti (Instruments) ---
 
 def get_all_instruments(instrument_type: str = None):

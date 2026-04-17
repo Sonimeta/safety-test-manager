@@ -20,7 +20,8 @@ LOCK_FILE = config.LOCK_FILE_DIR
 
 SYNC_ORDER = [
     "customers", "mti_instruments", "signatures", "profiles", "profile_tests", "functional_profiles",
-    "destinations", "devices", "verifications", "functional_verifications", "verification_attachments", "audit_log"
+    "destinations", "devices", "verifications", "functional_verifications", "verification_attachments",
+    "system_verifications", "system_verification_devices", "audit_log"
 ]
 
 # Timeout e retry configuration
@@ -329,6 +330,8 @@ class ConflictAnalyzer:
             'signatures': ['username', 'signature_data'],
             'mti_instruments': ['name', 'serial_number', 'calibration_due_date'],
             'verification_attachments': ['filename', 'file_data', 'verification_id', 'uuid'],
+            'system_verifications': ['system_name', 'verification_date', 'overall_status', 'destination_id'],
+            'system_verification_devices': ['system_verification_id', 'device_id'],
         }
         return critical_by_table.get(table, [])
 
@@ -667,6 +670,21 @@ def _get_unsynced_local_changes():
             "WHERE va.is_synced = 0",
             ["verification_id"]  # Rimuovi solo FK numerica; file_path serve per leggere il file da disco
         ),
+        "system_verifications": (
+            "SELECT sv.*, dest.uuid as destination_uuid "
+            "FROM system_verifications sv "
+            "JOIN destinations dest ON sv.destination_id = dest.id "
+            "WHERE sv.is_synced = 0",
+            ["destination_id"]
+        ),
+        "system_verification_devices": (
+            "SELECT svd.*, sv.uuid as system_verification_uuid, d.uuid as device_uuid "
+            "FROM system_verification_devices svd "
+            "JOIN system_verifications sv ON svd.system_verification_id = sv.id "
+            "JOIN devices d ON svd.device_id = d.id "
+            "WHERE svd.is_synced = 0",
+            ["system_verification_id", "device_id"]
+        ),
         "audit_log": ("SELECT * FROM {table} WHERE is_synced = 0", [])
     }
 
@@ -754,7 +772,7 @@ def _apply_server_changes(conn, changes):
     """
     applied_counts = {table: 0 for table in SYNC_ORDER}
     conflicts_list = []  # Lista dei conflitti generati durante l'applicazione
-    uuid_to_local_id = {"customers": {}, "devices": {}, "profiles": {}, "destinations": {}}
+    uuid_to_local_id = {"customers": {}, "devices": {}, "profiles": {}, "destinations": {}, "system_verifications": {}}
     cursor = conn.cursor()
     
     # Log inizio applicazione cambiamenti
@@ -932,6 +950,33 @@ def _apply_server_changes(conn, changes):
                         fk_missing = True
                     else:
                         record['profile_id'] = local_profile_id
+
+                if table == 'system_verifications' and not fk_missing and not fk_orphan:
+                    local_destination_id = resolve_fk("destinations", "destination_uuid")
+                    if local_destination_id == -1:
+                        fk_orphan = True
+                    elif local_destination_id is None:
+                        fk_missing = True
+                    else:
+                        record['destination_id'] = local_destination_id
+
+                if table == 'system_verification_devices' and not fk_missing and not fk_orphan:
+                    local_sv_id = resolve_fk("system_verifications", "system_verification_uuid")
+                    if local_sv_id == -1:
+                        fk_orphan = True
+                    elif local_sv_id is None:
+                        fk_missing = True
+                    else:
+                        record['system_verification_id'] = local_sv_id
+
+                if table == 'system_verification_devices' and not fk_missing and not fk_orphan:
+                    local_device_id = resolve_fk("devices", "device_uuid")
+                    if local_device_id == -1:
+                        fk_orphan = True
+                    elif local_device_id is None:
+                        fk_missing = True
+                    else:
+                        record['device_id'] = local_device_id
 
                 # Record orfano dal server (UUID padre assente nel payload) → salta silenziosamente
                 if fk_orphan:
@@ -1203,7 +1248,8 @@ def _apply_hard_deletes(conn, hard_deletes: dict) -> dict:
         'customers', 'destinations', 'devices', 'verifications',
         'functional_verifications', 'profiles', 'profile_tests',
         'functional_profiles', 'mti_instruments', 'audit_log',
-        'verification_attachments'
+        'verification_attachments', 'system_verifications',
+        'system_verification_devices'
     }
     
     for table_name, uuids in hard_deletes.items():

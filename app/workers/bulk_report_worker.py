@@ -76,83 +76,129 @@ class BulkReportWorker(QObject):
             verif_id = verif.get('id')
             dev_id = verif.get('device_id')
             verification_type = verif.get('verification_type', 'ELETTRICA')
-            type_label = "Funzionale" if verification_type == "FUNZIONALE" else "Elettrica"
+            if verification_type == 'SISTEMA':
+                type_label = "Sistema"
+            elif verification_type == 'FUNZIONALE':
+                type_label = "Funzionale"
+            else:
+                type_label = "Elettrica"
             
             progress_percent = int(((i + 1) / total_reports) * 100)
             progress_message = f"Generazione report {i + 1} di {total_reports} (Verifica {type_label} ID: {verif_id})..."
             self.progress_updated.emit(progress_percent, progress_message)
 
             try:
-                if not dev_id or not verif_id:
-                    raise ValueError("ID dispositivo o verifica mancante.")
+                if verification_type == 'SISTEMA':
+                    # --- LOGICA SPECIFICA PER VERIFICHE DI SISTEMA ---
+                    if not verif_id:
+                        raise ValueError("ID verifica di sistema mancante.")
 
-                # --- NUOVA LOGICA PER IL NOME DEL FILE ---
-                # Gestisce i valori None convertendoli in stringa vuota prima di chiamare strip()
-                ams_inv = (verif.get('ams_inventory') or '').strip()
-                serial_num = (verif.get('serial_number') or '').strip()
-                customer_inv = (verif.get('customer_inventory') or '').strip()
-                
-                # Determina il tipo di verifica e il suffisso del file
-                verification_type = verif.get('verification_type', 'ELETTRICA')  # Default a ELETTRICA per retrocompatibilità
-                file_suffix = "VF" if verification_type == "FUNZIONALE" else "VE"
-                
-                # Determina il nome base in base al formato selezionato
-                if self.naming_format == 'ams_inventory':
-                    base_name = ams_inv if ams_inv else serial_num  # Fallback a serial_number se ams_inventory è vuoto
-                elif self.naming_format == 'serial_number':
-                    base_name = serial_num if serial_num else ams_inv  # Fallback a ams_inventory se serial_number è vuoto
-                elif self.naming_format == 'customer_inventory':
-                    base_name = customer_inv if customer_inv else (ams_inv if ams_inv else serial_num)  # Fallback a ams_inventory o serial_number
-                else:
-                    # Default al comportamento precedente
-                    base_name = ams_inv if ams_inv else serial_num
-                
-                if not base_name:
-                    base_name = f"Report_Verifica_{verif_id}" # Nome di fallback
-                
-                # Pulisce il nome da caratteri non validi per un file
-                safe_base_name = re.sub(r'[\\/*?:"<>|]', '_', base_name)
-                
-                # Controlla duplicati includendo il suffisso VE/VF (lo stesso nome può essere usato per VE e VF)
-                full_key = f"{safe_base_name} {file_suffix}"
-                original_safe_name = safe_base_name
-                counter = 1
-                while full_key in used_base_names:
-                    safe_base_name = f"{original_safe_name}_{counter}"
+                    import database
+                    sv_devices = database.get_system_verification_devices(verif_id)
+                    device_names = []
+                    for dev in sv_devices:
+                        dev_dict = dict(dev)
+                        if self.naming_format == 'ams_inventory':
+                            name = (dev_dict.get('ams_inventory') or '').strip() or (dev_dict.get('serial_number') or '').strip()
+                        elif self.naming_format == 'serial_number':
+                            name = (dev_dict.get('serial_number') or '').strip() or (dev_dict.get('ams_inventory') or '').strip()
+                        elif self.naming_format == 'customer_inventory':
+                            name = (dev_dict.get('customer_inventory') or '').strip() or (dev_dict.get('ams_inventory') or '').strip() or (dev_dict.get('serial_number') or '').strip()
+                        else:
+                            name = (dev_dict.get('ams_inventory') or '').strip() or (dev_dict.get('serial_number') or '').strip()
+                        device_names.append(name if name else f"Dev{dev_dict.get('id', '?')}")
+
+                    file_suffix = "VS"
+                    base_name = " + ".join(device_names)
+                    if not base_name:
+                        base_name = verif.get('system_name') or f"Sistema_{verif_id}"
+
+                    safe_base_name = re.sub(r'[\\/*?:"<>|]', '_', base_name)
                     full_key = f"{safe_base_name} {file_suffix}"
-                    counter += 1
-                
-                os.makedirs(self.output_folder, exist_ok=True)
-                
-                # Crea il nome file completo e verifica che non esista già
-                full_base_name = f"{safe_base_name} {file_suffix}"
-                filename = os.path.join(self.output_folder, f"{full_base_name}.pdf")
-                
-                # Se il file esiste già, aggiungi un contatore
-                file_counter = 1
-                while os.path.exists(filename):
-                    filename = os.path.join(self.output_folder, f"{safe_base_name}_{file_counter} {file_suffix}.pdf")
-                    file_counter += 1
-                
-                # Registra il nome completo (con suffisso VE/VF) per il controllo duplicati
-                used_base_names.add(full_key)
-                # --- FINE NUOVA LOGICA ---
+                    original_safe_name = safe_base_name
+                    counter = 1
+                    while full_key in used_base_names:
+                        safe_base_name = f"{original_safe_name}_{counter}"
+                        full_key = f"{safe_base_name} {file_suffix}"
+                        counter += 1
 
-                # Genera il report appropriato in base al tipo
-                if verification_type == "FUNZIONALE":
-                    services.generate_functional_pdf_report(
+                    os.makedirs(self.output_folder, exist_ok=True)
+                    full_base_name = f"{safe_base_name} {file_suffix}"
+                    filename = os.path.join(self.output_folder, f"{full_base_name}.pdf")
+                    file_counter = 1
+                    while os.path.exists(filename):
+                        filename = os.path.join(self.output_folder, f"{safe_base_name}_{file_counter} {file_suffix}.pdf")
+                        file_counter += 1
+                    used_base_names.add(full_key)
+
+                    services.generate_system_pdf_report(
                         filename=filename,
-                        verification_id=verif_id,
-                        device_id=dev_id,
+                        sv_id=verif_id,
                         report_settings=self.report_settings,
                     )
                 else:
-                    services.generate_pdf_report(
-                        filename=filename,
-                        verification_id=verif_id,
-                        device_id=dev_id,
-                        report_settings=self.report_settings,
-                    )
+                    # --- LOGICA PER VERIFICHE ELETTRICHE E FUNZIONALI ---
+                    if not dev_id or not verif_id:
+                        raise ValueError("ID dispositivo o verifica mancante.")
+
+                    # Gestisce i valori None convertendoli in stringa vuota prima di chiamare strip()
+                    ams_inv = (verif.get('ams_inventory') or '').strip()
+                    serial_num = (verif.get('serial_number') or '').strip()
+                    customer_inv = (verif.get('customer_inventory') or '').strip()
+                    
+                    # Determina il tipo di verifica e il suffisso del file
+                    file_suffix = "VF" if verification_type == "FUNZIONALE" else "VE"
+                    
+                    # Determina il nome base in base al formato selezionato
+                    if self.naming_format == 'ams_inventory':
+                        base_name = ams_inv if ams_inv else serial_num
+                    elif self.naming_format == 'serial_number':
+                        base_name = serial_num if serial_num else ams_inv
+                    elif self.naming_format == 'customer_inventory':
+                        base_name = customer_inv if customer_inv else (ams_inv if ams_inv else serial_num)
+                    else:
+                        base_name = ams_inv if ams_inv else serial_num
+                    
+                    if not base_name:
+                        base_name = f"Report_Verifica_{verif_id}"
+                    
+                    safe_base_name = re.sub(r'[\\/*?:"<>|]', '_', base_name)
+                    
+                    full_key = f"{safe_base_name} {file_suffix}"
+                    original_safe_name = safe_base_name
+                    counter = 1
+                    while full_key in used_base_names:
+                        safe_base_name = f"{original_safe_name}_{counter}"
+                        full_key = f"{safe_base_name} {file_suffix}"
+                        counter += 1
+                    
+                    os.makedirs(self.output_folder, exist_ok=True)
+                    
+                    full_base_name = f"{safe_base_name} {file_suffix}"
+                    filename = os.path.join(self.output_folder, f"{full_base_name}.pdf")
+                    
+                    file_counter = 1
+                    while os.path.exists(filename):
+                        filename = os.path.join(self.output_folder, f"{safe_base_name}_{file_counter} {file_suffix}.pdf")
+                        file_counter += 1
+                    
+                    used_base_names.add(full_key)
+
+                    # Genera il report appropriato in base al tipo
+                    if verification_type == "FUNZIONALE":
+                        services.generate_functional_pdf_report(
+                            filename=filename,
+                            verification_id=verif_id,
+                            device_id=dev_id,
+                            report_settings=self.report_settings,
+                        )
+                    else:
+                        services.generate_pdf_report(
+                            filename=filename,
+                            verification_id=verif_id,
+                            device_id=dev_id,
+                            report_settings=self.report_settings,
+                        )
                 success_count += 1
                 generated_files.append(filename)
 

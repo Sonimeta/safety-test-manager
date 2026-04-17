@@ -1,4 +1,5 @@
 import shutil
+import re
 import qtawesome as qta
 from datetime import date, timedelta, datetime
 import logging, pandas as pd
@@ -12,7 +13,8 @@ from urllib.parse import urlparse
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
     QPushButton, QLabel, QComboBox, QGroupBox, QFormLayout, QMessageBox, QFileDialog, 
     QStyle, QStatusBar, QGridLayout, QListWidget, QListWidgetItem, QLineEdit, QDialog, QMenu, QInputDialog, QCheckBox, QTableWidgetItem,
-    QScrollArea, QSplitter, QFrame, QButtonGroup, QRadioButton, QProgressDialog, QDialogButtonBox)
+    QScrollArea, QSplitter, QFrame, QButtonGroup, QRadioButton, QProgressDialog, QDialogButtonBox,
+    QStackedWidget, QSizePolicy)
 from PySide6.QtGui import QAction, QIcon, QFont, QPalette, QColor
 from PySide6.QtCore import Qt, QSettings, QDate, QCoreApplication, QThread, QProcess, QObject, Signal, QTimer
 from app.data_models import AppliedPart
@@ -38,7 +40,7 @@ from app.ui.dialogs.changelog_dialog import ChangelogDialog
 from app.ui.dialogs.utility_dialogs import ExportCustomerSelectionDialog, SingleCalendarRangeDialog
 from app.ui.overlay_widget import OverlayWidget
 from app.ui.widgets import FunctionalTestRunnerWidget, TestRunnerWidget
-from app.backup_manager import restore_from_backup
+from app.backup_manager import restore_from_backup, _rotate_old_backups
 from app.ui.dialogs import (DbManagerDialog, VisualInspectionDialog, DeviceDialog, 
                             InstrumentManagerDialog, InstrumentSelectionDialog)
 from app.ui.dialogs.expiring_devices_dialog import ExpiringDevicesDialog
@@ -50,6 +52,7 @@ from app.hardware.fluke_esa612 import FlukeESA612
 from app.ui.dialogs.profile_manager_dialog import ProfileManagerDialog
 from app.ui.dialogs.functional_profile_manager_dialog import FunctionalProfileManagerDialog
 from app.ui.dialogs.qr_device_scanner_dialog import QRDeviceScannerDialog
+from app.ui.dialogs.system_verification_dialogs import SystemDeviceSelectionDialog
 from app.config import LOG_DIR
 import database
 from app.workers.table_export_worker import InventoryExportWorker
@@ -153,7 +156,13 @@ class MainWindow(QMainWindow):
 
         main_widget = QWidget()
         self.main_layout = QHBoxLayout(main_widget)
-        self.setCentralWidget(main_widget)
+
+        # QStackedWidget per navigazione a finestra singola
+        self._stacked_widget = QStackedWidget()
+        self._stacked_widget.addWidget(main_widget)  # Pagina 0 = vista principale
+        self.setCentralWidget(self._stacked_widget)
+        self._embedded_dialog = None
+        self._embedded_on_close = None
 
         self.create_left_panel()
         self.create_right_panel()
@@ -172,6 +181,9 @@ class MainWindow(QMainWindow):
 
         # --- Timer per controllo aggiornamenti automatico in background ---
         self._setup_auto_update_check_timer()
+
+        # --- Pulizia backup vecchi all'avvio ---
+        QTimer.singleShot(5000, self._cleanup_old_backups)
     
     def _init_legacy_widgets(self):
         """Inizializza widget dummy per compatibilità con codice legacy."""
@@ -350,29 +362,29 @@ class MainWindow(QMainWindow):
     def open_duplicate_devices_dialog(self):
         """Apre la finestra per la gestione dei dispositivi duplicati."""
         dialog = DuplicateDevicesDialog(self)
-        dialog.exec()
+        self._show_embedded_dialog(dialog, "DISPOSITIVI DUPLICATI")
 
     def open_device_data_quality_dialog(self):
         """Apre la finestra per il controllo qualità dei dati dispositivi."""
         dialog = DeviceDataQualityDialog(self)
-        dialog.exec()
+        self._show_embedded_dialog(dialog, "CONTROLLO QUALITÀ DATI")
     
     def open_stats_dashboard(self):
         """Apre la finestra di dialogo con le statistiche."""
         dialog = StatsDashboardDialog(self)
-        dialog.exec()
+        self._show_embedded_dialog(dialog, "DASHBOARD STATISTICHE")
     
     def open_audit_log(self):
         """Apre la finestra di dialogo con il log delle attività."""
         from app.ui.dialogs.audit_log_dialog import AuditLogDialog
         dialog = AuditLogDialog(self)
-        dialog.exec()
+        self._show_embedded_dialog(dialog, "LOG ATTIVITÀ")
 
     def open_deleted_data_manager(self):
         """Apre la finestra di gestione dati eliminati (solo admin)."""
         from app.ui.dialogs.deleted_data_dialog import DeletedDataDialog
         dialog = DeletedDataDialog(self)
-        dialog.exec()
+        self._show_embedded_dialog(dialog, "GESTIONE DATI ELIMINATI")
 
     # ================== SINCRONIZZAZIONE AUTOMATICA ALL'AVVIO ==================
     def _has_network_connectivity(self) -> bool:
@@ -592,6 +604,107 @@ class MainWindow(QMainWindow):
 
     # === CONTROLLO AGGIORNAMENTI AUTOMATICO IN BACKGROUND ===
 
+    def _cleanup_old_backups(self):
+        """Esegue la pulizia dei backup vecchi all'avvio dell'applicazione."""
+        try:
+            _rotate_old_backups()
+            logging.info("✓ Pulizia backup completata all'avvio.")
+        except Exception as e:
+            logging.warning(f"Errore durante la pulizia dei backup all'avvio: {e}")
+
+    # === NAVIGAZIONE EMBEDDED (finestra singola) ===
+
+    def _show_embedded_dialog(self, dialog, title, on_close=None):
+        """
+        Mostra un QDialog embedded nella finestra principale invece di aprirlo
+        come finestra separata. Sostituisce dialog.exec().
+        """
+        # Se c'è già una vista embedded aperta, chiudila prima (senza callback)
+        if self._stacked_widget.count() > 1:
+            old = self._stacked_widget.widget(1)
+            self._stacked_widget.setCurrentIndex(0)
+            self._stacked_widget.removeWidget(old)
+            old.deleteLater()
+            self._embedded_dialog = None
+            self._embedded_on_close = None
+
+        self._embedded_dialog = dialog
+        self._embedded_on_close = on_close
+
+        # Converti il QDialog in widget embedded (rimuove i flag di finestra)
+        dialog.setWindowFlags(Qt.Widget)
+        dialog.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+        # Override done() per intercettare accept()/reject()/close
+        original_done = dialog.done
+
+        def _embedded_done(result):
+            dialog.setResult(result)
+            self._close_embedded_view()
+
+        dialog.done = _embedded_done
+
+        # Pulsante "indietro" nella status bar (affianco alle info utente, non occupa spazio)
+        self._back_btn = QPushButton(qta.icon('fa5s.arrow-left', color='white', scale_factor=0.7), "")
+        self._back_btn.setCursor(Qt.PointingHandCursor)
+        self._back_btn.setFixedSize(22, 22)
+        self._back_btn.setToolTip("Torna alla Home")
+        self._back_btn.setStyleSheet(
+            "QPushButton { background: #334155; border: none; border-radius: 11px; padding: 0; }"
+            "QPushButton:hover { background: #1e293b; }"
+        )
+        self._back_btn.clicked.connect(lambda: dialog.done(QDialog.Rejected))
+        self.statusBar().insertWidget(0, self._back_btn)
+
+        # Aggiorna titolo finestra per mostrare la sezione corrente
+        self._original_window_title = self.windowTitle()
+        self.setWindowTitle(f"{title}  —  {self._original_window_title}")
+
+        # Converti in widget e aggiungi allo stacked widget
+        self._stacked_widget.addWidget(dialog)
+        self._stacked_widget.setCurrentWidget(dialog)
+        dialog.show()
+
+        # Nascondi il menu (visibile solo nella home)
+        self.menuBar().setVisible(False)
+
+    def _close_embedded_view(self):
+        """Torna alla vista principale e pulisce la vista embedded."""
+        if self._stacked_widget.count() <= 1:
+            return
+
+        current = self._stacked_widget.currentWidget()
+        self._stacked_widget.setCurrentIndex(0)
+
+        # Ripristina il menu
+        self.menuBar().setVisible(True)
+
+        # Ripristina titolo e rimuovi pulsante indietro dalla status bar
+        if hasattr(self, '_original_window_title') and self._original_window_title:
+            self.setWindowTitle(self._original_window_title)
+            self._original_window_title = None
+        if hasattr(self, '_back_btn') and self._back_btn:
+            self.statusBar().removeWidget(self._back_btn)
+            self._back_btn.deleteLater()
+            self._back_btn = None
+
+        # Salva riferimenti prima della pulizia
+        on_close = self._embedded_on_close
+        self._embedded_on_close = None
+        self._embedded_dialog = None
+
+        # Esegui callback PRIMA di distruggere il widget (i dati del dialog sono ancora accessibili)
+        if on_close:
+            try:
+                on_close()
+            except Exception as e:
+                logging.error(f"Errore nel callback post-chiusura vista embedded: {e}")
+
+        # Rimuovi e distruggi il container
+        if current and current != self._stacked_widget.widget(0):
+            self._stacked_widget.removeWidget(current)
+            current.deleteLater()
+
     def _setup_auto_update_check_timer(self):
         """
         Configura il timer per il controllo periodico degli aggiornamenti.
@@ -701,16 +814,18 @@ class MainWindow(QMainWindow):
         QApplication.setOverrideCursor(Qt.WaitCursor)
         dialog = AdvancedSearchDialog(self)
         QApplication.restoreOverrideCursor()
-        
-        if dialog.exec() == QDialog.Accepted:
-            selected_data = dialog.selected_verification_data
-            if selected_data:
-                # Navigate to the DbManagerDialog and then to the specific verification
-                self.open_db_manager(navigate_to={
-                    'type': 'verification',
-                    'device_id': selected_data['device_id'],
-                    'verification_id': selected_data['verification_id']
-                })
+
+        def on_close():
+            if dialog.result() == QDialog.Accepted:
+                selected_data = dialog.selected_verification_data
+                if selected_data:
+                    self.open_db_manager(navigate_to={
+                        'type': 'verification',
+                        'device_id': selected_data['device_id'],
+                        'verification_id': selected_data['verification_id']
+                    })
+
+        self._show_embedded_dialog(dialog, "RICERCA AVANZATA", on_close)
 
     def open_advanced_report_dialog(self):
         dialog = AdvancedReportDialog(self)
@@ -750,6 +865,24 @@ class MainWindow(QMainWindow):
                 functional_verifs = self._filter_latest_verifications(functional_verifs)
             for verif in functional_verifs:
                 verif["verification_type"] = "FUNZIONALE"
+                all_verifications.append(verif)
+
+        if options.get("include_system"):
+            if scope == "all":
+                rows = database.get_system_verifications_by_date_range(start_date, end_date)
+            elif scope == "customer":
+                # Per il cliente, recupera tutte le destinazioni e le verifiche di sistema
+                customer_destinations = database.get_destinations_for_customer(customer_id)
+                rows = []
+                for dest in customer_destinations:
+                    dest_id = dict(dest).get('id')
+                    if dest_id:
+                        rows.extend(database.get_system_verifications_for_destination_by_date_range(dest_id, start_date, end_date))
+            else:
+                rows = database.get_system_verifications_for_destination_by_date_range(destination_id, start_date, end_date)
+            system_verifs = [dict(r) for r in rows]
+            for verif in system_verifs:
+                verif["verification_type"] = "SISTEMA"
                 all_verifications.append(verif)
 
         if not all_verifications:
@@ -837,6 +970,7 @@ class MainWindow(QMainWindow):
 
         electrical_count = sum(1 for v in verifications if v.get("verification_type") == "ELETTRICA")
         functional_count = sum(1 for v in verifications if v.get("verification_type") == "FUNZIONALE")
+        system_count = sum(1 for v in verifications if v.get("verification_type") == "SISTEMA")
 
         def _normalize_status(value: str) -> str:
             return str(value or "").strip().upper()
@@ -869,6 +1003,7 @@ class MainWindow(QMainWindow):
             "devices_count": devices_count,      # Apparecchi unici controllati
             "electrical_count": electrical_count,
             "functional_count": functional_count,
+            "system_count": system_count,
             "conformi_count": conformi_count,
             "conformi_con_annotazione_count": conformi_con_annotazione_count,
             "non_conformi_count": non_conformi_count,
@@ -1435,23 +1570,30 @@ class MainWindow(QMainWindow):
         self.btn_edit_device.clicked.connect(self.on_edit_selected_device_new)
         action_layout.addWidget(self.btn_edit_device)
         
-        # Pulsante Verifica Manuale
-        self.start_manual_button = QPushButton(qta.icon('fa5s.hand-pointer', scale_factor=1.3), " Verifica Manuale")
-        self.start_manual_button.setObjectName("secondaryButton")
-        self.start_manual_button.setMinimumHeight(55)
-        self.start_manual_button.setEnabled(False)
-        self.start_manual_button.setToolTip("Inserisci manualmente i valori misurati")
-        self.start_manual_button.clicked.connect(lambda: self.start_verification(manual_mode=True))
-        action_layout.addWidget(self.start_manual_button)
-        
-        # Pulsante Verifica Automatica
-        self.start_auto_button = QPushButton(qta.icon('fa5s.robot', scale_factor=1.3), " Verifica Automatica")
-        self.start_auto_button.setObjectName("autoButton")
-        self.start_auto_button.setMinimumHeight(55)
-        self.start_auto_button.setEnabled(False)
-        self.start_auto_button.setToolTip("Avvia sequenza automatica di test con lo strumento")
-        self.start_auto_button.clicked.connect(lambda: self.start_verification(manual_mode=False))
-        action_layout.addWidget(self.start_auto_button)
+        # Pulsante Verifica Elettrica (menu a tendina: Manuale, Automatica, Sistema)
+        self.start_electrical_button = QPushButton(qta.icon('fa5s.bolt', scale_factor=1.3), " Verifica Elettrica ▼")
+        self.start_electrical_button.setObjectName("secondaryButton")
+        self.start_electrical_button.setMinimumHeight(55)
+        self.start_electrical_button.setEnabled(False)
+        self.start_electrical_button.setToolTip("Avvia una verifica elettrica (manuale, automatica o di sistema)")
+
+        self._electrical_menu = QMenu(self)
+        self._electrical_menu.addAction(
+            qta.icon('fa5s.hand-pointer'), "Verifica Manuale",
+            lambda: self.start_verification(manual_mode=True)
+        ).setToolTip("Inserisci manualmente i valori misurati")
+        self._electrical_menu.addAction(
+            qta.icon('fa5s.robot'), "Verifica Automatica",
+            lambda: self.start_verification(manual_mode=False)
+        ).setToolTip("Avvia sequenza automatica di test con lo strumento")
+        self._electrical_menu.addSeparator()
+        self._electrical_menu.addAction(
+            qta.icon('fa5s.network-wired'), "Verifica di Sistema",
+            self.start_system_verification
+        ).setToolTip("Verifica più dispositivi insieme come sistema (CEI 62353)")
+
+        self.start_electrical_button.setMenu(self._electrical_menu)
+        action_layout.addWidget(self.start_electrical_button)
 
         # Pulsante Verifica Funzionale
         self.start_functional_button = QPushButton(qta.icon('fa5s.heartbeat', scale_factor=1.3), " Verifica Funzionale Guidata")
@@ -1974,8 +2116,7 @@ class MainWindow(QMainWindow):
         
         # Abilita pulsanti azione
         self.btn_edit_device.setEnabled(True)
-        self.start_manual_button.setEnabled(True)
-        self.start_auto_button.setEnabled(True)
+        self.start_electrical_button.setEnabled(True)
         self.start_functional_button.setEnabled(self.functional_profile_selector.count() > 0)
     
     def filter_customers(self, text):
@@ -2059,8 +2200,7 @@ class MainWindow(QMainWindow):
         self.summary_department_label.setText("—")
         self.summary_destination_label.setText("—")
         self.btn_edit_device.setEnabled(False)
-        self.start_manual_button.setEnabled(False)
-        self.start_auto_button.setEnabled(False)
+        self.start_electrical_button.setEnabled(False)
         self.start_functional_button.setEnabled(False)
     
     def on_edit_selected_device_new(self):
@@ -2913,7 +3053,178 @@ class MainWindow(QMainWindow):
         )
         self.test_runner_layout.addWidget(self.test_runner_widget)
         self.set_selection_enabled(False)
-    
+
+    # ========== VERIFICHE DI SISTEMA (CEI 62353) ==========
+
+    def start_system_verification(self):
+        """
+        Avvia il flusso per una verifica di sistema.
+        1. Selezione dispositivi
+        2. Ispezione visiva
+        3. Test runner (come verifica singola, ma il report mostra tutti i dispositivi)
+        4. Salvataggio come verifica di sistema
+        """
+        if not self.current_mti_info or not self.current_technician_name:
+            QMessageBox.warning(
+                self, "Sessione non Impostata",
+                "Impostare strumento e tecnico prima di avviare una verifica di sistema."
+            )
+            return
+
+        if not self.selected_destination_id:
+            QMessageBox.warning(
+                self, "Attenzione",
+                "Selezionare una destinazione prima di avviare una verifica di sistema."
+            )
+            return
+
+        # Recupera il nome della destinazione
+        dest_row = services.database.get_destination_by_id(self.selected_destination_id)
+        dest_name = dict(dest_row).get('name', '') if dest_row else ''
+
+        # 1. Dialog di selezione dispositivi
+        selection_dialog = SystemDeviceSelectionDialog(
+            self.selected_destination_id,
+            dest_name,
+            preselected_device_id=self.selected_device_id,
+            parent=self,
+        )
+        if selection_dialog.exec() != QDialog.Accepted:
+            return
+
+        device_ids = selection_dialog.get_selected_device_ids()
+        devices_info = selection_dialog.get_selected_devices_info()
+        system_name = selection_dialog.get_system_name()
+        profile_key = selection_dialog.get_selected_profile_key()
+
+        if len(device_ids) < 2:
+            QMessageBox.warning(self, "Attenzione", "Selezionare almeno 2 dispositivi.")
+            return
+
+        # Verifica profilo selezionato
+        if not profile_key:
+            QMessageBox.warning(self, "Attenzione", "Selezionare un profilo di verifica.")
+            return
+
+        selected_profile = config.PROFILES.get(profile_key)
+        if not selected_profile:
+            QMessageBox.warning(self, "Attenzione", "Profilo di verifica non trovato.")
+            return
+
+        # 3. Ispezione visiva del sistema
+        from app.ui.dialogs import VisualInspectionDialog
+        inspection_dialog = VisualInspectionDialog(self)
+        inspection_dialog.setWindowTitle("Ispezione Visiva del Sistema")
+        if inspection_dialog.exec() != QDialog.Accepted:
+            return
+        visual_inspection_data = inspection_dialog.get_data()
+
+        # 4. Avvia il test runner in modalità sistema
+        if self.test_runner_widget:
+            self.test_runner_widget.deleteLater()
+
+        destination_info = dict(services.database.get_destination_by_id(self.selected_destination_id))
+        customer_info = dict(services.database.get_customer_by_id(destination_info['customer_id']))
+        report_settings = {"logo_path": self.logo_path}
+        current_user = auth_manager.get_current_user_info()
+
+        # Combiniamo tutte le applied parts dei dispositivi del sistema
+        all_applied_parts = []
+        for dev in devices_info:
+            parts = dev.get('applied_parts', [])
+            if isinstance(parts, str):
+                try:
+                    parts = json.loads(parts)
+                except Exception:
+                    parts = []
+            all_applied_parts.extend(parts)
+
+        # Creiamo un device_info "sistema" che combina le info
+        system_device_info = {
+            'id': None,  # Non è un singolo dispositivo
+            'description': system_name or "Sistema",
+            'serial_number': f"{len(device_ids)} dispositivi",
+            'manufacturer': '',
+            'model': '',
+            'department': '',
+            'customer_inventory': '',
+            'ams_inventory': '',
+            'applied_parts': all_applied_parts,
+            'destination_id': self.selected_destination_id,
+        }
+
+        # Creiamo il TestRunnerWidget in modalità manuale per il sistema
+        self.test_runner_widget = TestRunnerWidget(
+            system_device_info, customer_info, self.current_mti_info, report_settings,
+            profile_key, visual_inspection_data,
+            current_user.get('full_name'),
+            current_user.get('username'),
+            True,  # manual_mode
+            self,
+        )
+
+        # Sovrascriviamo il metodo di salvataggio per salvare come verifica di sistema
+        original_save = self.test_runner_widget.save_verification_to_db
+
+        def save_system_verification():
+            self.statusBar().showMessage("Salvataggio verifica di sistema in corso...")
+            try:
+                verification_code, new_id = services.finalizza_e_salva_verifica_sistema(
+                    system_name=system_name,
+                    destination_id=self.selected_destination_id,
+                    profile_name=profile_key,
+                    results=self.test_runner_widget.results,
+                    visual_inspection_data=visual_inspection_data,
+                    mti_info=self.current_mti_info,
+                    technician_name=current_user.get('full_name'),
+                    technician_username=current_user.get('username'),
+                    device_ids=device_ids,
+                    device_infos=devices_info,
+                )
+                self.test_runner_widget.saved_verification_id = new_id
+                self.test_runner_widget.save_db_button.setEnabled(False)
+                self.test_runner_widget.save_db_button.setText("Verifica di Sistema Salvata!")
+                self.test_runner_widget.generate_pdf_button.setEnabled(True)
+                self.test_runner_widget.print_pdf_button.setEnabled(True)
+                self.test_runner_widget.finish_button.setEnabled(True)
+
+                # Override anche generate PDF per usare il report di sistema
+                self.test_runner_widget.generate_pdf_report_from_summary = \
+                    lambda: self._generate_system_pdf_from_runner(new_id, system_name)
+
+                self.statusBar().showMessage(
+                    f"Verifica di sistema ID {new_id} salvata (Codice: {verification_code}).",
+                    5000,
+                )
+                return True
+            except Exception as e:
+                QMessageBox.critical(self, "Errore", f"Impossibile salvare la verifica di sistema: {e}")
+                logging.error(f"Errore salvataggio verifica di sistema: {e}", exc_info=True)
+                self.statusBar().showMessage("Salvataggio fallito.", 5000)
+                return False
+
+        self.test_runner_widget.save_verification_to_db = save_system_verification
+
+        self.test_runner_layout.addWidget(self.test_runner_widget)
+        self.set_selection_enabled(False)
+
+    def _generate_system_pdf_from_runner(self, sv_id, system_name):
+        """Genera il PDF dal test runner per una verifica di sistema."""
+        safe_name = re.sub(r'[\\/*?:"<>|]', '_', system_name or 'Sistema')
+        default_filename = os.path.join(os.getcwd(), f"{safe_name}_VS.pdf")
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Salva Report Verifica di Sistema", default_filename, "PDF Files (*.pdf)"
+        )
+        if not filename:
+            return
+        try:
+            report_settings = {"logo_path": self.logo_path}
+            services.generate_system_pdf_report(filename, sv_id, report_settings)
+            QMessageBox.information(self, "Successo", f"Report generato con successo:\n{filename}")
+        except Exception as e:
+            QMessageBox.critical(self, "Errore", f"Impossibile generare il report:\n{e}")
+            logging.error(f"Errore generazione report di sistema: {e}", exc_info=True)
+
     def reset_main_ui(self):
         QApplication.restoreOverrideCursor()
         self.state_manager.set_state(AppState.IDLE)
@@ -3087,7 +3398,7 @@ class MainWindow(QMainWindow):
 
     def open_instrument_manager(self):
         dialog = InstrumentManagerDialog(self)
-        dialog.exec()
+        self._show_embedded_dialog(dialog, "GESTIONE STRUMENTI DI MISURA")
 
     def closeEvent(self, event):
         # --- INIZIO MODIFICA: Controllo stato prima di chiudere ---
@@ -3147,32 +3458,29 @@ class MainWindow(QMainWindow):
     def open_profile_manager(self):
         """Apre la finestra di dialogo per la gestione dei profili."""
         dialog = ProfileManagerDialog(self)
-        dialog.exec()
-        
-        # Se i profili sono cambiati, ricarica il ComboBox nella UI principale
-        if dialog.profiles_changed:
-            logging.info("I profili sono stati modificati. Ricaricamento in corso...")
-            # --- INIZIO CODICE CORRETTO ---
-            config.load_verification_profiles() # Ricarica i profili dalla fonte dati (DB)
-            self.load_profiles() # Usa la funzione corretta per popolare il combobox
-            self.load_functional_profiles()
-            # --- FINE CODICE CORRETTO ---
-            QMessageBox.information(self, "Profili Aggiornati", "La lista dei profili è stata aggiornata.")
+
+        def on_close():
+            if dialog.profiles_changed:
+                logging.info("I profili sono stati modificati. Ricaricamento in corso...")
+                config.load_verification_profiles()
+                self.load_profiles()
+                self.load_functional_profiles()
+                QMessageBox.information(self, "Profili Aggiornati", "La lista dei profili è stata aggiornata.")
+
+        self._show_embedded_dialog(dialog, "GESTIONE PROFILI", on_close)
 
     def open_functional_profile_manager(self):
         """Apre la gestione dei profili funzionali."""
         dialog = FunctionalProfileManagerDialog(self)
-        dialog.exec()
 
-        if dialog.profiles_changed:
-            logging.info("Profili funzionali aggiornati. Ricarico dati in memoria...")
-            config.load_functional_profiles()
-            self.load_functional_profiles()
-            QMessageBox.information(
-                self,
-                "Profili Aggiornati",
-                "La lista dei profili funzionali è stata aggiornata.",
-            )
+        def on_close():
+            if dialog.profiles_changed:
+                logging.info("Profili funzionali aggiornati. Ricarico dati in memoria...")
+                config.load_functional_profiles()
+                self.load_functional_profiles()
+                QMessageBox.information(self, "Profili Aggiornati", "La lista dei profili funzionali è stata aggiornata.")
+
+        self._show_embedded_dialog(dialog, "GESTIONE PROFILI FUNZIONALI", on_close)
 
     def apply_theme(self, theme: str):
         """
@@ -3347,7 +3655,7 @@ class MainWindow(QMainWindow):
 
     def open_signature_manager(self):
         dialog = SignatureManagerDialog(self)
-        dialog.exec()
+        self._show_embedded_dialog(dialog, "GESTIONE FIRMA")
 
     def logout(self):
         reply = QMessageBox.question(self, 'Conferma Logout', 
@@ -3360,7 +3668,7 @@ class MainWindow(QMainWindow):
 
     def open_user_manager(self):
         dialog = UserManagerDialog(self)
-        dialog.exec()
+        self._show_embedded_dialog(dialog, "GESTIONE UTENTI")
 
     def open_change_password_dialog(self):
         from app.ui.dialogs.change_password_dialog import ChangePasswordDialog
@@ -3676,8 +3984,11 @@ class MainWindow(QMainWindow):
             from app.ui.dialogs.sync_conflicts_dialog import SyncConflictsDialog
             dialog = SyncConflictsDialog(self)
             dialog.conflicts_resolved.connect(self._on_conflicts_panel_closed)
-            dialog.exec()
-            self._update_conflict_indicator()
+
+            def on_close():
+                self._update_conflict_indicator()
+
+            self._show_embedded_dialog(dialog, "RISOLUZIONE CONFLITTI", on_close)
         except Exception as e:
             logging.error(f"Errore apertura pannello conflitti: {e}", exc_info=True)
             QMessageBox.critical(self, "Errore", f"Impossibile aprire il pannello conflitti: {e}")
@@ -3886,12 +4197,14 @@ class MainWindow(QMainWindow):
     def open_db_manager(self, navigate_to=None):
         current_role = auth_manager.get_current_role()
         dialog = DbManagerDialog(role=current_role, parent=self)
-        dialog.setWindowState(Qt.WindowMaximized)
         if navigate_to:
             dialog.navigate_on_load(navigate_to)
-        dialog.exec()
-        self.load_destinations()
-        self.load_control_panel_data()
+
+        def on_close():
+            self.load_destinations()
+            self.load_control_panel_data()
+
+        self._show_embedded_dialog(dialog, "GESTIONE ANAGRAFICHE", on_close)
     
     def resizeEvent(self, event):
         """
@@ -4487,7 +4800,7 @@ class MainWindow(QMainWindow):
                 return
                 
             dialog = CorrectionDialog(parent=self)
-            dialog.exec()
+            self._show_embedded_dialog(dialog, "CORREGGI DESCRIZIONI DISPOSITIVI")
             
         except Exception as e:
             logging.error(f"Errore apertura dialog correzione: {e}")

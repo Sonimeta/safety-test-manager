@@ -891,3 +891,196 @@ def create_report(filename, device_info, customer_info, destination_info, mti_in
         else:
             logging.error(f"Errore durante la creazione del PDF: {e}", exc_info=True)
             raise
+
+
+def _add_system_devices_info(story, styles, devices_info, verification_data):
+    """Aggiunge la tabella con l'elenco dei dispositivi del sistema."""
+    story.append(_create_styled_paragraph("Dispositivi del Sistema", styles['SectionHeader']))
+
+    # Header della tabella
+    header_row = [
+        _create_styled_paragraph("N.", styles['NormalBold']),
+        _create_styled_paragraph("Tipo Apparecchio", styles['NormalBold']),
+        _create_styled_paragraph("Matricola", styles['NormalBold']),
+        _create_styled_paragraph("Costruttore / Modello", styles['NormalBold']),
+        _create_styled_paragraph("Inv. AMS", styles['NormalBold']),
+    ]
+
+    table_data = [header_row]
+
+    for idx, dev in enumerate(devices_info, start=1):
+        desc = dev.get('description', 'N/D')
+        serial = dev.get('serial_number', '')
+        manufacturer = dev.get('manufacturer', '')
+        model = dev.get('model', '')
+        mfg_model = f"{manufacturer} {model}".strip() or 'N/D'
+        ams_inv = dev.get('ams_inventory', '')
+
+        row = [
+            _create_styled_paragraph(str(idx), styles['Normal']),
+            _create_styled_paragraph(desc, styles['Normal']),
+            _create_styled_paragraph(serial, styles['Normal']),
+            _create_styled_paragraph(mfg_model, styles['Normal']),
+            _create_styled_paragraph(ams_inv, styles['Normal']),
+        ]
+        table_data.append(row)
+
+    col_widths = [1*cm, 6*cm, 3.5*cm, 4.5*cm, 3*cm]
+    table = Table(table_data, colWidths=col_widths)
+    style_commands = [
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GRID),
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_HEADER_BG),
+        ('TEXTCOLOR', (0, 0), (-1, 0), COLOR_HEADER_TEXT),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]
+    # Alternating row colors
+    for i in range(1, len(table_data)):
+        if i % 2 == 0:
+            style_commands.append(('BACKGROUND', (0, i), (-1, i), COLOR_ROW_EVEN))
+
+    table.setStyle(TableStyle(style_commands))
+    story.append(table)
+    story.append(Spacer(1, SPACER_LARGE))
+
+
+def _add_system_final_evaluation(story, styles, verification_data):
+    """Aggiunge il riquadro con la valutazione finale per una verifica di sistema."""
+    story.append(_create_styled_paragraph("Esito Verifica di Sistema", styles['SectionHeader']))
+    story.append(Spacer(1, SPACER_MEDIUM))
+
+    overall_status = verification_data.get('overall_status', '')
+    is_pass = overall_status in ('PASSATO', 'CONFORME')
+    is_conforme_con_annotazione = overall_status == 'CONFORME CON ANNOTAZIONE'
+
+    if is_conforme_con_annotazione:
+        finale_text = "SISTEMA CONFORME CON ANNOTAZIONE"
+        finale_style = ParagraphStyle(name='FinaleDynamic', parent=styles['FinaleBase'])
+        finale_style.borderColor = colors.orange
+        finale_style.textColor = colors.orange
+    elif is_pass:
+        finale_text = "SISTEMA CONFORME"
+        finale_style = ParagraphStyle(name='FinaleDynamic', parent=styles['FinaleBase'])
+        finale_style.borderColor = colors.darkgreen
+        finale_style.textColor = colors.darkgreen
+    else:
+        finale_text = "SISTEMA NON CONFORME"
+        finale_style = ParagraphStyle(name='FinaleDynamic', parent=styles['FinaleBase'])
+        finale_style.borderColor = colors.red
+        finale_style.textColor = colors.red
+
+    story.append(_create_styled_paragraph(finale_text, finale_style))
+    story.append(Spacer(1, SPACER_LARGE))
+
+    visual_data = verification_data.get('visual_inspection_data', {})
+    notes_raw = visual_data.get('notes')
+    notes = (notes_raw or '').strip()
+    if notes:
+        story.append(Spacer(1, 0.2*cm))
+        story.append(_create_styled_paragraph(f"<b>Note:</b> {html.escape(notes)}", styles['Normal']))
+
+    story.append(Spacer(1, SPACER_EXTRA_LARGE))
+
+
+def _add_system_footer(canvas, doc, devices_info, verification_data):
+    """Aggiunge il footer per il report di sistema."""
+    canvas.saveState()
+    footer_style = ParagraphStyle(
+        name='Footer', fontName=FONT_NORMAL, fontSize=7,
+        textColor=COLOR_TEXT_SECONDARY, alignment=TA_CENTER
+    )
+    system_name = verification_data.get('system_name', 'Sistema')
+    code = verification_data.get('verification_code', '')
+    device_count = len(devices_info)
+    footer_text = f"Verifica di Sistema: {system_name} | Codice: {code} | {device_count} dispositivi | Pagina {doc.page}"
+    p = Paragraph(footer_text, footer_style)
+    w, h = p.wrap(doc.width, cm)
+    p.drawOn(canvas, doc.leftMargin, 0.5*cm)
+    canvas.restoreState()
+
+
+def create_system_report(filename, devices_info, customer_info, destination_info,
+                         mti_info, report_settings, verification_data,
+                         technician_name, signature_data):
+    """
+    Genera il report PDF per una verifica di sistema (CEI 62353).
+    Simile a create_report ma con sezione dispositivi multipli.
+    """
+    doc = SimpleDocTemplate(
+        filename,
+        pagesize=A4,
+        rightMargin=PAGE_MARGIN,
+        leftMargin=PAGE_MARGIN,
+        topMargin=PAGE_MARGIN,
+        bottomMargin=PAGE_MARGIN,
+        title="Rapporto di Verifica di Sistema",
+        pageCompression=1,
+    )
+
+    styles = _create_styles()
+    story = []
+
+    # --- PAGINA 1: DATI, DISPOSITIVI, ESITO E FIRMA ---
+    _add_logo(story, report_settings)
+
+    # Header specifico per sistema
+    story.append(_create_styled_paragraph("Report di Verifica di Sistema", styles['ReportTitle']))
+    story.append(_create_styled_paragraph("(Conforme a CEI EN 62353)", styles['ReportSubTitle']))
+
+    system_name = verification_data.get('system_name', '')
+    if system_name:
+        story.append(_create_styled_paragraph(
+            f"<b>Sistema:</b> {system_name}", styles['Normal']))
+        story.append(Spacer(1, SPACER_MEDIUM))
+
+    # Data e codice verifica
+    right_aligned_style = ParagraphStyle(name='NormalRight', parent=styles['Normal'], alignment=2)
+    header_data = [[
+        _create_styled_paragraph(
+            f"<b>Data Verifica:</b> {verification_data.get('date', 'N/A')}", styles['Normal']),
+        _create_styled_paragraph(
+            f"<b>Codice Verifica:</b> {verification_data.get('verification_code', 'N/A')}", right_aligned_style)
+    ]]
+    header_table = Table(header_data, colWidths=[9*cm, 9*cm])
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+    ]))
+    story.append(header_table)
+    story.append(Spacer(1, SPACER_MEDIUM))
+
+    # Dati cliente e destinazione
+    _add_customer_info(story, styles, customer_info, destination_info)
+
+    # Elenco dispositivi del sistema
+    _add_system_devices_info(story, styles, devices_info, verification_data)
+
+    # Strumento di misura
+    _add_instrument_info(story, styles, mti_info, verification_data)
+
+    # Esito finale
+    _add_system_final_evaluation(story, styles, verification_data)
+
+    # Firma
+    _add_signature(story, styles, technician_name, signature_data)
+
+    # --- PAGINA 2: DETTAGLI TECNICI ---
+    story.append(PageBreak())
+
+    # Ispezione visiva
+    _add_visual_inspection(story, styles, verification_data)
+
+    # Misure elettriche
+    _add_electrical_measurements(story, styles, verification_data)
+
+    # Build del documento
+    footer_callback = lambda canvas, doc: _add_system_footer(canvas, doc, devices_info, verification_data)
+    try:
+        doc.build(story, onFirstPage=footer_callback, onLaterPages=footer_callback)
+        logging.info(f"Report verifica di sistema generato: {filename}")
+    except Exception as e:
+        logging.error(f"Errore generazione report di sistema: {e}", exc_info=True)
+        raise

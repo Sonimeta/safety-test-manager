@@ -1840,6 +1840,204 @@ def get_instruments_needing_calibration(days_in_future=30):
     return database.get_instruments_needing_calibration(days_in_future)
 
 # ==============================================================================
+# SYSTEM VERIFICATION SERVICES (VERIFICHE DI SISTEMA CEI 62353)
+# ==============================================================================
+
+def finalizza_e_salva_verifica_sistema(system_name, destination_id, profile_name,
+                                       results, visual_inspection_data, mti_info,
+                                       technician_name, technician_username,
+                                       device_ids, device_infos=None) -> tuple[str, int]:
+    """
+    Finalizza e salva una verifica di sistema.
+    Calcola l'esito complessivo e salva nel database.
+    """
+    if isinstance(results, list):
+        passed_flags = [bool(r.get('passed')) for r in results if isinstance(r, dict) and 'passed' in r]
+        overall_status = 'PASSATO' if all(passed_flags) else 'FALLITO'
+    elif isinstance(results, dict) and results.get('overall_status'):
+        overall_status = results.get('overall_status')
+    else:
+        overall_status = 'PASSATO'
+
+    notes_text = ""
+    visual_has_ko = False
+    if isinstance(visual_inspection_data, dict):
+        notes_text = str(visual_inspection_data.get('notes') or '').strip()
+        checklist = visual_inspection_data.get('checklist') or []
+        if isinstance(checklist, list):
+            for item in checklist:
+                if not isinstance(item, dict):
+                    continue
+                result_text = str(item.get('result') or '').strip().upper()
+                if result_text in {'KO', 'FALLITO', 'FAIL', 'NON CONFORME'}:
+                    visual_has_ko = True
+                    break
+
+    if visual_has_ko:
+        overall_status = 'FALLITO'
+
+    if notes_text and overall_status in {'PASSATO', 'CONFORME'}:
+        overall_status = 'CONFORME CON ANNOTAZIONE'
+
+    new_uuid = str(uuid.uuid4())
+    timestamp = datetime.now(timezone.utc).isoformat()
+    verification_code, new_id = database.save_system_verification(
+        new_uuid,
+        system_name,
+        destination_id,
+        profile_name,
+        results,
+        overall_status,
+        visual_inspection_data,
+        mti_info,
+        technician_name,
+        technician_username,
+        device_ids,
+        timestamp,
+    )
+
+    device_labels = []
+    for di in (device_infos or []):
+        device_labels.append(_build_device_label(di))
+    log_action(
+        'VERIFY',
+        'system_verification',
+        entity_id=new_id,
+        entity_description=f"Verifica di sistema '{system_name or 'Sistema'}' su {len(device_ids)} dispositivi",
+        details={
+            'system_name': system_name,
+            'destination_id': destination_id,
+            'device_count': len(device_ids),
+            'device_ids': device_ids,
+            'device_labels': device_labels,
+            'profile': profile_name,
+            'status': overall_status,
+            'code': verification_code,
+            'technician_name': technician_name,
+            'technician_username': technician_username,
+        },
+    )
+
+    return verification_code, new_id
+
+
+def delete_system_verification(sv_id: int):
+    """Elimina (soft delete) una verifica di sistema."""
+    sv_data = database.get_system_verification_by_id(sv_id)
+    timestamp = datetime.now(timezone.utc).isoformat()
+    deleted = database.soft_delete_system_verification(sv_id, timestamp)
+
+    if deleted and sv_data:
+        verification_code = sv_data.get('verification_code', '')
+        system_name = sv_data.get('system_name', 'Sistema')
+        log_action(
+            'DELETE',
+            'system_verification',
+            entity_id=sv_id,
+            entity_description=f"Eliminata verifica di sistema {verification_code} - {system_name}",
+        )
+    return deleted
+
+
+def get_system_verifications_for_destination(destination_id: int):
+    """Recupera le verifiche di sistema per una destinazione."""
+    return database.get_system_verifications_for_destination(destination_id)
+
+
+def get_system_verification_by_id(sv_id: int):
+    """Recupera una verifica di sistema per ID."""
+    return database.get_system_verification_by_id(sv_id)
+
+
+def get_system_verification_devices(sv_id: int):
+    """Recupera i dispositivi di una verifica di sistema."""
+    rows = database.get_system_verification_devices(sv_id)
+    return [dict(r) for r in rows]
+
+
+def get_system_verifications_for_device(device_id: int):
+    """Recupera le verifiche di sistema a cui un dispositivo ha partecipato."""
+    return database.get_system_verifications_for_device(device_id)
+
+
+def generate_system_pdf_report(filename, sv_id, report_settings):
+    """Genera il report PDF per una verifica di sistema."""
+    from report_generator import create_system_report
+
+    sv_data = database.get_system_verification_by_id(sv_id)
+    if not sv_data:
+        raise ValueError(f"Verifica di sistema ID {sv_id} non trovata.")
+
+    destination_id = sv_data.get('destination_id')
+    destination_info = dict(database.get_destination_by_id(destination_id))
+    customer_id = destination_info.get('customer_id')
+    customer_info = dict(database.get_customer_by_id(customer_id))
+
+    devices = database.get_system_verification_devices(sv_id)
+    devices_info = [dict(d) for d in devices]
+
+    technician_name = sv_data.get('technician_name') or "N/D"
+    technician_username = sv_data.get('technician_username')
+    signature_data = database.get_signature_by_username(technician_username)
+
+    mti_info = {
+        "instrument": sv_data.get('mti_instrument', ''),
+        "serial": sv_data.get('mti_serial', ''),
+        "version": sv_data.get('mti_version', ''),
+        "cal_date": sv_data.get('mti_cal_date', ''),
+    }
+
+    verification_data = {
+        'date': sv_data.get('verification_date', ''),
+        'profile_name': sv_data.get('profile_name', ''),
+        'overall_status': sv_data.get('overall_status', ''),
+        'results': sv_data.get('results') or [],
+        'visual_inspection_data': sv_data.get('visual_inspection') or {},
+        'verification_code': sv_data.get('verification_code', 'N/A'),
+        'system_name': sv_data.get('system_name', ''),
+    }
+
+    create_system_report(
+        filename,
+        devices_info,
+        customer_info,
+        destination_info,
+        mti_info,
+        report_settings,
+        verification_data,
+        technician_name,
+        signature_data,
+    )
+
+
+def print_system_pdf_report(sv_id, report_settings, parent_widget=None):
+    """Stampa il report PDF per una verifica di sistema."""
+    import tempfile
+    from PySide6.QtPrintSupport import QPrinter, QPrintDialog
+    from PySide6.QtGui import QPageLayout, QPageSize
+    from PySide6.QtCore import QMarginsF, QUrl
+    from PySide6.QtWidgets import QMessageBox
+
+    tmp_file = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
+    tmp_path = tmp_file.name
+    tmp_file.close()
+
+    try:
+        generate_system_pdf_report(tmp_path, sv_id, report_settings)
+
+        printer = QPrinter(QPrinter.HighResolution)
+        printer.setPageLayout(QPageLayout(QPageSize(QPageSize.A4), QPageLayout.Portrait, QMarginsF(0, 0, 0, 0)))
+        dialog = QPrintDialog(printer, parent_widget)
+        if dialog.exec() == QPrintDialog.Accepted:
+            import subprocess
+            subprocess.Popen(['start', '', tmp_path], shell=True)
+    except Exception as e:
+        logging.error(f"Errore stampa report verifica di sistema: {e}", exc_info=True)
+        if parent_widget:
+            QMessageBox.critical(parent_widget, "Errore", f"Errore durante la stampa:\n{e}")
+
+
+# ==============================================================================
 # AUDIT LOG SERVICES
 # ==============================================================================
 

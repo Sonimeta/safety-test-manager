@@ -996,6 +996,12 @@ OverlayWidget QLabel#overlayMessageLabel {
     border-radius: 14px;
 }
 
+/* === EMBEDDED VIEW HEADER === */
+QFrame#embeddedViewHeader {
+    background-color: #1a2540;
+    border-bottom: 1px solid #253352;
+}
+
 /* === CHANGELOG DIALOG === */
 QFrame#changelogVersionFrame {
     border: 1px solid #253352;

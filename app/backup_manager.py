@@ -10,7 +10,7 @@ from app import config
 # ✅ Usa i percorsi centralizzati in AppData
 DB_FILE = config.DB_PATH
 BACKUP_DIR = config.BACKUP_DIR
-BACKUP_RETENTION_COUNT = 10  # Numero di backup da conservare
+BACKUP_RETENTION_COUNT = 5  # Numero di backup da conservare
 
 
 def _verify_database_integrity(db_path: str) -> bool:
@@ -115,18 +115,21 @@ def create_backup(backup_type="manual"):
         return None
 
 def _rotate_old_backups():
-    """Mantiene solo gli ultimi BACKUP_RETENTION_COUNT backup."""
+    """Mantiene solo gli ultimi BACKUP_RETENTION_COUNT backup, elimina i più vecchi."""
     try:
         if not os.path.isdir(BACKUP_DIR):
             return
         backups = [os.path.join(BACKUP_DIR, f) for f in os.listdir(BACKUP_DIR)
-                   if f.lower().endswith(".db")]
+                   if f.lower().endswith(".bak")]
         backups.sort(key=lambda p: os.path.getmtime(p), reverse=True)
-        if len(backups) > BACKUP_RETENTION_COUNT:
-            for f in backups[BACKUP_RETENTION_COUNT:]:
+        to_remove = backups[BACKUP_RETENTION_COUNT:]
+        if to_remove:
+            logging.info(f"Rotazione backup: {len(backups)} trovati, rimozione di {len(to_remove)} vecchi backup...")
+            for f in to_remove:
                 try:
+                    size_mb = os.path.getsize(f) / (1024 * 1024)
                     os.remove(f)
-                    logging.info(f"Vecchio backup rimosso: {f}")
+                    logging.info(f"Vecchio backup rimosso: {os.path.basename(f)} ({size_mb:.1f} MB)")
                 except Exception:
                     logging.warning(f"Impossibile rimuovere backup: {f}", exc_info=True)
     except Exception:

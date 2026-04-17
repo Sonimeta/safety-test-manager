@@ -20,6 +20,7 @@ from .utility_dialogs import (DateRangeSelectionDialog, VerificationStatusDialog
                               MappingDialog, ImportReportDialog, VerificationViewerDialog, FunctionalVerificationViewerDialog,
                               DateSelectionDialog, DestinationDetailDialog, DestinationSelectionDialog, SingleCalendarRangeDialog,
                               GlobalSearchDialog, ReportNamingFormatDialog, EditVerificationDialog)
+from .system_verification_dialogs import SystemVerificationViewerDialog, SystemVerificationListDialog
 from app.workers.import_worker import ImportWorker
 from app.workers.stm_import_worker import StmImportWorker
 from app.workers.export_worker import DailyExportWorker
@@ -187,6 +188,7 @@ class DbManagerDialog(QDialog):
         self.setup_destination_tab()
         self.setup_device_tab()
         self.setup_verification_tab()
+        self.setup_system_verification_tab()
 
         # Connessioni dei segnali
         self.customer_table.itemSelectionChanged.connect(self.customer_selected)
@@ -536,6 +538,55 @@ class DbManagerDialog(QDialog):
         layout.addLayout(tables_container)
         layout.addLayout(self.create_verification_buttons())
 
+    def setup_system_verification_tab(self):
+        """Crea la scheda per le verifiche di sistema (CEI 62353)."""
+        self.system_verification_tab = QWidget()
+        self.tabs.addTab(self.system_verification_tab, "🔗 VERIFICHE SISTEMA")
+        layout = QVBoxLayout(self.system_verification_tab)
+        layout.setSpacing(12)
+        layout.setContentsMargins(15, 15, 15, 15)
+
+        self.system_verification_label = QLabel("ℹ️ Seleziona una destinazione dalla scheda DESTINAZIONI")
+        self.system_verification_label.setObjectName("sectionLabel")
+
+        self.system_verification_search_box = QLineEdit()
+        self.system_verification_search_box.setPlaceholderText("🔍 Cerca per nome sistema, codice, data...")
+        self.system_verification_search_box.textChanged.connect(self._filter_system_verifications)
+
+        self.system_verification_table = QTableWidget(0, 7)
+        self.system_verification_table.setHorizontalHeaderLabels([
+            "ID", "Data", "Codice", "Nome Sistema", "Profilo", "Dispositivi", "Esito"
+        ])
+        self.setup_table_style(self.system_verification_table, hide_id=True)
+        self.system_verification_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)
+        self.system_verification_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.system_verification_table.itemSelectionChanged.connect(self._on_system_verification_selection_changed)
+        self.system_verification_table.itemDoubleClicked.connect(self._view_system_verification)
+
+        layout.addWidget(self.system_verification_label)
+        layout.addWidget(self.system_verification_search_box)
+        layout.addWidget(self.system_verification_table)
+        layout.addLayout(self._create_system_verification_buttons())
+
+    def _create_system_verification_buttons(self):
+        """Crea i pulsanti per la gestione delle verifiche di sistema."""
+        layout = QHBoxLayout()
+        layout.setSpacing(10)
+
+        self.view_sv_btn = self.create_button("👁️ Visualizza", self._view_system_verification, "editButton", enabled=False)
+        self.view_sv_btn.setObjectName("editButton")
+        self.gen_sv_pdf_btn = self.create_button("📄 PDF", self._generate_sv_pdf, "addButton", enabled=False)
+        self.gen_sv_pdf_btn.setObjectName("autoButton")
+        self.del_sv_btn = self.create_button("🗑️ Elimina", self._delete_system_verification, "deleteButton", enabled=False)
+        self.del_sv_btn.setObjectName("deleteButton")
+
+        layout.addWidget(self.view_sv_btn)
+        layout.addWidget(self.gen_sv_pdf_btn)
+        layout.addWidget(self.del_sv_btn)
+        layout.addStretch()
+
+        return layout
+
     # --- Metodi per la Navigazione con Doppio Click ---
     def navigate_to_destinations_tab(self):
         if self.get_selected_id(self.customer_table) is not None:
@@ -792,6 +843,11 @@ class DbManagerDialog(QDialog):
             self.destination_table.setRowCount(0)
             self.destination_label.setText("ℹ️ Seleziona un cliente dalla scheda precedente")
             self.set_destination_buttons_enabled(False, False)
+            # Reset anche le verifiche di sistema (dipendono dalla destinazione)
+            if hasattr(self, 'system_verification_table'):
+                self.system_verification_table.setRowCount(0)
+                self.system_verification_label.setText("ℹ️ Seleziona una destinazione dalla scheda DESTINAZIONI")
+                self._set_system_verification_buttons_enabled(False)
         if level in ['customer', 'destination']:
             self.device_table.setRowCount(0)
             self.device_label.setText("ℹ️ Seleziona una destinazione dalla scheda precedente")
@@ -986,6 +1042,9 @@ class DbManagerDialog(QDialog):
             self.device_label.setText(f"DISPOSITIVI '{dest_name.upper()}'")
             self.load_devices_table(dest_id)
             self.set_device_buttons_enabled(True)
+            # Carica anche le verifiche di sistema per questa destinazione
+            self.system_verification_label.setText(f"VERIFICHE DI SISTEMA — '{dest_name.upper()}'")
+            self._load_system_verifications(dest_id)
 
     def load_devices_table(self, destination_id):
         self.device_table.setSortingEnabled(False)
@@ -1738,27 +1797,31 @@ class DbManagerDialog(QDialog):
             return
         start_date, end_date = period_dialog.get_date_range()
         
-        # Recupera sia le verifiche elettriche che quelle funzionali
+        # Recupera le verifiche elettriche, funzionali e di sistema
         electrical_verifications = services.database.get_verifications_for_destination_by_date_range(dest_id, start_date, end_date)
         functional_verifications = services.database.get_functional_verifications_for_destination_by_date_range(dest_id, start_date, end_date)
+        system_verifications = database.get_system_verifications_for_destination_by_date_range(dest_id, start_date, end_date)
         
         # Converti in lista di dizionari
         electrical_list = [dict(v) for v in electrical_verifications]
         functional_list = [dict(v) for v in functional_verifications]
+        system_list = [dict(v) for v in system_verifications]
         
         total_electrical = len(electrical_list)
         total_functional = len(functional_list)
-        total_all = total_electrical + total_functional
+        total_system = len(system_list)
+        total_all = total_electrical + total_functional + total_system
         
         if total_all == 0:
             return QMessageBox.information(self, "NESSUNA VERIFICA", "NESSUNA VERIFICA TROVATA NEL PERIODO SELEZIONATO.")
         
         # Chiedi all'utente se includere tutte le verifiche o solo l'ultima per dispositivo
+        system_info = f", {total_system} sistema" if total_system > 0 else ""
         filter_choice = QMessageBox.question(
             self,
             "SELEZIONE VERIFICHE",
             f"Trovate {total_all} verifiche nel periodo selezionato "
-            f"({total_electrical} elettriche, {total_functional} funzionali).\n\n"
+            f"({total_electrical} elettriche, {total_functional} funzionali{system_info}).\n\n"
             f"Vuoi generare il report solo per l'ultima verifica di ogni dispositivo?",
             QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel
         )
@@ -1768,6 +1831,7 @@ class DbManagerDialog(QDialog):
         if filter_choice == QMessageBox.Yes:
             electrical_list = self._filter_latest_verifications_by_device(electrical_list)
             functional_list = self._filter_latest_verifications_by_device(functional_list)
+            # Le verifiche di sistema non vengono filtrate (non sono per singolo dispositivo)
         
         # Combina le verifiche in una lista unificata con campo "verification_type"
         all_verifications = []
@@ -1776,6 +1840,9 @@ class DbManagerDialog(QDialog):
             all_verifications.append(verif_dict)
         for verif_dict in functional_list:
             verif_dict['verification_type'] = 'FUNZIONALE'
+            all_verifications.append(verif_dict)
+        for verif_dict in system_list:
+            verif_dict['verification_type'] = 'SISTEMA'
             all_verifications.append(verif_dict)
         
         if not all_verifications: 
@@ -2010,6 +2077,167 @@ class DbManagerDialog(QDialog):
             else:
                 services.delete_verification(verif_id)
             self.load_verifications_table(dev_id)
+
+    # --- VERIFICHE DI SISTEMA ---
+    def _set_system_verification_buttons_enabled(self, enabled):
+        """Abilita/disabilita i pulsanti delle verifiche di sistema."""
+        self.view_sv_btn.setEnabled(enabled)
+        self.gen_sv_pdf_btn.setEnabled(enabled)
+        self.del_sv_btn.setEnabled(enabled)
+
+    def _on_system_verification_selection_changed(self):
+        """Gestisce la selezione nella tabella verifiche di sistema."""
+        has_selection = bool(self.system_verification_table.selectionModel().selectedRows())
+        self._set_system_verification_buttons_enabled(has_selection)
+
+    def _load_system_verifications(self, destination_id):
+        """Carica le verifiche di sistema per la destinazione selezionata."""
+        self.system_verification_table.setSortingEnabled(False)
+        self.system_verification_table.setRowCount(0)
+        self._set_system_verification_buttons_enabled(False)
+
+        verifications = services.get_system_verifications_for_destination(destination_id)
+        search_text = (self.system_verification_search_box.text() or "").strip().lower()
+
+        for sv in verifications:
+            # Filtra per testo di ricerca
+            if search_text:
+                haystack = [
+                    sv.get('verification_date', ''),
+                    sv.get('verification_code', ''),
+                    sv.get('system_name', ''),
+                    sv.get('profile_name', ''),
+                    sv.get('overall_status', ''),
+                ]
+                if not any(search_text in str(field).lower() for field in haystack if field):
+                    continue
+
+            row = self.system_verification_table.rowCount()
+            self.system_verification_table.insertRow(row)
+
+            # ID (nascosto)
+            id_item = NumericTableWidgetItem(str(sv.get('id', '')))
+            id_item.setData(Qt.UserRole, sv.get('id'))
+            self.system_verification_table.setItem(row, 0, id_item)
+
+            # Data
+            self.system_verification_table.setItem(row, 1, QTableWidgetItem(
+                str(sv.get('verification_date', '')).upper()))
+
+            # Codice
+            self.system_verification_table.setItem(row, 2, QTableWidgetItem(
+                str(sv.get('verification_code', '')).upper()))
+
+            # Nome Sistema
+            self.system_verification_table.setItem(row, 3, QTableWidgetItem(
+                str(sv.get('system_name', '') or '').upper()))
+
+            # Profilo
+            self.system_verification_table.setItem(row, 4, QTableWidgetItem(
+                str(sv.get('profile_name', '')).upper()))
+
+            # Numero dispositivi
+            device_count = sv.get('device_count', 0)
+            count_item = NumericTableWidgetItem(str(device_count))
+            count_item.setTextAlignment(Qt.AlignCenter)
+            self.system_verification_table.setItem(row, 5, count_item)
+
+            # Esito
+            status = str(sv.get('overall_status', '')).upper()
+            status_item = QTableWidgetItem(status)
+            if status in ('PASSATO', 'CONFORME'):
+                status_item.setBackground(QColor('#A3BE8C'))
+            elif status == 'CONFORME CON ANNOTAZIONE':
+                status_item.setBackground(QColor('#EBCB8B'))
+            else:
+                status_item.setBackground(QColor('#BF616A'))
+            self.system_verification_table.setItem(row, 6, status_item)
+
+        self._center_table_items(self.system_verification_table)
+        self.system_verification_table.setSortingEnabled(True)
+        self._fit_table_columns(self.system_verification_table)
+
+    def _filter_system_verifications(self):
+        """Filtra la tabella verifiche di sistema in base alla ricerca."""
+        dest_id = self.get_selected_id(self.destination_table)
+        if dest_id:
+            self._load_system_verifications(dest_id)
+
+    def _get_selected_sv_id(self):
+        """Restituisce l'ID della verifica di sistema selezionata."""
+        selected_rows = self.system_verification_table.selectionModel().selectedRows()
+        if not selected_rows:
+            return None
+        row = selected_rows[0].row()
+        id_item = self.system_verification_table.item(row, 0)
+        return id_item.data(Qt.UserRole) if id_item else None
+
+    def _view_system_verification(self):
+        """Apre il viewer della verifica di sistema selezionata."""
+        sv_id = self._get_selected_sv_id()
+        if sv_id is None:
+            QMessageBox.information(self, "Info", "Selezionare una verifica di sistema dalla tabella.")
+            return
+        viewer = SystemVerificationViewerDialog(sv_id, self)
+        viewer.exec()
+
+    def _generate_sv_pdf(self):
+        """Genera il PDF per la verifica di sistema selezionata."""
+        sv_id = self._get_selected_sv_id()
+        if sv_id is None:
+            QMessageBox.information(self, "Info", "Selezionare una verifica di sistema dalla tabella.")
+            return
+
+        sv_data = database.get_system_verification_by_id(sv_id)
+        if not sv_data:
+            QMessageBox.critical(self, "Errore", "Verifica di sistema non trovata.")
+            return
+
+        system_name = (sv_data.get('system_name') or 'Sistema').strip()
+        safe_name = re.sub(r'[\\/*?:"<>|]', '_', system_name)
+        code = sv_data.get('verification_code', '')
+        default_filename = os.path.join(os.getcwd(), f"{safe_name}_{code}_VS.pdf")
+
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Salva Report Verifica di Sistema", default_filename, "PDF Files (*.pdf)"
+        )
+        if not filename:
+            return
+
+        try:
+            report_settings = {}
+            if self.main_window and hasattr(self.main_window, 'logo_path'):
+                report_settings['logo_path'] = self.main_window.logo_path
+            services.generate_system_pdf_report(filename, sv_id, report_settings)
+            QMessageBox.information(self, "Successo", f"Report generato con successo:\n{filename}")
+        except Exception as e:
+            logging.error(f"Errore generazione report verifica di sistema: {e}", exc_info=True)
+            QMessageBox.critical(self, "Errore", f"Impossibile generare il report:\n{e}")
+
+    def _delete_system_verification(self):
+        """Elimina la verifica di sistema selezionata."""
+        sv_id = self._get_selected_sv_id()
+        if sv_id is None:
+            QMessageBox.information(self, "Info", "Selezionare una verifica di sistema dalla tabella.")
+            return
+
+        reply = QMessageBox.question(
+            self, "CONFERMA ELIMINAZIONE",
+            "SEI SICURO DI VOLER ELIMINARE QUESTA VERIFICA DI SISTEMA?\nL'OPERAZIONE È IRREVERSIBILE.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            services.delete_system_verification(sv_id)
+            dest_id = self.get_selected_id(self.destination_table)
+            if dest_id:
+                self._load_system_verifications(dest_id)
+            QMessageBox.information(self, "Eliminato", "Verifica di sistema eliminata con successo.")
+        except Exception as e:
+            logging.error(f"Errore eliminazione verifica di sistema: {e}", exc_info=True)
+            QMessageBox.critical(self, "Errore", f"Errore durante l'eliminazione:\n{e}")
 
     def show_all_customer_devices(self):
         cust_id = self.get_selected_id(self.customer_table)

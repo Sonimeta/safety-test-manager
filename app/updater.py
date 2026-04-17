@@ -74,10 +74,10 @@ class UpdateChecker:
             return None
 
         except requests.RequestException as e:
-            logging.error(f"Errore durante il controllo degli aggiornamenti: {e}")
+            logging.debug(f"Controllo aggiornamenti non riuscito (rete non disponibile): {e}")
             raise ConnectionError(f"Impossibile connettersi al server degli aggiornamenti.\n{e}")
         except (KeyError, version.InvalidVersion) as e:
-            logging.error(f"Formato del file di versione non valido: {e}")
+            logging.warning(f"Formato del file di versione non valido: {e}")
             raise ValueError(f"Il file di versione remoto non è valido.\n{e}")
 
     def download_update(self, download_url: str, progress_callback) -> str:
