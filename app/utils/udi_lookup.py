@@ -8,13 +8,17 @@ Utilizza:
 
 import logging
 import json
-import os
-from typing import Optional, Dict
+from typing import Any, Optional, Dict, Tuple
 from pathlib import Path
 
 # Percorso per la cache locale
 CACHE_DIR = Path(__file__).parent.parent.parent / "data"
 CACHE_FILE = CACHE_DIR / "udi_cache.json"
+
+# API AccessGUDID v3 (FDA/NLM)
+GUDID_LOOKUP_URL = "https://accessgudid.nlm.nih.gov/api/v3/devices/lookup.json"
+GUDID_PARSE_UDI_URL = "https://accessgudid.nlm.nih.gov/api/v3/parse_udi.json"
+GUDID_TIMEOUT = (5, 30)  # connect timeout, read timeout
 
 # Prefissi GS1 noti per produttori di dispositivi medici
 # I primi 6-9 caratteri del GTIN identificano l'azienda
@@ -77,8 +81,8 @@ GS1_PREFIXES = {
     # Spacelabs
     "087861": "SPACELABS",
     
-    # Zoll
-    "084482": "ZOLL",
+    # Prefix shared by legacy/ambiguous local mappings
+    "084482": "ZOLL / CRITICARE",
     
     # Stryker
     "081227": "STRYKER",
@@ -112,18 +116,12 @@ GS1_PREFIXES = {
     # Mortara (now Hillrom)
     "635983": "MORTARA",
     
-    # Criticare
-    "084482": "CRITICARE",
-    
     # Nonin
     "094593": "NONIN",
     
-    # CareFusion (BD)
-    "084369": "CAREFUSION",
+    # CareFusion/Smiths Medical (ambiguous local mapping)
+    "084369": "CAREFUSION / SMITHS MEDICAL",
     "038861": "BD",
-    
-    # Smiths Medical
-    "084369": "SMITHS MEDICAL",
     
     # Teleflex
     "074551": "TELEFLEX",
@@ -177,6 +175,148 @@ def save_cache(cache: Dict):
         logging.warning(f"Errore salvataggio cache UDI: {e}")
 
 
+def _request_gudid_json(
+    url: str,
+    params: Dict[str, str],
+    context: str,
+) -> Tuple[Optional[Dict[str, Any]], Dict[str, str]]:
+    """Esegue una richiesta JSON verso AccessGUDID usando params percent-encoded."""
+    try:
+        import requests
+    except ImportError:
+        logging.warning("[UDI Lookup] Modulo 'requests' non disponibile per GUDID lookup")
+        return None, {}
+
+    try:
+        response = requests.get(
+            url,
+            params=params,
+            timeout=GUDID_TIMEOUT,
+            headers={"Accept": "application/json"},
+        )
+
+        if response.status_code == 404:
+            logging.info(f"[UDI Lookup] GUDID: nessun risultato ({context})")
+            return None, dict(response.headers)
+
+        if response.status_code == 400:
+            logging.info(
+                f"[UDI Lookup] GUDID ha rifiutato il formato della richiesta ({context})"
+            )
+            return None, dict(response.headers)
+
+        response.raise_for_status()
+        return response.json(), dict(response.headers)
+
+    except requests.exceptions.Timeout as e:
+        logging.warning(
+            f"[UDI Lookup] Timeout GUDID ({context}) dopo {GUDID_TIMEOUT[1]}s: {e}"
+        )
+    except requests.exceptions.RequestException as e:
+        logging.warning(f"[UDI Lookup] Errore rete GUDID ({context}): {e}")
+    except ValueError as e:
+        logging.warning(f"[UDI Lookup] Risposta JSON GUDID non valida ({context}): {e}")
+
+    return None, {}
+
+
+def _first_header(headers: Dict[str, str], *names: str) -> str:
+    """Recupera un header ignorando differenze di maiuscole/minuscole."""
+    lowered = {key.lower(): value for key, value in headers.items()}
+    for name in names:
+        value = lowered.get(name.lower())
+        if value:
+            return value
+    return ""
+
+
+def _extract_device_result(
+    data: Dict[str, Any],
+    di: str,
+    source: str,
+    parsed: Optional[Dict[str, str]] = None,
+) -> Optional[Dict]:
+    """Converte la risposta AccessGUDID nel formato usato dall'app."""
+    device = data.get('gudid', {}).get('device', {}) if data else {}
+    if not device:
+        return None
+
+    parsed = parsed or {}
+    result = {
+        'gtin': parsed.get('gtin') or parsed.get('di') or di,
+        'manufacturer': device.get('companyName', ''),
+        'brand': device.get('brandName', ''),
+        'model': device.get('versionModelNumber', ''),
+        'description': device.get('deviceDescription', ''),
+        'catalog_number': device.get('catalogNumber', ''),
+        'device_class': device.get('deviceClass', ''),
+        'source': source
+    }
+
+    for key in (
+        'issuing_agency',
+        'serial_number',
+        'lot_number',
+        'production_date',
+        'expiry_date',
+    ):
+        if parsed.get(key):
+            result[key] = parsed[key]
+
+    return result
+
+
+def _parsed_udi_from_gudid_payload(
+    data: Optional[Dict[str, Any]],
+    headers: Optional[Dict[str, str]] = None,
+) -> Dict[str, str]:
+    """Normalizza i campi restituiti da Parse UDI API o dagli header del lookup."""
+    data = data if isinstance(data, dict) else {}
+    headers = headers or {}
+
+    parsed = {
+        'gtin': data.get('di') or _first_header(headers, 'di'),
+        'di': data.get('di') or _first_header(headers, 'di'),
+        'issuing_agency': data.get('issuingAgency') or _first_header(headers, 'issuingAgency'),
+        'serial_number': data.get('serialNumber') or _first_header(headers, 'serialNumber'),
+        'lot_number': data.get('lotNumber') or _first_header(headers, 'lotNumber'),
+        'production_date': (
+            data.get('manufacturingDate') or
+            _first_header(headers, 'manufacturingDate')
+        ),
+        'expiry_date': (
+            data.get('expirationDate') or
+            _first_header(headers, 'expirationDate')
+        ),
+    }
+
+    return {key: value for key, value in parsed.items() if value}
+
+
+def parse_gudid_udi(udi_code: str) -> Optional[Dict[str, str]]:
+    """
+    Usa la Parse UDI API ufficiale per scomporre UDI GS1/HIBCC/ICCBBA.
+    """
+    if not udi_code:
+        return None
+
+    data, headers = _request_gudid_json(
+        GUDID_PARSE_UDI_URL,
+        {'udi': udi_code},
+        f"parse_udi udi={udi_code[:40]}",
+    )
+    parsed = _parsed_udi_from_gudid_payload(data, headers)
+    if parsed:
+        parsed['source'] = 'GUDID_PARSE'
+        logging.info(
+            f"[UDI Lookup] Parse UDI OK: DI={parsed.get('di', '')}, "
+            f"serial={parsed.get('serial_number', '')}"
+        )
+        return parsed
+
+    return None
+
+
 def lookup_gudid(gtin: str) -> Optional[Dict]:
     """
     Cerca informazioni nel database GUDID (FDA).
@@ -184,45 +324,125 @@ def lookup_gudid(gtin: str) -> Optional[Dict]:
     
     Ritorna dict con: manufacturer, model, description, etc.
     """
-    try:
-        import requests
-        
-        # API GUDID - ricerca per GTIN/DI
-        url = f"https://accessgudid.nlm.nih.gov/api/v3/devices/lookup.json?di={gtin}"
-        
-        logging.info(f"[UDI Lookup] Ricerca GUDID per GTIN: {gtin}")
-        
-        response = requests.get(url, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            
-            if 'gudid' in data:
-                device = data['gudid'].get('device', {})
-                
-                result = {
-                    'gtin': gtin,
-                    'manufacturer': device.get('companyName', ''),
-                    'brand': device.get('brandName', ''),
-                    'model': device.get('versionModelNumber', ''),
-                    'description': device.get('deviceDescription', ''),
-                    'catalog_number': device.get('catalogNumber', ''),
-                    'device_class': device.get('deviceClass', ''),
-                    'source': 'GUDID'
-                }
-                
-                logging.info(f"[UDI Lookup] GUDID trovato: {result['manufacturer']} - {result['model']}")
-                return result
-        
-        logging.info(f"[UDI Lookup] GUDID: nessun risultato per {gtin}")
+    # API GUDID - ricerca per GTIN/DI. Requests percent-encoda i parametri.
+    logging.info(f"[UDI Lookup] Ricerca GUDID per GTIN/DI: {gtin}")
+
+    data, _headers = _request_gudid_json(
+        GUDID_LOOKUP_URL,
+        {'di': gtin},
+        f"lookup di={gtin}",
+    )
+
+    result = _extract_device_result(data or {}, gtin, 'GUDID')
+    if result:
+        logging.info(f"[UDI Lookup] GUDID trovato: {result['manufacturer']} - {result['model']}")
+        return result
+
+    logging.info(f"[UDI Lookup] GUDID: nessun risultato per {gtin}")
+    return None
+
+
+def lookup_gudid_by_udi(udi_code: str) -> Optional[Dict]:
+    """
+    Cerca un dispositivo passando l'UDI completo alla Device Lookup API.
+    AccessGUDID usa internamente Parse UDI e restituisce i campi parsed negli header.
+    """
+    if not udi_code:
         return None
-        
-    except ImportError:
-        logging.warning("[UDI Lookup] Modulo 'requests' non disponibile per GUDID lookup")
-        return None
-    except Exception as e:
-        logging.warning(f"[UDI Lookup] Errore GUDID: {e}")
-        return None
+
+    logging.info(f"[UDI Lookup] Ricerca GUDID per UDI completo: {udi_code[:40]}")
+
+    data, headers = _request_gudid_json(
+        GUDID_LOOKUP_URL,
+        {'udi': udi_code},
+        f"lookup udi={udi_code[:40]}",
+    )
+    parsed = _parsed_udi_from_gudid_payload(data.get('udi') if data else None, headers)
+    result = _extract_device_result(data or {}, parsed.get('di', ''), 'GUDID_UDI', parsed)
+
+    if result:
+        logging.info(f"[UDI Lookup] GUDID UDI trovato: {result['manufacturer']} - {result['model']}")
+        return result
+
+    logging.info(f"[UDI Lookup] GUDID: nessun risultato per UDI {udi_code[:40]}")
+    return None
+
+
+def _save_lookup_to_cache(gtin: str, result: Dict):
+    """Salva in cache solo risultati con dati dispositivo reali."""
+    if not gtin or not result:
+        return
+
+    cache = load_cache()
+    cache[gtin] = result
+    save_cache(cache)
+
+
+def _merge_device_info(target: Dict, source: Optional[Dict]):
+    """Integra nel risultato solo i campi valorizzati, senza cancellare dati locali."""
+    if not source:
+        return
+
+    field_map = {
+        'gtin': 'gtin',
+        'manufacturer': 'manufacturer',
+        'model': 'model',
+        'description': 'description',
+        'serial_number': 'serial_number',
+        'lot_number': 'lot_number',
+        'production_date': 'production_date',
+        'expiry_date': 'expiry_date',
+    }
+
+    for target_key, source_key in field_map.items():
+        value = (source.get(source_key) or '').strip()
+        if value and not target.get(target_key):
+            target[target_key] = value
+
+
+def _parse_gs1_compact_fields(clean_code: str, gtin: str) -> Dict[str, str]:
+    """Parse minimale dei codici GS1 compatti letti da scanner senza parentesi."""
+    if not clean_code or not gtin:
+        return {}
+
+    if clean_code.startswith(f"01{gtin}"):
+        pos = 16
+    else:
+        return {}
+
+    parsed: Dict[str, str] = {}
+    fixed_date_fields = {
+        '11': 'production_date',
+        '17': 'expiry_date',
+    }
+
+    while pos < len(clean_code):
+        if clean_code[pos] == '|':
+            pos += 1
+            continue
+
+        ai = clean_code[pos:pos + 2]
+
+        if ai in fixed_date_fields and len(clean_code) >= pos + 8:
+            parsed[fixed_date_fields[ai]] = clean_code[pos + 2:pos + 8]
+            pos += 8
+            continue
+
+        if ai == '21':
+            end = clean_code.find('|', pos + 2)
+            parsed['serial_number'] = clean_code[pos + 2:] if end == -1 else clean_code[pos + 2:end]
+            pos = len(clean_code) if end == -1 else end + 1
+            continue
+
+        if ai == '10':
+            end = clean_code.find('|', pos + 2)
+            parsed['lot_number'] = clean_code[pos + 2:] if end == -1 else clean_code[pos + 2:end]
+            pos = len(clean_code) if end == -1 else end + 1
+            continue
+
+        break
+
+    return {key: value for key, value in parsed.items() if value}
 
 
 def lookup_by_gs1_prefix(gtin: str) -> Optional[Dict]:
@@ -257,7 +477,6 @@ def lookup_ministero_salute(gtin: str) -> Optional[Dict]:
     """
     try:
         import requests
-        from bs4 import BeautifulSoup
         
         # Il portale del Ministero non permette la ricerca diretta per GTIN via web form,
         # ma possiamo provare a cercare per codice catalogo (che spesso coincide o è parte dell'UDI)
@@ -310,22 +529,19 @@ def lookup_udi(gtin: str, use_network: bool = True) -> Optional[Dict]:
         logging.info(f"[UDI Lookup] Trovato GTIN esatto in database interno: {gtin}")
         return GS1_PREFIXES[gtin]
 
-    # 2. Prova GUDID (FDA) - Database internazionale ufficiale
-    if use_network:
-        result = lookup_gudid(gtin)
-        if result:
-            # Salva in cache locale per velocizzare ricerche future
-            cache = load_cache()
-            cache[gtin] = result
-            save_cache(cache)
-            return result
-
-    # 3. Controlla cache locale (scansioni precedenti dell'utente)
+    # 2. Controlla cache locale prima della rete: evita timeout inutili.
     cache = load_cache()
     if gtin in cache:
         logging.info(f"[UDI Lookup] Trovato in cache: {cache[gtin].get('manufacturer', 'N/D')}")
         return cache[gtin]
-    
+
+    # 3. Prova GUDID (FDA) - Database internazionale ufficiale
+    if use_network:
+        result = lookup_gudid(gtin)
+        if result:
+            _save_lookup_to_cache(gtin, result)
+            return result
+
     # 4. Fallback finale: prefisso GS1 (identifica almeno la marca)
     result = lookup_by_gs1_prefix(gtin)
     if result:
@@ -343,7 +559,7 @@ def get_manufacturer_from_udi(udi_code: str) -> str:
     return info.get('manufacturer', '') if info else ''
 
 
-def get_device_info_from_udi(udi_code: str) -> Dict:
+def get_device_info_from_udi(udi_code: str, use_network: bool = True) -> Dict:
     """
     Estrae tutte le informazioni disponibili da un codice UDI.
     Supporta:
@@ -352,6 +568,10 @@ def get_device_info_from_udi(udi_code: str) -> Dict:
     - GTIN puro (13-14 cifre)
     - Codici HIBC (prefisso +)
     
+    Args:
+        udi_code: Codice UDI completo o GTIN puro.
+        use_network: Se True, usa AccessGUDID quando i dati locali non bastano.
+
     Returns:
         Dict con: manufacturer, model, description, serial_number, lot_number, etc.
     """
@@ -372,9 +592,10 @@ def get_device_info_from_udi(udi_code: str) -> Dict:
         return result
     
     udi_code = udi_code.strip()
+    api_udi_code = re.sub(r'^\](?:d2|C1|e0|Q3|J1)', '', udi_code)
     
     # Rimuovi prefissi Symbology Identifier (DataMatrix, Code128, QR, ecc.)
-    clean_code = re.sub(r'^\](?:d2|C1|e0|Q3|J1)', '', udi_code)
+    clean_code = api_udi_code
     # Normalizza i separatori GS (ASCII 29) e FNC1 in pipe
     clean_code = clean_code.replace(chr(29), '|').replace('\x1d', '|')
     
@@ -402,14 +623,9 @@ def get_device_info_from_udi(udi_code: str) -> Dict:
         elif len(pure_digits) == 12:
             gtin = '00' + pure_digits  # UPC-A → GTIN-14
     
-    # Se abbiamo un GTIN, cerca nel database
     if gtin:
         result['gtin'] = gtin
-        lookup_result = lookup_udi(gtin, use_network=True)
-        if lookup_result:
-            result['manufacturer'] = lookup_result.get('manufacturer', '')
-            result['model'] = lookup_result.get('model', '')
-            result['description'] = lookup_result.get('description', '')
+        _merge_device_info(result, _parse_gs1_compact_fields(clean_code, gtin))
     
     # --- Estrai seriale (AI 21) ---
     # Caratteri ammessi nel seriale: alfanumerici + - . / _ (GS1 spec)
@@ -419,7 +635,7 @@ def get_device_info_from_udi(udi_code: str) -> Dict:
         re.search(rf'(?:^01\d{{14}}|[|])21({_SER_CHARS}+?)(?:[|]|$|(?=\d{{2}}[A-Z0-9]))', clean_code) or
         re.search(rf'21({_SER_CHARS}+?)$', clean_code)
     )
-    if serial_match:
+    if serial_match and not result['serial_number']:
         result['serial_number'] = serial_match.group(1).strip()
     
     # --- Estrai lotto (AI 10) ---
@@ -427,17 +643,51 @@ def get_device_info_from_udi(udi_code: str) -> Dict:
         re.search(rf'\(10\)({_SER_CHARS}+?)(?:\(|$)', udi_code) or
         re.search(rf'(?:^01\d{{14}}|[|])10({_SER_CHARS}+?)(?:[|]|$|(?=11|17|21|240|30|91))', clean_code)
     )
-    if lot_match:
+    if lot_match and not result['lot_number']:
         result['lot_number'] = lot_match.group(1).strip()
     
     # --- Estrai date ---
     prod_match = re.search(r'(?:\(11\)|\b11)(\d{6})', udi_code)
-    if prod_match:
+    if prod_match and not result['production_date']:
         result['production_date'] = prod_match.group(1)
     
     exp_match = re.search(r'(?:\(17\)|\b17)(\d{6})', udi_code)
-    if exp_match:
+    if exp_match and not result['expiry_date']:
         result['expiry_date'] = exp_match.group(1)
+
+    is_plain_gtin = bool(re.fullmatch(r'\d{12,14}', api_udi_code))
+    is_full_udi = not is_plain_gtin and (
+        '(01)' in api_udi_code or
+        api_udi_code.startswith('01') or
+        api_udi_code.startswith('+') or
+        chr(29) in api_udi_code or
+        bool(re.search(r'\(\d{2,4}\)', api_udi_code))
+    )
+
+    local_lookup = lookup_udi(result['gtin'], use_network=False) if result['gtin'] else None
+    _merge_device_info(result, local_lookup)
+
+    if use_network:
+        network_lookup = None
+
+        if result['gtin'] and (
+            not local_lookup or local_lookup.get('source') == 'GS1_PREFIX'
+        ):
+            # Se abbiamo gia' il DI/GTIN, e' piu' robusto del raw UDI senza separatori.
+            network_lookup = lookup_udi(result['gtin'], use_network=True)
+            if network_lookup and network_lookup.get('gtin'):
+                _save_lookup_to_cache(network_lookup['gtin'], network_lookup)
+        elif is_full_udi and (
+            not local_lookup or local_lookup.get('source') == 'GS1_PREFIX'
+        ):
+            # Fallback per UDI HIBCC/ICCBBA dove il DI non e' stato estratto localmente.
+            network_lookup = lookup_gudid_by_udi(api_udi_code)
+
+        if not result['gtin'] and is_full_udi and not network_lookup:
+            parsed_udi = parse_gudid_udi(api_udi_code)
+            _merge_device_info(result, parsed_udi)
+
+        _merge_device_info(result, network_lookup)
     
     logging.info(f"[UDI] Parsing risultato: GTIN={result['gtin']}, "
                  f"mfg={result['manufacturer']}, model={result['model']}, "

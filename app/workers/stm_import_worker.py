@@ -122,8 +122,8 @@ class StmImportWorker(QObject):
                     )
                     verif_imported += 1
             
-            except Exception as e:
-                logging.error(f"Errore durante l'importazione di un record di verifica.", exc_info=True)
+            except Exception:
+                logging.error("Errore durante l'importazione di un record di verifica.", exc_info=True)
                 verif_skipped += 1 # Salta il record problematico
 
         self.finished.emit(verif_imported, verif_skipped, devices_created, customers_created)

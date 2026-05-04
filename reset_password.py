@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 DB_PARAMS = {
     "dbname": "verifiche_db",
     "user": "admin",
-    "password": "admin",
+    "password": "Amsservice135!",
     "host": "195.149.221.71",
     "port": "5432"
 }

@@ -3,7 +3,7 @@ from PySide6.QtCore import Qt, QTimer, QPoint, QSettings
 from PySide6.QtGui import QAction, QColor
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QLineEdit, QLabel, QDialogButtonBox, QMessageBox,
-    QFormLayout, QFrame, QGraphicsDropShadowEffect, QSizePolicy, QSpacerItem
+    QFormLayout, QFrame, QGraphicsDropShadowEffect
 )
 import requests
 from app.http_client import http_session
@@ -78,6 +78,8 @@ class LoginDialog(QDialog):
         self.username_edit.setProperty("_stm_skip_uppercase", True)  # Escludi dal maiuscolo globale
         self.username_edit.setPlaceholderText("Nome utente")
         self.username_edit.setClearButtonEnabled(True)
+        self.username_edit.setAccessibleName("Nome utente")
+        self.username_edit.setAccessibleDescription("Campo per inserire il nome utente.")
 
         self.password_edit = QLineEdit()
         self.password_edit.setObjectName("input")
@@ -85,14 +87,20 @@ class LoginDialog(QDialog):
         self.password_edit.setEchoMode(QLineEdit.Password)
         self.password_edit.setProperty("_stm_password", True)
         self.password_edit.setClearButtonEnabled(True)
+        self.password_edit.setAccessibleName("Password")
+        self.password_edit.setAccessibleDescription("Campo per inserire la password.")
 
         # Toggle mostra/nascondi password
         self.toggle_action = QAction("Mostra", self.password_edit)
         self.toggle_action.triggered.connect(self._toggle_password)
         self.password_edit.addAction(self.toggle_action, QLineEdit.TrailingPosition)
 
-        form_layout.addRow(QLabel("Nome utente:"), self.username_edit)
-        form_layout.addRow(QLabel("Password:"), self.password_edit)
+        username_label = QLabel("Nome utente:")
+        username_label.setBuddy(self.username_edit)
+        password_label = QLabel("Password:")
+        password_label.setBuddy(self.password_edit)
+        form_layout.addRow(username_label, self.username_edit)
+        form_layout.addRow(password_label, self.password_edit)
 
         # ------- Pulsanti -------
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -123,6 +131,7 @@ class LoginDialog(QDialog):
         self._apply_style()
         self.adjustSize()
         self.setFixedSize(self.sizeHint())
+        self.setTabOrder(self.username_edit, self.password_edit)
 
         # Drag finestra
         self._drag_pos: QPoint | None = None

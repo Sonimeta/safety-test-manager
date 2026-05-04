@@ -9,18 +9,18 @@ from PySide6.QtWidgets import (
     QHeaderView, QAbstractItemView, QStyle, QMessageBox, QFileDialog, QProgressDialog, QFrame,
     QStyledItemDelegate
 )
-from PySide6.QtCore import Qt, QThread, QSize, QSettings, QTimer
-from PySide6.QtGui import QColor, QBrush, QFont, QIcon, QPainter
+from PySide6.QtCore import Qt, QThread, QSize, QSettings
+from PySide6.QtGui import QColor, QBrush
 import re
 import os
 
-from app import services, auth_manager, config  # Import config
+from app import services, config  # Import config
 from .detail_dialogs import CustomerDialog, DeviceDialog, InstrumentDetailDialog
-from .utility_dialogs import (DateRangeSelectionDialog, VerificationStatusDialog, MonthYearSelectionDialog,
+from .utility_dialogs import (VerificationStatusDialog,
                               MappingDialog, ImportReportDialog, VerificationViewerDialog, FunctionalVerificationViewerDialog,
                               DateSelectionDialog, DestinationDetailDialog, DestinationSelectionDialog, SingleCalendarRangeDialog,
                               GlobalSearchDialog, ReportNamingFormatDialog, EditVerificationDialog)
-from .system_verification_dialogs import SystemVerificationViewerDialog, SystemVerificationListDialog
+from .system_verification_dialogs import SystemVerificationViewerDialog
 from app.workers.import_worker import ImportWorker
 from app.workers.stm_import_worker import StmImportWorker
 from app.workers.export_worker import DailyExportWorker
@@ -898,17 +898,6 @@ class DbManagerDialog(QDialog):
                     table.scrollToItem(item, QAbstractItemView.ScrollHint.PositionAtCenter)
                     return
 
-    def find_and_select_verification(self, verification_id: int):
-        if not verification_id:
-            return
-        for table in (self.electrical_table, self.functional_table):
-            for row in range(table.rowCount()):
-                item = table.item(row, 0)
-                if item and item.text().isdigit() and int(item.text()) == verification_id:
-                    table.selectRow(row)
-                    table.scrollToItem(item, QAbstractItemView.ScrollHint.PositionAtCenter)
-                    return
-
     def get_selected_verification_info(self):
         selection_model_e = self.electrical_table.selectionModel()
         if selection_model_e and selection_model_e.selectedRows():
@@ -1507,7 +1496,6 @@ class DbManagerDialog(QDialog):
             self.load_devices_table(dest_id)
 
     def move_device(self):
-        selected_ids = self.get_selected_ids(self.device_table)
         old_dest_id = self.get_selected_id(self.destination_table)
 
         # Filtra solo i dispositivi attivi tra quelli selezionati
@@ -1655,7 +1643,7 @@ class DbManagerDialog(QDialog):
                         error_messages.append(f"default: {str(e)}")
                 
                 if df_headers is None or len(df_headers) <= 1:
-                    raise Exception(f"Impossibile leggere le colonne dal file Excel. Errori provati:\n" + "\n".join(error_messages))
+                    raise Exception("Impossibile leggere le colonne dal file Excel. Errori provati:\n" + "\n".join(error_messages))
             
             # Pulisci i nomi delle colonne (rimuovi spazi iniziali/finali e caratteri invisibili)
             # e normalizza in MAIUSCOLO per coerenza con il mapping
@@ -1846,7 +1834,7 @@ class DbManagerDialog(QDialog):
             all_verifications.append(verif_dict)
         
         if not all_verifications: 
-            return QMessageBox.information(self, "NESSUNA VERIFICA", f"NESSUNA VERIFICA TROVATA NEL PERIODO SELEZIONATO.")
+            return QMessageBox.information(self, "NESSUNA VERIFICA", "NESSUNA VERIFICA TROVATA NEL PERIODO SELEZIONATO.")
         
         # Chiedi all'utente di selezionare il formato del nome file
         naming_dialog = ReportNamingFormatDialog(self)

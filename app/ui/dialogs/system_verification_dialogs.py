@@ -7,17 +7,15 @@ import json
 import os
 import re
 import logging
-from datetime import datetime
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QLineEdit, QListWidget, QListWidgetItem,
     QGroupBox, QMessageBox, QTableWidget, QTableWidgetItem,
-    QHeaderView, QAbstractItemView, QComboBox, QSizePolicy,
-    QFileDialog, QFrame, QTextEdit, QCheckBox,
+    QHeaderView, QAbstractItemView, QComboBox, QFileDialog,
 )
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 
 from app import config, services
 import database

@@ -243,16 +243,16 @@ def validate_functional_profile(profile: FunctionalProfile) -> List[str]:
             if not section.fields:
                 errors.append(f"La sezione '{section.title or section.key}' deve contenere almeno un campo.")
             field_keys = set()
-            for field in section.fields:
-                if not field.key:
+            for functional_field in section.fields:
+                if not functional_field.key:
                     errors.append(
                         f"Campo senza chiave nella sezione '{section.title or section.key}'."
                     )
-                elif field.key in field_keys:
+                elif functional_field.key in field_keys:
                     errors.append(
-                        f"Chiave campo duplicata '{field.key}' nella sezione '{section.title or section.key}'."
+                        f"Chiave campo duplicata '{functional_field.key}' nella sezione '{section.title or section.key}'."
                     )
-                field_keys.add(field.key)
+                field_keys.add(functional_field.key)
         else:
             if not section.rows:
                 errors.append(f"La sezione '{section.title or section.key}' deve contenere almeno una riga.")
@@ -269,16 +269,16 @@ def validate_functional_profile(profile: FunctionalProfile) -> List[str]:
                 row_keys.add(row.key)
 
                 field_keys = set()
-                for field in row.fields:
-                    if not field.key:
+                for functional_field in row.fields:
+                    if not functional_field.key:
                         errors.append(
                             f"Campo senza chiave nella riga '{row.label or row.key}' della sezione '{section.title or section.key}'."
                         )
-                    elif field.key in field_keys:
+                    elif functional_field.key in field_keys:
                         errors.append(
-                            f"Chiave campo duplicata '{field.key}' nella riga '{row.label or row.key}' della sezione '{section.title or section.key}'."
+                            f"Chiave campo duplicata '{functional_field.key}' nella riga '{row.label or row.key}' della sezione '{section.title or section.key}'."
                         )
-                    field_keys.add(field.key)
+                    field_keys.add(functional_field.key)
     return errors
 
 

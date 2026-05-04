@@ -1,4 +1,3 @@
-import json
 from datetime import datetime
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, 
                              QPushButton, QLabel, QComboBox, QTextEdit, QCalendarWidget, QDialogButtonBox, QFormLayout, QSpinBox,
@@ -53,12 +52,6 @@ class SingleCalendarRangeDialog(QDialog):
         self.range_format = QTextCharFormat()
         self.range_format.setBackground(QBrush(QColor("#dbeafe")))
     
-    def get_date_range(self):
-        """
-        Restituisce le date di inizio e fine selezionate come oggetti QDate.
-        """
-        return self.start_date, self.end_date
-
     def _on_date_clicked(self, date):
         if self.start_date and self.end_date:
             self.previous_range = (self.start_date, self.end_date)
@@ -199,6 +192,7 @@ class VisualInspectionDialog(QDialog):
             "Cavi paziente, connettori e accessori integri.",
             "Marcature e targhette di sicurezza leggibili.",
             "Assenza di sporcizia o segni di versamento di liquidi.",
+            "Corretta procedura di accensione",
             "Fusibili (se accessibili) di tipo e valore corretti."
         ]
         
@@ -635,7 +629,7 @@ class CustomerSelectionDialog(QDialog):
         self.setMinimumWidth(400)
         self.selected_customer_id = None
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(f"SELEZIONA IL NUOVO CLIENTE DI DESTINAZIONE PER IL DISPOSITIVO."))
+        layout.addWidget(QLabel("SELEZIONA IL NUOVO CLIENTE DI DESTINAZIONE PER IL DISPOSITIVO."))
         layout.addWidget(QLabel(f"<b>CLIENTE ATTUALE:</b> {current_customer_name.upper()}"))
         self.customer_combo = QComboBox()
         for customer in customers:

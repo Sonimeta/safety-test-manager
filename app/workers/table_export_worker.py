@@ -1,6 +1,5 @@
 import pandas as pd
 from PySide6.QtCore import QObject, Signal, QEventLoop
-from PySide6.QtWidgets import QFileDialog
 from app import services
 import database
 import logging

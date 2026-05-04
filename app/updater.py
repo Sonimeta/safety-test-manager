@@ -8,7 +8,6 @@ from urllib.parse import urljoin
 import requests
 from packaging import version
 import re
-import shutil
 
 from PySide6.QtCore import QThread, Signal
 from app import config

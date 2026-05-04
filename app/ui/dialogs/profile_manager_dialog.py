@@ -1,9 +1,8 @@
 # app/ui/dialogs/profile_manager_dialog.py
 import json
-import os
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, QListWidget, 
                                QMessageBox, QDialogButtonBox, QLineEdit, QTableWidget,
-                               QTableWidgetItem, QHeaderView, QAbstractItemView, QCheckBox,
+                               QHeaderView, QCheckBox,
                                QDoubleSpinBox, QComboBox, QLabel, QFormLayout, QListWidgetItem, QWidget, QFileDialog)
 from PySide6.QtCore import Qt
 from app.data_models import VerificationProfile, Test, Limit

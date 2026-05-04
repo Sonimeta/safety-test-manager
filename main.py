@@ -2,18 +2,17 @@
 import logging
 import sys
 import os
-from PySide6.QtCore import Qt, QTimer, QLocale, QTranslator, QLibraryInfo, QEvent
+from PySide6.QtCore import Qt, QLocale, QTranslator, QLibraryInfo, QEvent, QRect
 from PySide6.QtWidgets import (QApplication, QMessageBox, QDialog, QSplashScreen,
-                               QStyle, QLineEdit, QComboBox,
+                               QLineEdit, QComboBox,
                                QListWidget, QListWidgetItem,
-                               QTableWidget, QTableWidgetItem)
+                               QTableWidget)
 from PySide6.QtGui import QPixmap, QKeyEvent
 from PySide6.QtGui import QGuiApplication, QFontDatabase
-from PySide6.QtGui import QFont
+from PySide6.QtGui import QFont, QColor, QPainter
 from jose import jwt, JWTError
 from app import auth_manager
 from dotenv import load_dotenv
-from app.config import MODERN_STYLESHEET, load_verification_profiles
 from app.ui.main_window import MainWindow
 from app.logging_config import setup_logging, log_session_start
 from app.backup_manager import create_backup
@@ -248,39 +247,49 @@ if __name__ == '__main__':
     app.setFont(base_font)
 
     try:
-        # Carica il pixmap originale
-        logo_pixmap = QPixmap("logo.png")
-        # Ridimensiona il pixmap a una dimensione più piccola (es. 500x500) mantenendo le proporzioni
-        logo_pixmap = logo_pixmap.scaled(500, 500, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        _base_dir = os.path.dirname(os.path.abspath(__file__))
+        logo_path = os.path.join(_base_dir, "logo.png")
+        logo_pixmap = QPixmap(logo_path)
+        if logo_pixmap.isNull():
+            raise FileNotFoundError(f"logo.png non trovato in {logo_path}")
+        logo_pixmap = logo_pixmap.scaled(400, 400, Qt.KeepAspectRatio, Qt.SmoothTransformation)
 
-        # --- MODIFICA CHIAVE: Crea un nuovo pixmap più alto per includere un'area per il testo ---
-        text_area_height = 10  # Altezza in pixel per l'area del testo
-        # Crea un pixmap composito con sfondo nero
-        composite_pixmap = QPixmap(logo_pixmap.width(), logo_pixmap.height() + text_area_height)
-        composite_pixmap.fill(Qt.black)
-        from PySide6.QtGui import QPainter
+        # Pixmap composito: sfondo colorato + logo sovrapposto
+        splash_w = max(logo_pixmap.width() + 80, 500)
+        splash_h = logo_pixmap.height() + 100
+        composite_pixmap = QPixmap(splash_w, splash_h)
+        composite_pixmap.fill(QColor("#1e1b4b"))   # sfondo viola scuro opaco
+
         painter = QPainter(composite_pixmap)
-        # Centra il logo orizzontalmente
-        logo_x = (composite_pixmap.width() - logo_pixmap.width()) // 2
-        painter.drawPixmap(logo_x, 0, logo_pixmap)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        logo_x = (splash_w - logo_pixmap.width()) // 2
+        logo_y = 20
+        painter.drawPixmap(logo_x, logo_y, logo_pixmap)
+
+        ver_font = QFont("Segoe UI", 10)
+        painter.setFont(ver_font)
+        painter.setPen(QColor("#a5b4fc"))
+        painter.drawText(QRect(0, logo_y + logo_pixmap.height() + 8, splash_w, 28),
+                         Qt.AlignHCenter | Qt.AlignVCenter, f"Safety Test Manager  •  v{config.VERSIONE}")
         painter.end()
 
-        # Usa il pixmap composito per lo splash screen
-        pixmap = composite_pixmap
-        
-        splash = QSplashScreen(pixmap)
-        # Aumenta la dimensione del font per il messaggio dello splash screen
-        font = splash.font()
-        font.setPointSize(16) # Puoi regolare questo valore
-        font.setBold(True)
-        splash.setFont(font)
-        splash.showMessage(f"Avvio Safety Test Manager v{config.VERSIONE}...", Qt.AlignBottom | Qt.AlignHCenter, Qt.white)
+        # Nessun FramelessWindowHint: evita problemi di visibilità su Windows
+        splash = QSplashScreen(composite_pixmap, Qt.WindowStaysOnTopHint)
+        splash.setFont(QFont("Segoe UI", 9))
         splash.show()
-        app.processEvents() 
+        app.processEvents()
+
+        def splash_msg(text):
+            splash.showMessage(f"  ⏳  {text}", Qt.AlignBottom | Qt.AlignLeft, QColor("#c7d2fe"))
+            app.processEvents()
+
+        splash_msg(f"Avvio Safety Test Manager v{config.VERSIONE}...")
+
     except Exception as e:
         logging.warning(f"Impossibile creare o mostrare lo splash screen: {e}")
-        splash = None # Se il logo non viene trovato, l'app parte comunque
-    # --- FINE MODIFICA ---
+        splash = None
+        def splash_msg(text):
+            pass
     # Load Segoe UI font
     font_id = QFontDatabase.addApplicationFont("C:/Windows/Fonts/segoeui.ttf")
     if font_id < 0:
@@ -291,25 +300,22 @@ if __name__ == '__main__':
     log_session_start()
     logging.info(f"BASE_DIR: {config.BASE_DIR}")
     logging.info(f"APP_DATA_DIR: {config.APP_DATA_DIR}")
-    if splash:
-        splash.showMessage("Configurazione logging...", Qt.AlignBottom | Qt.AlignHCenter, Qt.white)
+    splash_msg("Configurazione logging e percorsi...")
     logging.info(f"DB_PATH: {config.DB_PATH}")
     logging.info(f"BACKUP_DIR: {config.BACKUP_DIR}")
     
     try:
+        splash_msg("Creazione backup automatico...")
         create_backup()
     except Exception as e:
         logging.error(f"Errore durante il backup: {e}")
-        if splash:
-            splash.showMessage("Creazione backup...", Qt.AlignBottom | Qt.AlignHCenter, Qt.white)
         QMessageBox.warning(None, "Avviso", "Impossibile creare il backup automatico.")
 
     while True:
         logged_in_successfully = False
         
         if auth_manager.load_session_from_disk():
-            if splash:
-                splash.showMessage("Sessione utente caricata...", Qt.AlignBottom | Qt.AlignHCenter, Qt.white)
+            splash_msg("Sessione utente caricata...")
             logged_in_successfully = True
         else:
             if splash:
@@ -335,10 +341,11 @@ if __name__ == '__main__':
         if logged_in_successfully:
             try:
                 # Load profiles in the main thread
-                if splash:
-                    splash.showMessage("Caricamento profili di verifica...", Qt.AlignBottom | Qt.AlignHCenter, Qt.white)
+                splash_msg("Connessione al database...")
                 config.load_verification_profiles()
+                splash_msg("Caricamento profili di verifica elettrica...")
                 config.load_functional_profiles()
+                splash_msg("Caricamento profili di verifica funzionale...")
                 # Evita la creazione automatica dei profili funzionali di default
                 # perché può generare conflitti di sincronizzazione con il server.
                 # Se serve, si può riabilitare impostando STM_SEED_FUNCTIONAL_TEMPLATES=1.
@@ -360,9 +367,9 @@ if __name__ == '__main__':
                                    f"IMPOSSIBILE CARICARE I PROFILI:\n{str(e).upper()}")
                 sys.exit(1)
 
-            if splash:
-                splash.showMessage("Preparazione interfaccia utente...", Qt.AlignBottom | Qt.AlignHCenter, Qt.white)
+            splash_msg("Preparazione interfaccia utente...")
             app.setStyleSheet(config.MODERN_STYLESHEET)
+            splash_msg("Avvio finestra principale...")
             window = MainWindow()
             window.show()
             

@@ -4,11 +4,10 @@ import copy
 import json
 import re
 import unicodedata
-from typing import List, Optional
+from typing import Optional
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QApplication,
     QAbstractItemView,
     QCheckBox,
     QComboBox,
@@ -325,7 +324,6 @@ class FieldEditorDialog(QDialog):
         is_rating = field_type == "rating"
         is_header = field_type == "header"
         is_calculated = field_type == "calculated"
-        has_formula = is_calculated or bool(self.formula_edit.text().strip())
         is_text_like = field_type in {"text", "multiline"}
 
         # Visibilità opzioni

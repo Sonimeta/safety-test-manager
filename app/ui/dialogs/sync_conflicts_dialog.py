@@ -11,15 +11,13 @@ Supporta:
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
     QTableWidget, QTableWidgetItem, QAbstractItemView, QHeaderView,
-    QGroupBox, QMessageBox, QWidget, QSplitter, QRadioButton,
-    QButtonGroup, QScrollArea, QFrame, QSizePolicy
+    QMessageBox, QWidget, QSplitter, QRadioButton,
+    QButtonGroup, QScrollArea, QFrame
 )
-from PySide6.QtGui import QColor, QFont, QIcon
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtCore import Qt, Signal
 import logging
-import json
 import database
-from app import services
 from datetime import datetime, timezone
 
 

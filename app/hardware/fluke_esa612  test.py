@@ -1,4 +1,3 @@
-from click import command
 import serial
 import serial.tools.list_ports
 import time
@@ -95,7 +94,7 @@ class FlukeESA612:
             time.sleep(0.1)
             logging.info("Connessione riuscita. Strumento in modalità remota.")
 
-        except serial.SerialException as e:
+        except serial.SerialException:
             raise ConnectionError(f"Impossibile aprire la porta {self.port}. Verificare che sia corretta, non sia in uso e che lo strumento sia acceso e collegato.")
         except Exception as e:
             self.disconnect() # Assicura la chiusura in caso di altri errori

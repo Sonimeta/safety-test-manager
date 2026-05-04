@@ -10,11 +10,11 @@ import base64
 import os
 import time
 import hashlib
-from typing import Optional, Tuple, Dict, List
+from typing import Optional, Tuple, List
 from PySide6.QtWidgets import QMessageBox
 
 from app import auth_manager, config
-from app.backup_manager import create_backup, get_latest_backup, restore_from_backup
+from app.backup_manager import create_backup, restore_from_backup
 
 LOCK_FILE = config.LOCK_FILE_DIR
 
@@ -41,11 +41,6 @@ LOCK_STALE_HOURS = 6  # oltre questa soglia il lock è considerato stantio
 
 # Sync checksum per verificare integrità
 SYNC_DATA_VERSION = "1.0"
-
-def is_sync_locked():
-    """Controlla se il file di lock esiste."""
-    return os.path.exists(LOCK_FILE)
-
 
 def _safe_remove_lock_file(reason: str = ""):
     try:
@@ -534,7 +529,7 @@ def _make_sync_request_with_retry(payload: dict, headers: dict, sync_url: str) -
             logging.info(f"✓ Risposta ricevuta dal server (status: {server_response.get('status')})")
             return server_response, None
             
-        except requests.Timeout as e:
+        except requests.Timeout:
             last_error = f"Timeout ({REQUEST_TIMEOUT}s)"
             retry_manager.last_error = last_error
             logging.warning(f"⚠ {last_error} - tentativo {retry_manager.attempt + 1}")
@@ -587,7 +582,7 @@ def _make_sync_request_with_retry(payload: dict, headers: dict, sync_url: str) -
                 logging.error(f"✗ {error_msg}")
                 return None, f"{error_msg}. Non ritentando (errore client)."
                 
-        except json.JSONDecodeError as e:
+        except json.JSONDecodeError:
             last_error = "Risposta JSON invalida"
             retry_manager.last_error = last_error
             logging.warning(f"⚠ {last_error} - tentativo {retry_manager.attempt + 1}")
@@ -886,8 +881,6 @@ def _apply_server_changes(conn, changes):
 
             records_to_insert = []
             records_to_update = []
-            skipped_fk_records = []  # Record saltati per FK mancante
-
             for record in records_from_server:
                 if 'customer_id' in record and table == 'devices':
                     record.pop('customer_id')
@@ -1301,7 +1294,7 @@ def _handle_uuid_maps(conn, uuid_map: dict):
             logging.info(f"Riassegnate {cursor.rowcount} destinazioni dal cliente duplicato a quello corretto.")
             cursor.execute("DELETE FROM customers WHERE id = ?", (duplicate_customer_id,))
             logging.warning(f"Cliente duplicato con UUID {client_uuid} eliminato.")
-        except Exception as e:
+        except Exception:
             logging.error(f"Errore durante la gestione della mappa UUID {client_uuid} -> {server_uuid}", exc_info=True)
             continue
 
@@ -1319,8 +1312,6 @@ def _detect_and_log_conflicts(conn, local_changes: dict, server_changes: dict) -
     
     conflicts_resolved = []
     conflicts_manual = []
-    cursor = conn.cursor()
-    
     try:
         for table in SYNC_ORDER:
             local_records = local_changes.get(table, [])

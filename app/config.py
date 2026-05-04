@@ -1,13 +1,4 @@
 # app/config.py
-import json
-from PySide6.QtWidgets import QMessageBox
-from .data_models import Limit, Test, VerificationProfile
-from .functional_models import (
-    FunctionalField,
-    FunctionalProfile,
-    FunctionalRowDefinition,
-    FunctionalSection,
-)
 import logging
 import os
 import sys
@@ -37,7 +28,7 @@ def get_app_data_dir():
     # Crea la cartella se non esiste
     os.makedirs(app_data_path, exist_ok=True)
     return app_data_path
-VERSIONE = "10.0.10"
+VERSIONE = "10.0.11"
 BASE_DIR = get_base_dir() # La cartella del programma
 APP_DATA_DIR = get_app_data_dir() # La cartella dei dati utente
 
@@ -242,7 +233,7 @@ def apply_theme_to_widget(widget) -> None:
     Args:
         widget: Il widget a cui applicare il tema
     """
-    from PySide6.QtWidgets import QApplication, QWidget
+    from PySide6.QtWidgets import QWidget
     stylesheet = get_current_stylesheet()
     widget.setStyleSheet(stylesheet)
     

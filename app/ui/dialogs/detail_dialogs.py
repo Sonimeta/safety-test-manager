@@ -1,13 +1,10 @@
-import json
 import logging
 from PySide6.QtWidgets import (QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QMessageBox, QGridLayout,
-    QVBoxLayout, QGroupBox, QTableWidget, QTableWidgetItem, QHBoxLayout, QComboBox, QPushButton, QApplication, QStyle, QLabel, QHeaderView, QAbstractItemView, QCompleter)
+    QVBoxLayout, QGroupBox, QTableWidget, QTableWidgetItem, QHBoxLayout, QComboBox, QPushButton, QApplication, QStyle, QLabel, QCompleter)
 from PySide6.QtCore import Qt, QStringListModel
 from app.data_models import AppliedPart
-from app.hardware.fluke_esa612 import FlukeESA612
 from app.ui.dialogs.utility_dialogs import DeviceSearchDialog
 from app import services
-import database  # Import your database module
 import qtawesome as qta
 
 class CustomerDialog(QDialog):
@@ -262,7 +259,7 @@ class DeviceDialog(QDialog):
             self._on_profile_combo_changed
         )
 
-    def accept(self):
+    def _validate_required_fields(self):
         """
         Valida i campi obbligatori prima di salvare.
         Su richiesta:
@@ -285,9 +282,9 @@ class DeviceDialog(QDialog):
                 "DATI MANCANTI",
                 f"I seguenti campi sono obbligatori e devono essere compilati:\n\n{fields}"
             )
-            return
+            return False
 
-        super().accept()
+        return True
 
     def load_completion_data(self):
         """Carica i dati per l'autocompletamento."""
@@ -676,7 +673,9 @@ class DeviceDialog(QDialog):
         super().reject()
 
     def accept(self):
-        """Pulizia alla conferma della dialog."""
+        """Valida i dati e pulisce la scansione telefono alla conferma."""
+        if not self._validate_required_fields():
+            return
         self._stop_phone_scan()
         super().accept()
 

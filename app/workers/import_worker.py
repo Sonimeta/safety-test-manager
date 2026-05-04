@@ -25,9 +25,6 @@ class ImportWorker(QObject):
             return
         try:
             if self.filename.endswith('.csv'):
-               with open(self.filename, 'r', encoding='utf-8', newline='') as f:
-                   sample = f.read(2048)
-                   f.seek(0)
                df = pd.read_csv(self.filename, sep=';', dtype=str, encoding='utf-8').fillna('')
                # Normalizza nomi colonne in MAIUSCOLO per coerenza con il mapping
                df.columns = [str(col).strip().upper() if col is not None else "" for col in df.columns]
@@ -72,7 +69,7 @@ class ImportWorker(QObject):
                         error_messages.append(f"default: {str(e)}")
                 
                 if df is None:
-                    raise Exception(f"Impossibile leggere il file Excel. Errori provati:\n" + "\n".join(error_messages))
+                    raise Exception("Impossibile leggere il file Excel. Errori provati:\n" + "\n".join(error_messages))
                 
                 # Pulisci i nomi delle colonne (rimuovi spazi iniziali/finali)
                 # e normalizza in MAIUSCOLO per coerenza con il mapping

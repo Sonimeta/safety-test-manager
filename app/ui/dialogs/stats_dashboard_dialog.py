@@ -1,13 +1,12 @@
 # app/ui/dialogs/stats_dashboard_dialog.py
-from datetime import datetime, date, timedelta
+from datetime import datetime, date
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QSpinBox, QLabel, QWidget, 
-                               QSizePolicy, QGroupBox, QGridLayout, QPushButton, QComboBox, QTabWidget,
+                               QGroupBox, QPushButton, QComboBox, QTabWidget,
                                QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView, QFileDialog,
-                               QMessageBox, QApplication, QFormLayout, QListWidget, QListWidgetItem, QStyle,
-                               QScrollArea, QFrame, QProgressBar, QSplitter, QToolTip)
-from PySide6.QtCharts import (QChart, QChartView, QBarSet, QPercentBarSeries, QBarCategoryAxis,
-                              QPieSeries, QPieSlice, QLineSeries, QValueAxis, QBarSeries,
-                              QStackedBarSeries)
+                               QMessageBox, QApplication, QListWidget, QListWidgetItem, QStyle,
+                               QSplitter, QToolTip)
+from PySide6.QtCharts import (QChart, QChartView, QBarSet, QBarCategoryAxis,
+                              QPieSeries, QPieSlice, QLineSeries, QValueAxis, QBarSeries)
 from PySide6.QtGui import QPainter, QColor, QPen, QFont, QCursor
 from PySide6.QtCore import Qt, QDate, QTimer
 

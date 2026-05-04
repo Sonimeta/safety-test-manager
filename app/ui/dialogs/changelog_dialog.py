@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QPushButton, QScrollArea, QWidget, QFrame, QSizePolicy
 )
 from PySide6.QtCore import Qt, QSettings
-from PySide6.QtGui import QFont, QColor
+from PySide6.QtGui import QFont
 import qtawesome as qta
 from app import config
 
@@ -198,8 +198,8 @@ class ChangelogDialog(QDialog):
 
         if is_latest:
             new_badge = QLabel(
-                f'<span style="background:#10b981;color:#fff;padding:2px 10px;'
-                f'border-radius:10px;font-size:10px;font-weight:700;">NUOVA</span>'
+                '<span style="background:#10b981;color:#fff;padding:2px 10px;'
+                'border-radius:10px;font-size:10px;font-weight:700;">NUOVA</span>'
             )
             top.addWidget(new_badge)
 

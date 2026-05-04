@@ -1,11 +1,9 @@
 # app/ui/dialogs/advanced_search_dialog.py
 
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QGridLayout, QLabel, QLineEdit,
-                               QPushButton, QTableWidget, QHeaderView, QAbstractItemView, QDateEdit,
-                               QMessageBox, QTableWidgetItem, QComboBox, QCheckBox, QHBoxLayout,
-                               QDialogButtonBox, QCompleter, QGroupBox, QFileDialog, QApplication, QProgressBar,
-                               QFrame, QSplitter, QSizePolicy, QSpacerItem)
-from PySide6.QtCore import Qt, QDate, QTimer
+                               QPushButton, QTableWidget, QAbstractItemView, QMessageBox, QTableWidgetItem, QComboBox, QHBoxLayout,
+                               QDialogButtonBox, QCompleter, QGroupBox, QFileDialog, QApplication, QProgressBar)
+from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QColor, QBrush
 from app import services, config
 from app.ui.dialogs.utility_dialogs import SingleCalendarRangeDialog

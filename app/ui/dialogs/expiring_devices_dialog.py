@@ -10,7 +10,6 @@ from app import config
 import database
 import qtawesome as qta
 import logging
-from datetime import datetime, timedelta
 
 
 class ExpiringDevicesDialog(QDialog):

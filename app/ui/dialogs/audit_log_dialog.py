@@ -2,9 +2,9 @@
 
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
                                QPushButton, QLabel, QComboBox, QLineEdit, QHeaderView, QAbstractItemView,
-                               QGroupBox, QMessageBox, QApplication, QFileDialog, QDateEdit)
+                               QGroupBox, QMessageBox, QApplication, QFileDialog)
 from PySide6.QtCore import Qt, QDate
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor
 from app import services, config
 import qtawesome as qta
 import logging

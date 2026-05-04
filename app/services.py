@@ -3,19 +3,16 @@ from __future__ import annotations
 # app/services.py (Versione completa per la sincronizzazione)
 import logging
 import json
-from datetime import datetime, timezone, date, timedelta
+from datetime import datetime, timezone
 import uuid
 
-import serial
-
 import database
-from .data_models import AppliedPart
 from .functional_models import FunctionalProfile
 from .exceptions import DeletedDeviceFoundException  # Import custom exception
 import report_generator
 import tempfile
 import os
-from PySide6.QtCore import QTimer, QSettings, Qt, QLocale
+from PySide6.QtCore import QTimer, QLocale
 from PySide6.QtPrintSupport import QPrintDialog, QPrinter, QPrintPreviewDialog
 from PySide6.QtGui import QPainter, QAction
 from app import auth_manager
@@ -136,6 +133,27 @@ def get_customer_by_id(customer_id):
 
 def get_device_count_for_customer(customer_id):
     return database.get_device_count_for_customer(customer_id)
+
+def get_all_customers_with_counts():
+    """Restituisce tutti i clienti con conteggio destinazioni e dispositivi."""
+    with database.DatabaseConnection() as conn:
+        query = """
+            SELECT
+                c.id,
+                c.name,
+                c.address,
+                c.phone,
+                c.email,
+                COUNT(DISTINCT d.id) AS destination_count,
+                COUNT(DISTINCT dev.id) AS device_count
+            FROM customers c
+            LEFT JOIN destinations d ON d.customer_id = c.id AND d.is_deleted = 0
+            LEFT JOIN devices dev ON dev.destination_id = d.id AND dev.is_deleted = 0
+            WHERE c.is_deleted = 0
+            GROUP BY c.id, c.name, c.address, c.phone, c.email
+            ORDER BY c.name
+        """
+        return conn.execute(query).fetchall()
 
 def get_all_destinations_with_device_count():
     """Get all destinations with their device counts."""
@@ -1290,43 +1308,28 @@ def get_verification_stats():
     """Get verification statistics."""
     try:
         with database.DatabaseConnection() as conn:
-            # Query corretta usando overall_status
-            query = """
-                SELECT 
-                    COUNT(*) as totale,
-                    SUM(CASE WHEN overall_status = 'PASSATO' THEN 1 ELSE 0 END) as conformi,
-                    SUM(CASE WHEN overall_status = 'FALLITO' THEN 1 ELSE 0 END) as non_conformi
-                FROM verifications
-                WHERE is_deleted = 0
-            """
-            
-            result = conn.execute(query).fetchone()
-            
-            if not result:
-                return {'totale': 0, 'conformi': 0, 'non_conformi': 0}
-            
+            electrical_total = conn.execute(
+                "SELECT COUNT(*) AS total FROM verifications WHERE is_deleted = 0"
+            ).fetchone()
+            functional_total = conn.execute(
+                "SELECT COUNT(*) AS total FROM functional_verifications WHERE is_deleted = 0"
+            ).fetchone()
+
+            electrical_count = int((electrical_total["total"] if electrical_total else 0) or 0)
+            functional_count = int((functional_total["total"] if functional_total else 0) or 0)
+
             stats = {
-                'totale': int(result['totale'] or 0),
-                'conformi': int(result['conformi'] or 0),
-                'non_conformi': int(result['non_conformi'] or 0)
+                'totale': electrical_count + functional_count,
+                'verifiche_elettriche': electrical_count,
+                'verifiche_funzionali': functional_count,
             }
-            
+
             logging.info(f"Verification stats: {stats}")
-            
-            # Debug: mostra distribuzione status
-            status_dist = conn.execute("""
-                SELECT overall_status, COUNT(*) as count
-                FROM verifications
-                WHERE is_deleted = 0
-                GROUP BY overall_status
-            """).fetchall()
-            logging.debug(f"Status distribution: {[dict(s) for s in status_dist]}")
-            
             return stats
             
     except Exception as e:
         logging.error(f"Error getting verification stats: {e}", exc_info=True)
-        return {'totale': 0, 'conformi': 0, 'non_conformi': 0}
+        return {'totale': 0, 'verifiche_elettriche': 0, 'verifiche_funzionali': 0}
 
 # ==============================================================================
 # SERVIZI PER IMPORT / EXPORT
@@ -1369,10 +1372,42 @@ def search_globally(search_term: str) -> list:
     customers = database.get_all_customers(search_term)
     destinations = database.search_destinations_globally(search_term)
     devices = database.search_device_globally(search_term)
-    
-    # Converti i risultati in dizionari e combinali
-    results = [dict(c) for c in customers] + [dict(d) for d in destinations] + [dict(dev) for dev in devices]
-    return results
+
+    customer_results = [dict(c) for c in customers]
+    destination_results = [dict(d) for d in destinations]
+    device_results = [dict(dev) for dev in devices]
+
+    # search_destinations_globally include anche la destinazione dei dispositivi
+    # trovati. Quando il dispositivo esiste già nei risultati, teniamo il risultato
+    # più specifico per permettere la selezione automatica del singolo dispositivo.
+    device_destination_ids = {
+        dev.get('destination_id')
+        for dev in device_results
+        if dev.get('destination_id') is not None
+    }
+    if device_destination_ids:
+        destination_results = [
+            dest for dest in destination_results
+            if dest.get('id') not in device_destination_ids
+        ]
+
+    results = customer_results + destination_results + device_results
+    deduped_results = []
+    seen = set()
+    for item in results:
+        if 'serial_number' in item:
+            key = ('device', item.get('id'))
+        elif 'customer_id' in item and 'customer_name' in item:
+            key = ('destination', item.get('id'))
+        else:
+            key = ('customer', item.get('id'))
+
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped_results.append(item)
+
+    return deduped_results
 
 
 def search_device_globally(search_term: str) -> list:
@@ -2015,7 +2050,7 @@ def print_system_pdf_report(sv_id, report_settings, parent_widget=None):
     import tempfile
     from PySide6.QtPrintSupport import QPrinter, QPrintDialog
     from PySide6.QtGui import QPageLayout, QPageSize
-    from PySide6.QtCore import QMarginsF, QUrl
+    from PySide6.QtCore import QMarginsF
     from PySide6.QtWidgets import QMessageBox
 
     tmp_file = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)

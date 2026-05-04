@@ -421,15 +421,13 @@ class BulkReportWorker(QObject):
         return new_path
 
     def _create_cover_pdf(self, info: dict, output_path: str, include_cover: bool = True, include_table: bool = True) -> None:
-        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.pagesizes import A4
         from reportlab.lib.units import cm
         from reportlab.lib.colors import HexColor
         from reportlab.lib.utils import ImageReader, simpleSplit
         from reportlab.pdfgen import canvas
-        from reportlab.platypus import Table, TableStyle
-        from reportlab.lib import colors
         from PySide6.QtGui import QImage
-        from report_generator import LOGO_MAX_W_CM, LOGO_MAX_H_CM, _compress_qimage_to_bytes
+        from report_generator import _compress_qimage_to_bytes
 
         def fmt_date(date_str: str) -> str:
             if not date_str:
@@ -671,11 +669,10 @@ class BulkReportWorker(QObject):
     def _add_results_table_pages(self, c, info: dict) -> None:
         """Aggiunge le pagine con la tabella degli esiti delle verifiche."""
         from reportlab.lib.pagesizes import A4, landscape
-        from reportlab.lib.units import cm, mm
+        from reportlab.lib.units import cm
         from reportlab.lib.colors import HexColor
         from reportlab.platypus import Table, TableStyle, Paragraph
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib import colors
         from reportlab.lib.enums import TA_CENTER
         
         # Usa formato landscape per la tabella
@@ -686,7 +683,6 @@ class BulkReportWorker(QObject):
         COLOR_HEADER_BG = HexColor("#1e3a5f")    # Header tabella blu scuro
         COLOR_HEADER_TEXT = HexColor("#ffffff")  # Testo header bianco
         COLOR_ROW_EVEN = HexColor("#f0f4f8")     # Righe pari - grigio chiaro
-        COLOR_ROW_ODD = HexColor("#ffffff")      # Righe dispari - bianco
         COLOR_PASS = HexColor("#059669")         # Verde per CONFORME
         COLOR_PASS_BG = HexColor("#09ad0b")      # Sfondo verde chiaro
         COLOR_ANNOTATION = HexColor("#f59e0b")   # Arancione/Giallo per CONFORME CON ANNOTAZIONE
@@ -749,7 +745,18 @@ class BulkReportWorker(QObject):
         # Raggruppa per device_id per evitare duplicati (elettrica + funzionale)
         devices_map = {}
         for verif in self.verifications:
+            verification_type = verif.get('verification_type', 'ELETTRICA')
+
+            # Le verifiche di sistema NON rappresentano un singolo dispositivo:
+            # non devono comparire nella tabella apparecchi del fascicolo.
+            if verification_type == "SISTEMA":
+                continue
+
             device_id = verif.get('device_id')
+            # Scarta record senza device_id valido (evita righe "fantasma")
+            if not device_id:
+                continue
+
             if device_id not in devices_map:
                 devices_map[device_id] = {
                     'data': verif,
@@ -757,8 +764,7 @@ class BulkReportWorker(QObject):
                     'esito_funzionale': '',
                     'note_parts': []
                 }
-            
-            verification_type = verif.get('verification_type', 'ELETTRICA')
+
             raw_status = verif.get('overall_status', '')
             status = convert_status(raw_status)
             

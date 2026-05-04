@@ -1,4 +1,4 @@
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QLineEdit, QLabel, QDialogButtonBox, QFormLayout, QComboBox
+from PySide6.QtWidgets import QDialog, QLineEdit, QDialogButtonBox, QFormLayout, QComboBox
 
 class UserDetailDialog(QDialog):
     def __init__(self, user_data=None, parent=None):

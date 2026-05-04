@@ -1,6 +1,6 @@
 # app/ui/widgets/overlay_widget.py
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
-from PySide6.QtGui import QMovie, QColor, QPalette
+from PySide6.QtGui import QMovie
 from PySide6.QtCore import Qt, QSize
 from app.config import load_stylesheet
 

@@ -1,27 +1,25 @@
 import ast
-import ast
 import logging
 import os
 import re
-import time
 import math
-from PySide6.QtCore import Qt, QTimer, QDate, QTime, Signal, QSize, QEvent
-from PySide6.QtGui import QFont, QColor, QPainter, QMovie, QFocusEvent, QWheelEvent, QMouseEvent, QEnterEvent, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QApplication, QDialog, QGroupBox, QHBoxLayout, QLabel,
+from PySide6.QtCore import Qt, QTimer, QDate, QTime, Signal
+from PySide6.QtGui import QFont, QColor, QFocusEvent, QWheelEvent, QMouseEvent, QEnterEvent, QKeySequence, QShortcut
+from PySide6.QtWidgets import (QApplication, QGroupBox, QHBoxLayout, QLabel,
                                QLineEdit, QMessageBox, QProgressBar, QPushButton,
                                QStackedWidget, QTableWidget, QTableWidgetItem,
                                QVBoxLayout, QWidget, QHeaderView, QListWidget,
                                QListWidgetItem, QFileDialog, QStyle, QFormLayout,
                                QComboBox, QTextEdit, QScrollArea, QDoubleSpinBox, QSpinBox,
                                QAbstractScrollArea, QAbstractItemView, QAbstractSpinBox,
+                               QGridLayout,
                                QDateEdit, QTimeEdit)
-from app import auth_manager, config, services
+from app import config, services
 import database
 from app.data_models import AppliedPart
 from app.functional_models import (
     FunctionalField,
     FunctionalProfile,
-    FunctionalRowDefinition,
     FunctionalSection,
 )
 from app.ui.state_manager import AppState
@@ -439,7 +437,7 @@ class TestRunnerWidget(QWidget):
             
             btn_save_exit = msg_box.addButton("Salva ed Esci", QMessageBox.AcceptRole)
             btn_exit = msg_box.addButton("Esci senza Salvare", QMessageBox.DestructiveRole)
-            btn_cancel = msg_box.addButton("Annulla", QMessageBox.RejectRole)
+            msg_box.addButton("Annulla", QMessageBox.RejectRole)
             
             msg_box.exec()
             
@@ -506,7 +504,7 @@ class TestRunnerWidget(QWidget):
             msg_box.setIcon(QMessageBox.Question)
             
             btn_yes = msg_box.addButton("Sì", QMessageBox.YesRole)
-            btn_no = msg_box.addButton("No", QMessageBox.NoRole)
+            msg_box.addButton("No", QMessageBox.NoRole)
             
             msg_box.exec()
             
@@ -540,7 +538,7 @@ class TestRunnerWidget(QWidget):
         msg_box.setText(f"Lo strumento ha riportato un avviso:\n\n{error_message}")
         msg_box.setInformativeText("Vuoi riprovare la misura o annullare l'intera verifica?")
         retry_button = msg_box.addButton("Riprova", QMessageBox.AcceptRole)
-        cancel_button = msg_box.addButton("Annulla Verifica", QMessageBox.RejectRole)
+        msg_box.addButton("Annulla Verifica", QMessageBox.RejectRole)
         msg_box.exec()
         return "retry" if msg_box.clickedButton() == retry_button else "cancel"
 
@@ -924,6 +922,7 @@ class FunctionalTestRunnerWidget(QWidget):
         self.section_list_items: list[QListWidgetItem] = []
         self.stacked_widget: QStackedWidget | None = None
         self.section_list: QListWidget | None = None
+        self.footer_group: QGroupBox | None = None
         self.section_step_label: QLabel | None = None
         self.section_hint_label: QLabel | None = None
         self.jump_to_incomplete_button: QPushButton | None = None
@@ -970,14 +969,18 @@ class FunctionalTestRunnerWidget(QWidget):
         self.jump_to_incomplete_button.clicked.connect(self._go_to_first_incomplete_section)
         guidance_layout.addWidget(self.jump_to_incomplete_button)
 
-        main_layout.addWidget(guidance_group)
+        guidance_group.hide()
+        self.section_step_label = None
+        self.section_hint_label = None
+        self.jump_to_incomplete_button = None
 
         # Layout principale orizzontale: lista sezioni + contenuto
         content_layout = QHBoxLayout()
         
         # Pannello laterale con lista sezioni e progresso
         sidebar = QWidget()
-        sidebar.setFixedWidth(250)
+        sidebar.setMinimumWidth(300)
+        sidebar.setMaximumWidth(340)
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(5, 5, 5, 5)
         
@@ -986,7 +989,11 @@ class FunctionalTestRunnerWidget(QWidget):
         sidebar_layout.addWidget(progress_label)
         
         self.section_list = QListWidget()
-        self.section_list.setMaximumWidth(240)
+        self.section_list.setMinimumWidth(290)
+        self.section_list.setWordWrap(True)
+        self.section_list.setTextElideMode(Qt.ElideNone)
+        self.section_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.section_list.setSpacing(4)
         self.section_list.itemClicked.connect(self._on_section_selected)
         sidebar_layout.addWidget(self.section_list)
         
@@ -1019,6 +1026,7 @@ class FunctionalTestRunnerWidget(QWidget):
             section_title = section.title or section.key.title()
             list_item = QListWidgetItem(f"📋 {section_title}")
             list_item.setData(Qt.UserRole, len(self.section_widgets) - 1)
+            list_item.setToolTip(section_title)
             self.section_list_items.append(list_item)
             self.section_list.addItem(list_item)
         
@@ -1054,6 +1062,7 @@ class FunctionalTestRunnerWidget(QWidget):
         
         # Stato finale e note
         footer_group = QGroupBox("Esito e Note")
+        self.footer_group = footer_group
         footer_layout = QFormLayout(footer_group)
         self.status_combo = QComboBox()
         self.status_combo.addItems(["PASSATO", "FALLITO", "CONFORME CON ANNOTAZIONE"])
@@ -1079,6 +1088,7 @@ class FunctionalTestRunnerWidget(QWidget):
         self.notes_edit.textChanged.connect(lambda: self._update_overall_status_suggestion())
         footer_layout.addRow("Note:", self.notes_edit)
         main_layout.addWidget(footer_group)
+        footer_group.setVisible(self.current_section_index >= len(self.section_widgets) - 1)
 
         # Pulsanti azione
         button_layout = QHBoxLayout()
@@ -1230,6 +1240,8 @@ class FunctionalTestRunnerWidget(QWidget):
             if self.section_step_label:
                 total = len(self.section_widgets) or 1
                 self.section_step_label.setText(f"Sezione {index + 1}/{total}")
+            if self.footer_group:
+                self.footer_group.setVisible(index >= len(self.section_widgets) - 1)
 
     def _on_section_selected(self, item: QListWidgetItem):
         """Gestisce la selezione di una sezione dalla lista."""
@@ -1271,10 +1283,32 @@ class FunctionalTestRunnerWidget(QWidget):
         prev_shortcut = QShortcut(QKeySequence("Alt+Left"), self)
         prev_shortcut.activated.connect(self._previous_section)
 
+        next_tab_shortcut = QShortcut(QKeySequence("Ctrl+Tab"), self)
+        next_tab_shortcut.activated.connect(self._next_section)
+
+        prev_tab_shortcut = QShortcut(QKeySequence("Ctrl+Shift+Tab"), self)
+        prev_tab_shortcut.activated.connect(self._previous_section)
+
         incomplete_shortcut = QShortcut(QKeySequence("Ctrl+J"), self)
         incomplete_shortcut.activated.connect(self._go_to_first_incomplete_section)
 
-        self._shortcuts = [save_shortcut, next_shortcut, prev_shortcut, incomplete_shortcut]
+        section_jump_shortcuts = []
+        for section_index in range(min(9, len(self.profile.sections))):
+            shortcut = QShortcut(QKeySequence(f"Alt+{section_index + 1}"), self)
+            shortcut.activated.connect(
+                lambda idx=section_index: self._show_section(idx)
+            )
+            section_jump_shortcuts.append(shortcut)
+
+        self._shortcuts = [
+            save_shortcut,
+            next_shortcut,
+            prev_shortcut,
+            next_tab_shortcut,
+            prev_tab_shortcut,
+            incomplete_shortcut,
+            *section_jump_shortcuts,
+        ]
 
     def _collect_missing_fields_for_section(self, section_index: int) -> list[tuple[str, object]]:
         """Restituisce i campi obbligatori mancanti di una sezione."""
@@ -1649,6 +1683,7 @@ class FunctionalTestRunnerWidget(QWidget):
         if section_index >= 0 and section_index < len(self.section_list_items):
             item = self.section_list_items[section_index]
             section_title = section.title or section.key.title()
+            item.setToolTip(section_title)
             if total_fields > 0:
                 progress_pct = int((completed_fields / total_fields) * 100)
                 if progress_pct == 100:
@@ -2035,6 +2070,13 @@ class FunctionalTestRunnerWidget(QWidget):
                     column_fields.append(field)
 
         cell_widgets: dict[tuple[str, str], object] = {}
+        cards_container = QWidget()
+        cards_layout = QGridLayout(cards_container)
+        cards_layout.setContentsMargins(0, 0, 0, 0)
+        cards_layout.setHorizontalSpacing(16)
+        cards_layout.setVerticalSpacing(12)
+        cards_layout.setColumnStretch(0, 1)
+        cards_layout.setColumnStretch(1, 1)
 
         for row_idx, row in enumerate(row_definitions):
             row_title = row.label or row.key.title()
@@ -2051,7 +2093,11 @@ class FunctionalTestRunnerWidget(QWidget):
                 group_layout.addRow(self._build_field_label(field), widget)
                 cell_widgets[(row.key, field.key)] = widget
 
-            layout.addWidget(group)
+            grid_row = row_idx // 2
+            grid_col = row_idx % 2
+            cards_layout.addWidget(group, grid_row, grid_col)
+
+        layout.addWidget(cards_container)
 
         return {
             "type": "table",
@@ -2726,7 +2772,7 @@ class FunctionalTestRunnerWidget(QWidget):
             
             btn_save_exit = msg_box.addButton("Salva ed Esci", QMessageBox.AcceptRole)
             btn_exit = msg_box.addButton("Esci senza Salvare", QMessageBox.DestructiveRole)
-            btn_cancel = msg_box.addButton("Annulla", QMessageBox.RejectRole)
+            msg_box.addButton("Annulla", QMessageBox.RejectRole)
             
             msg_box.exec()
             

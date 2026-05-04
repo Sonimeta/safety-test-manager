@@ -1,8 +1,6 @@
 # app/ui/dialogs/reactivate_device_dialog.py
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                                QPushButton, QGroupBox, QFormLayout, QMessageBox)
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QFont
 import qtawesome as qta
 from app import config
 
@@ -137,11 +135,11 @@ class ReactivateDeviceDialog(QDialog):
         reply = QMessageBox.question(
             self,
             "Conferma Creazione Nuovo",
-            f"Sei sicuro di voler creare un NUOVO dispositivo?\n\n"
-            f"Avrai DUE dispositivi con lo stesso numero di serie:\n"
-            f"- Uno eliminato (vecchio)\n"
-            f"- Uno attivo (nuovo)\n\n"
-            f"Questo è sconsigliato e potrebbe creare confusione.",
+            "Sei sicuro di voler creare un NUOVO dispositivo?\n\n"
+            "Avrai DUE dispositivi con lo stesso numero di serie:\n"
+            "- Uno eliminato (vecchio)\n"
+            "- Uno attivo (nuovo)\n\n"
+            "Questo è sconsigliato e potrebbe creare confusione.",
             QMessageBox.Yes | QMessageBox.No,
             QMessageBox.No
         )

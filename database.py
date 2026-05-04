@@ -5,7 +5,6 @@ import os
 import logging
 from datetime import datetime, timezone
 import re
-import serial
 from app import config
 from app.data_models import VerificationProfile, Test, Limit
 from app.functional_models import FunctionalField, FunctionalProfile, FunctionalRowDefinition, FunctionalSection
@@ -157,7 +156,7 @@ def migrate_database():
                 
                 current_version = file_version
                 logging.info(f"Database aggiornato alla versione {current_version}.")
-    except Exception as e:
+    except Exception:
         logging.critical("Errore critico durante la migrazione del database.", exc_info=True)
         raise
 
@@ -538,8 +537,8 @@ def search_destinations_globally(search_term: str):
                 d.id,
                 d.name,
                 d.address,
-                d.phone,
-                d.email,
+                NULL as phone,
+                NULL as email,
                 d.customer_id,
                 c.name as customer_name,
                 d.is_deleted,
@@ -560,8 +559,8 @@ def search_destinations_globally(search_term: str):
                 dest.id,
                 dest.name,
                 dest.address,
-                dest.phone,
-                dest.email,
+                NULL as phone,
+                NULL as email,
                 dest.customer_id,
                 c.name as customer_name,
                 dest.is_deleted,
@@ -4038,32 +4037,6 @@ def get_audit_log_stats():
         stats['by_entity'] = [dict(row) for row in by_entity]
         
         return stats
-
-def search_destinations_globally(search_term: str):
-    """
-    Cerca destinazioni in tutto il database per nome, indirizzo.
-    Restituisce destinazioni con informazioni del cliente.
-    """
-    with DatabaseConnection() as conn:
-        query = """
-            SELECT 
-                d.id,
-                d.uuid,
-                d.name,
-                d.address,
-                d.customer_id,
-                c.name as customer_name,
-                d.last_modified,
-                d.is_synced
-            FROM destinations d
-            JOIN customers c ON d.customer_id = c.id
-            WHERE d.is_deleted = 0
-            AND (d.name LIKE ? OR d.address LIKE ?)
-            ORDER BY d.name
-        """
-        pattern = f"%{search_term}%"
-        return conn.execute(query, (pattern, pattern)).fetchall()
-
 
 # ==============================================================================
 # SEZIONE: GESTIONE DATI ELIMINATI (SOFT-DELETED) - ADMIN

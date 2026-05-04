@@ -1044,7 +1044,7 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
         changes_raw = payload_raw.get("changes", {})
         last_sync_timestamp = payload_raw.get("last_sync_timestamp")
         
-        logging.info(f"📥 Dati ricevuti dal client:")
+        logging.info("📥 Dati ricevuti dal client:")
         for table_name, records in changes_raw.items():
             record_count = len(records) if isinstance(records, list) else 0
             if record_count > 0:
@@ -1053,7 +1053,7 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
         # === STEP 2: Valida checksum su JSON raw (PRIMA di Pydantic) ===
         if checksum_received:
             if not _validate_checksum(changes_raw, checksum_received):
-                logging.error(f"✗ Checksum validation failed on raw data")
+                logging.error("✗ Checksum validation failed on raw data")
                 raise HTTPException(status_code=400, detail="Checksum validation failed")
             logging.info("✓ Checksum validato correttamente su dati raw")
         else:
@@ -1481,7 +1481,7 @@ def read_users(current_user: User = Depends(get_current_user)):
         cursor.execute("SELECT username, role, first_name, last_name FROM users ORDER BY username")
         users = cursor.fetchall()
         return users
-    except Exception as e:
+    except Exception:
         raise HTTPException(status_code=500, detail="Errore interno del server.")
     finally:
         if conn: conn.close()
@@ -1629,7 +1629,7 @@ def upload_signature(username: str, file: UploadFile = File(...), current_user: 
 
     # Validazione MIME type dichiarato
     if file.content_type and file.content_type not in ALLOWED_IMAGE_MIMES:
-        raise HTTPException(status_code=400, detail=f"Tipo file non consentito. Formati accettati: PNG, JPEG, GIF, WebP.")
+        raise HTTPException(status_code=400, detail="Tipo file non consentito. Formati accettati: PNG, JPEG, GIF, WebP.")
 
     # Leggi il file con limite di dimensione
     signature_data = file.file.read(MAX_SIGNATURE_SIZE + 1)
@@ -1662,7 +1662,7 @@ def upload_signature(username: str, file: UploadFile = File(...), current_user: 
         )
         conn.commit()
         return {"status": "success", "username": username}
-    except Exception as e:
+    except Exception:
         if conn: conn.rollback()
         raise HTTPException(status_code=500, detail="Errore del server durante il salvataggio della firma.")
     finally:

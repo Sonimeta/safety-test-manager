@@ -1,11 +1,9 @@
 # app/ui/dialogs/change_password_dialog.py
-import logging
 import requests
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QLineEdit, QLabel,
     QDialogButtonBox, QMessageBox,
 )
-from PySide6.QtCore import Qt
 from app.http_client import http_session
 from app import auth_manager, config
 

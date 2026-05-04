@@ -41,7 +41,7 @@ class ConflictResolutionDialog(QDialog):
             # Aggiungi anche campi non-conflittuali (se disponibili)
             # Per ora usiamo solo i campi conflittuali
             
-            logging.debug(f"[ConflictDialog] Convertito da format 'detailed' a format 'client_version/server_version'")
+            logging.debug("[ConflictDialog] Convertito da format 'detailed' a format 'client_version/server_version'")
             logging.debug(f"[ConflictDialog] Campi nel client_version: {len(client_version)}")
             logging.debug(f"[ConflictDialog] Campi nel server_version: {len(server_version)}")
         else:

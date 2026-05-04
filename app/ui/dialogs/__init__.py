@@ -9,3 +9,18 @@ from .utility_dialogs import (
     VerificationViewerDialog,
     InstrumentSelectionDialog
 )
+
+__all__ = (
+    "DbManagerDialog",
+    "InstrumentManagerDialog",
+    "CustomerDialog",
+    "DeviceDialog",
+    "InstrumentDetailDialog",
+    "ImportReportDialog",
+    "DateSelectionDialog",
+    "MonthYearSelectionDialog",
+    "MappingDialog",
+    "VisualInspectionDialog",
+    "VerificationViewerDialog",
+    "InstrumentSelectionDialog",
+)

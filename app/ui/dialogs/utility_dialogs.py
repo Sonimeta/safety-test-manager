@@ -439,6 +439,7 @@ class VisualInspectionDialog(QDialog):
             "Cavi paziente, connettori e accessori integri.",
             "Marcature e targhette di sicurezza leggibili.",
             "Assenza di sporcizia o segni di versamento di liquidi.",
+            "Corretta procedura di accensione",
             "Fusibili (se accessibili) di tipo e valore corretti."
         ]
         
@@ -614,7 +615,6 @@ class FunctionalVerificationViewerDialog(QDialog):
 
     def _setup_attachments_section(self, parent_layout):
         """Configura la sezione allegati con lista e pulsanti aggiungi/rimuovi/visualizza."""
-        import database
 
         att_group = QGroupBox("📎 ALLEGATI")
         att_layout = QVBoxLayout(att_group)
@@ -1259,7 +1259,7 @@ class CustomerSelectionDialog(QDialog):
         self.setMinimumWidth(400)
         self.selected_customer_id = None
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(f"SELEZIONA IL NUOVO CLIENTE DI DESTINAZIONE PER IL DISPOSITIVO."))
+        layout.addWidget(QLabel("SELEZIONA IL NUOVO CLIENTE DI DESTINAZIONE PER IL DISPOSITIVO."))
         layout.addWidget(QLabel(f"<b>CLIENTE ATTUALE:</b> {current_customer_name.upper()}"))
         self.customer_combo = QComboBox()
         for customer in customers:
@@ -1627,6 +1627,7 @@ class EditVerificationDialog(QDialog):
             "Cavi paziente, connettori e accessori integri.",
             "Marcature e targhette di sicurezza leggibili.",
             "Assenza di sporcizia o segni di versamento di liquidi.",
+            "Corretta procedura di accensione",
             "Fusibili (se accessibili) di tipo e valore corretti.",
         ]
 

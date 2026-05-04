@@ -2,9 +2,9 @@
 import logging
 import json
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import List
 import sqlite3
-from app import config, database
+from app import database
 
 # Tabella per tracciare la storia della sincronizzazione
 SYNC_HISTORY_TABLE = "sync_history"
@@ -148,7 +148,7 @@ class SyncMonitor:
                 ))
                 
                 conn.commit()
-                logging.debug(f"✓ Storia sincronizzazione salvata nel database")
+                logging.debug("✓ Storia sincronizzazione salvata nel database")
                 
         except Exception as e:
             logging.error(f"Errore durante il salvataggio della storia della sincronizzazione: {e}")

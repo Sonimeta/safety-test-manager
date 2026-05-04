@@ -1,7 +1,7 @@
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QFormLayout, QComboBox, QLineEdit,
     QPushButton, QDialogButtonBox, QMessageBox, QListWidget,
-    QListWidgetItem, QLabel, QGroupBox
+    QListWidgetItem, QGroupBox
 )
 from PySide6.QtCore import Qt
 from app import services

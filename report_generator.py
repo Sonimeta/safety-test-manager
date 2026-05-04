@@ -1,18 +1,29 @@
 import os
-import re
 import logging
 import html
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image, PageBreak
-from reportlab.lib.pagesizes import A4
+from reportlab.platypus import (
+    BaseDocTemplate,
+    Frame,
+    Image,
+    NextPageTemplate,
+    PageBreak,
+    PageTemplate,
+    Paragraph,
+    SimpleDocTemplate,
+    Spacer,
+    Table,
+    TableStyle,
+)
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import cm
 from reportlab.lib.enums import TA_CENTER
-from PySide6.QtCore import QSettings, Qt, QByteArray, QBuffer, QIODevice
+from PySide6.QtCore import Qt, QByteArray, QBuffer, QIODevice, QSize
 from PySide6.QtGui import QImage
 from app import config
 import io
-from PIL import Image as PILImage, ExifTags, UnidentifiedImageError
+from PIL import Image as PILImage, ExifTags
 
 # --- Costanti di Stile e Layout - Design Moderno ---
 COLOR_GRID = colors.HexColor('#e2e8f0')          # Bordi griglia eleganti
@@ -39,6 +50,7 @@ LOGO_MAX_W_CM = 18
 LOGO_MAX_H_CM = 4
 SIGN_MAX_W_CM = 5
 SIGN_MAX_H_CM = 3
+LANDSCAPE_A4 = landscape(A4)
 
 def _cm_to_px(value_cm, dpi=IMAGE_DPI):
     return int((value_cm / 2.54) * dpi)
@@ -61,6 +73,20 @@ def _compress_qimage_to_bytes(image, max_w_cm, max_h_cm, prefer_jpeg=False):
         scaled.save(buffer, fmt)
     buffer.close()
     return bytes(byte_array)
+
+
+def _get_attachment_page_metrics(use_landscape=False):
+    """Restituisce area utile per una pagina allegati portrait/landscape."""
+    page_size = LANDSCAPE_A4 if use_landscape else A4
+    max_width = page_size[0] - 2 * PAGE_MARGIN
+    max_height = page_size[1] - (2 * PAGE_MARGIN) - (2.5 * cm)
+    return {
+        "page_size": page_size,
+        "max_width": max_width,
+        "max_height": max_height,
+        "max_width_cm": max_width / cm,
+        "max_height_cm": max_height / cm,
+    }
 
 def _create_styles():
     """Crea e restituisce un dizionario di stili di paragrafo personalizzati - Design moderno."""
@@ -188,12 +214,7 @@ def _add_customer_info(story, styles, customer_info, destination_info):
     story.append(_create_styled_paragraph("Dati Cliente e Destinazione", styles['SectionHeader']))
 
     cliente = customer_info.get('name', 'N/D')
-    indirizzo_cliente = customer_info.get('address', 'N/D')
-    telefono_cliente = customer_info.get('phone', 'N/D')
-    email_cliente = customer_info.get('email', 'N/D')
-
     destinazione = destination_info.get('name', 'N/D')
-    indirizzo_destinazione = destination_info.get('address', 'N/D')
 
     customer_data = [
         [_create_styled_paragraph("Cliente", styles['NormalBold']), _create_styled_paragraph(cliente, styles['Normal']),
@@ -729,6 +750,82 @@ def _preprocess_image_for_pdf(abs_path, max_pixels=2400):
     return buf
 
 
+def _render_pdf_attachment_pages(abs_path):
+    """Renderizza le pagine di un PDF allegato come immagini da inserire nel report."""
+    try:
+        from PySide6.QtPdf import QPdfDocument, QPdfDocumentRenderOptions
+    except ImportError as exc:
+        raise RuntimeError("QtPdf non disponibile per includere PDF allegati nel report.") from exc
+
+    pdf_doc = QPdfDocument()
+    load_status = pdf_doc.load(abs_path)
+
+    load_ok = True
+    if hasattr(QPdfDocument, "Error"):
+        none_error = getattr(QPdfDocument.Error, "None_", None)
+        no_error = getattr(QPdfDocument.Error, "NoError", None)
+        valid_results = {result for result in (none_error, no_error) if result is not None}
+        if valid_results and load_status not in valid_results:
+            load_ok = False
+    elif hasattr(QPdfDocument, "Status"):
+        ready_status = getattr(QPdfDocument.Status, "Ready", None)
+        if ready_status is not None and load_status != ready_status:
+            load_ok = False
+
+    if not load_ok:
+        raise ValueError(f"Impossibile caricare il PDF allegato (status={load_status}).")
+
+    page_count = pdf_doc.pageCount()
+    if page_count <= 0:
+        raise ValueError("Il PDF allegato non contiene pagine renderizzabili.")
+
+    render_options = QPdfDocumentRenderOptions()
+    rendered_pages = []
+
+    for page_index in range(page_count):
+        use_landscape = False
+        metrics = _get_attachment_page_metrics(use_landscape=False)
+        render_width = max(1, _cm_to_px(metrics["max_width_cm"]))
+        render_height = max(1, _cm_to_px(metrics["max_height_cm"]))
+
+        try:
+            page_size = pdf_doc.pagePointSize(page_index)
+            page_width = float(page_size.width())
+            page_height = float(page_size.height())
+            if page_width > 0 and page_height > 0:
+                use_landscape = page_width > page_height
+                metrics = _get_attachment_page_metrics(use_landscape=use_landscape)
+                max_width_px = max(1, _cm_to_px(metrics["max_width_cm"]))
+                max_height_px = max(1, _cm_to_px(metrics["max_height_cm"]))
+                page_ratio = min(max_width_px / page_width, max_height_px / page_height)
+                render_width = max(1, int(page_width * page_ratio))
+                render_height = max(1, int(page_height * page_ratio))
+        except Exception:
+            pass
+
+        image = pdf_doc.render(page_index, QSize(render_width, render_height), render_options)
+        if image.isNull():
+            raise ValueError(f"Rendering non riuscito per il PDF allegato, pagina {page_index + 1}.")
+
+        page_bytes = _compress_qimage_to_bytes(
+            image,
+            max_w_cm=metrics["max_width_cm"],
+            max_h_cm=metrics["max_height_cm"],
+            prefer_jpeg=True,
+        )
+        if not page_bytes:
+            raise ValueError(f"Compressione non riuscita per il PDF allegato, pagina {page_index + 1}.")
+
+        page_buffer = io.BytesIO(page_bytes)
+        page_buffer.seek(0)
+        rendered_pages.append({
+            "buffer": page_buffer,
+            "use_landscape": use_landscape,
+        })
+
+    return rendered_pages
+
+
 def _add_attachments(story, styles, verification_data):
     """Aggiunge le immagini allegate alla verifica nel report PDF."""
     attachments = verification_data.get('attachments', [])
@@ -791,16 +888,168 @@ def _add_attachments(story, styles, verification_data):
             story.append(Spacer(1, SPACER_MEDIUM))
 
 
+def _add_attachments_to_report(story, styles, verification_data):
+    """Aggiunge immagini e PDF allegati alla verifica nel report PDF."""
+    attachments = verification_data.get('attachments', [])
+    if not attachments:
+        return
+
+    first_attachment = True
+
+    def _start_attachment_page(use_landscape, title, description_text=None, include_section_header=False):
+        template_name = "Landscape" if use_landscape else "Portrait"
+        story.append(NextPageTemplate(template_name))
+        story.append(PageBreak())
+        if include_section_header:
+            story.append(_create_styled_paragraph("Allegati", styles['SectionHeader']))
+            story.append(Spacer(1, SPACER_MEDIUM))
+        story.append(_create_styled_paragraph(title, styles['NormalBold']))
+        if description_text:
+            story.append(_create_styled_paragraph(description_text, styles['Normal']))
+        story.append(Spacer(1, SPACER_MEDIUM))
+
+    for att in attachments:
+        file_path = att.get('file_path')
+        if not file_path:
+            continue
+
+        abs_path = os.path.join(config.ATTACHMENTS_DIR, file_path)
+        if not os.path.exists(abs_path):
+            logging.warning(f"File allegato non trovato per il report: {abs_path}")
+            continue
+
+        filename = att.get('filename', 'Allegato')
+        description = att.get('description') or filename
+        mime = (att.get('mime_type') or '').lower()
+
+        if mime == 'application/pdf' or filename.lower().endswith('.pdf'):
+            try:
+                pdf_pages = _render_pdf_attachment_pages(abs_path)
+                total_pages = len(pdf_pages)
+                for page_index, page_info in enumerate(pdf_pages):
+                    use_landscape = bool(page_info.get("use_landscape"))
+                    metrics = _get_attachment_page_metrics(use_landscape=use_landscape)
+                    title = f"{filename} - Pagina {page_index + 1}/{total_pages}"
+                    page_description = description if page_index == 0 and description != filename else None
+                    _start_attachment_page(
+                        use_landscape=use_landscape,
+                        title=title,
+                        description_text=page_description,
+                        include_section_header=first_attachment and page_index == 0,
+                    )
+
+                    pdf_img = Image(page_info["buffer"])
+                    iw, ih = pdf_img.drawWidth, pdf_img.drawHeight
+                    if iw > 0 and ih > 0:
+                        ratio = min(
+                            metrics["max_width"] / iw,
+                            metrics["max_height"] / ih,
+                            1.0,
+                        )
+                        pdf_img.drawWidth = iw * ratio
+                        pdf_img.drawHeight = ih * ratio
+                    pdf_img.hAlign = 'CENTER'
+                    story.append(pdf_img)
+                    story.append(Spacer(1, SPACER_LARGE))
+                first_attachment = False
+            except Exception as e:
+                logging.warning(f"Impossibile inserire PDF allegato nel report: {e}")
+                story.append(_create_styled_paragraph(
+                    f"Impossibile includere il PDF allegato: {filename}",
+                    styles['Normal']
+                ))
+                story.append(Spacer(1, SPACER_MEDIUM))
+            continue
+
+        if not mime.startswith('image/'):
+            _start_attachment_page(
+                use_landscape=False,
+                title=filename,
+                description_text=f"Allegato non incorporato: {filename} ({mime or 'formato sconosciuto'})",
+                include_section_header=first_attachment,
+            )
+            story.append(_create_styled_paragraph(
+                f"Allegato non incorporato: {filename} ({mime or 'formato sconosciuto'})",
+                styles['Normal']
+            ))
+            story.append(Spacer(1, SPACER_MEDIUM))
+            first_attachment = False
+            continue
+
+        try:
+            img_buffer = _preprocess_image_for_pdf(abs_path)
+            img = Image(img_buffer)
+            iw, ih = img.drawWidth, img.drawHeight
+            use_landscape = iw > ih
+            metrics = _get_attachment_page_metrics(use_landscape=use_landscape)
+            _start_attachment_page(
+                use_landscape=use_landscape,
+                title=filename,
+                description_text=description if description != filename else None,
+                include_section_header=first_attachment,
+            )
+            if iw > 0 and ih > 0:
+                ratio = min(metrics["max_width"] / iw, metrics["max_height"] / ih, 1.0)
+                img.drawWidth = iw * ratio
+                img.drawHeight = ih * ratio
+            img.hAlign = 'CENTER'
+            story.append(img)
+            story.append(Spacer(1, SPACER_LARGE))
+            first_attachment = False
+        except Exception as e:
+            logging.warning(f"Impossibile inserire immagine allegata nel report: {e}")
+            story.append(_create_styled_paragraph(
+                f"Impossibile caricare l'immagine: {filename}",
+                styles['Normal']
+            ))
+            story.append(Spacer(1, SPACER_MEDIUM))
+
+
 def _add_footer(canvas, doc, device_info, verification_data):
     """Disegna il piè di pagina su ogni pagina."""
     canvas.saveState()
     canvas.setFont(FONT_NORMAL, 9)
     canvas.setStrokeColor(COLOR_GRID)
-    canvas.line(doc.leftMargin, 1.4*cm, doc.width + doc.leftMargin, 1.4*cm)
+    page_width = canvas._pagesize[0]
+    canvas.line(doc.leftMargin, 1.4*cm, page_width - doc.rightMargin, 1.4*cm)
     footer_text = f"Dispositivo S/N: {device_info.get('serial_number', 'N/A')}   |   Verifica del: {verification_data.get('date', 'N/A')}   |   Email: assistenza@amstrento.it"
     canvas.drawString(doc.leftMargin, 1*cm, footer_text)
-    canvas.drawRightString(doc.width + doc.leftMargin, 1*cm, f"Pagina {doc.page}")
+    canvas.drawRightString(page_width - doc.rightMargin, 1*cm, f"Pagina {doc.page}")
     canvas.restoreState()
+
+
+def _build_report_doc(filename, title, footer_callback):
+    """Crea un documento PDF con template portrait/landscape."""
+    doc = BaseDocTemplate(
+        filename,
+        pagesize=A4,
+        rightMargin=PAGE_MARGIN,
+        leftMargin=PAGE_MARGIN,
+        topMargin=PAGE_MARGIN,
+        bottomMargin=PAGE_MARGIN,
+        title=title,
+        pageCompression=1,
+    )
+
+    portrait_frame = Frame(
+        PAGE_MARGIN,
+        PAGE_MARGIN,
+        A4[0] - 2 * PAGE_MARGIN,
+        A4[1] - 2 * PAGE_MARGIN,
+        id="portrait_frame",
+    )
+    landscape_frame = Frame(
+        PAGE_MARGIN,
+        PAGE_MARGIN,
+        LANDSCAPE_A4[0] - 2 * PAGE_MARGIN,
+        LANDSCAPE_A4[1] - 2 * PAGE_MARGIN,
+        id="landscape_frame",
+    )
+    doc.addPageTemplates([
+        PageTemplate(id="Portrait", frames=[portrait_frame], onPage=footer_callback, pagesize=A4),
+        PageTemplate(id="Landscape", frames=[landscape_frame], onPage=footer_callback, pagesize=LANDSCAPE_A4),
+    ])
+    return doc
 
 # --- Funzione Principale per Creare il Report ---
 
@@ -808,19 +1057,10 @@ def create_report(filename, device_info, customer_info, destination_info, mti_in
     """
     Genera il report PDF assemblando le varie sezioni con la nuova struttura a due pagine.
     """
-    doc = SimpleDocTemplate(
-        filename,
-        pagesize=A4,
-        rightMargin=PAGE_MARGIN,
-        leftMargin=PAGE_MARGIN,
-        topMargin=PAGE_MARGIN,
-        bottomMargin=PAGE_MARGIN,
-        title="Rapporto di Verifica",
-        pageCompression=1,
-    )
-
     styles = _create_styles()
     story = []
+    footer_callback = lambda canvas, doc: _add_footer(canvas, doc, device_info, verification_data)
+    doc = _build_report_doc(filename, "Rapporto di Verifica", footer_callback)
 
     # --- ASSEMBLAGGIO PAGINA 1: DATI, ESITO E FIRMA ---
     _add_logo(story, report_settings)
@@ -841,27 +1081,16 @@ def create_report(filename, device_info, customer_info, destination_info, mti_in
     _add_functional_sections(story, styles, verification_data)
 
     # --- ALLEGATI (se presenti) ---
-    _add_attachments(story, styles, verification_data)
+    _add_attachments_to_report(story, styles, verification_data)
 
-    # Il resto della funzione per costruire il documento rimane invariato
-    footer_callback = lambda canvas, doc: _add_footer(canvas, doc, device_info, verification_data)
     try:
-        doc.build(story, onFirstPage=footer_callback, onLaterPages=footer_callback)
+        doc.build(story)
         logging.info(f"Report PDF generato con successo: {filename}")
     except Exception as e:
         # Se il build fallisce e ci sono allegati, riprova senza allegati
         if verification_data.get('attachments'):
             logging.warning(f"Build PDF fallito con allegati, ritento senza allegati: {e}", exc_info=True)
-            doc2 = SimpleDocTemplate(
-                filename,
-                pagesize=A4,
-                rightMargin=PAGE_MARGIN,
-                leftMargin=PAGE_MARGIN,
-                topMargin=PAGE_MARGIN,
-                bottomMargin=PAGE_MARGIN,
-                title="Rapporto di Verifica",
-                pageCompression=1,
-            )
+            doc2 = _build_report_doc(filename, "Rapporto di Verifica", footer_callback)
             story_no_att = []
             _add_logo(story_no_att, report_settings)
             _add_header(story_no_att, styles, verification_data)
@@ -882,8 +1111,7 @@ def create_report(filename, device_info, customer_info, destination_info, mti_in
                 styles['Normal']
             ))
             try:
-                footer_cb2 = lambda canvas, doc: _add_footer(canvas, doc, device_info, verification_data)
-                doc2.build(story_no_att, onFirstPage=footer_cb2, onLaterPages=footer_cb2)
+                doc2.build(story_no_att)
                 logging.info(f"Report PDF generato senza allegati: {filename}")
             except Exception as e2:
                 logging.error(f"Errore durante la creazione del PDF (anche senza allegati): {e2}", exc_info=True)
@@ -899,11 +1127,11 @@ def _add_system_devices_info(story, styles, devices_info, verification_data):
 
     # Header della tabella
     header_row = [
-        _create_styled_paragraph("N.", styles['NormalBold']),
-        _create_styled_paragraph("Tipo Apparecchio", styles['NormalBold']),
-        _create_styled_paragraph("Matricola", styles['NormalBold']),
-        _create_styled_paragraph("Costruttore / Modello", styles['NormalBold']),
-        _create_styled_paragraph("Inv. AMS", styles['NormalBold']),
+        _create_styled_paragraph("N.", styles['TableHeaderBold']),
+        _create_styled_paragraph("Tipo Apparecchio", styles['TableHeaderBold']),
+        _create_styled_paragraph("Matricola", styles['TableHeaderBold']),
+        _create_styled_paragraph("Costruttore / Modello", styles['TableHeaderBold']),
+        _create_styled_paragraph("Inv. AMS", styles['TableHeaderBold']),
     ]
 
     table_data = [header_row]

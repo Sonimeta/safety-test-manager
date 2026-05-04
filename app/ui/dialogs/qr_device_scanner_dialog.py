@@ -17,7 +17,7 @@ from socketserver import ThreadingMixIn
 
 from PySide6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
-    QGroupBox, QMessageBox, QApplication
+    QGroupBox
 )
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QPixmap, QImage
@@ -71,6 +71,15 @@ class QRScannerHTTPHandler(BaseHTTPRequestHandler):
                 self.end_headers()
                 payload = QRScannerHTTPHandler.last_result or {}
                 self.wfile.write(json.dumps(payload).encode('utf-8'))
+                return
+
+            if self.path == '/attachment/upload':
+                html_content = self._get_attachment_upload_html()
+                self.send_response(200)
+                self.send_header('Content-type', 'text/html; charset=utf-8')
+                self._send_cors_headers()
+                self.end_headers()
+                self.wfile.write(html_content.encode('utf-8'))
                 return
 
             # --- ALLEGATI: lista allegati per una verifica ---
@@ -197,7 +206,7 @@ class QRScannerHTTPHandler(BaseHTTPRequestHandler):
                 if QRScannerHTTPHandler.scan_callback:
                     logging.info(f"[QR Scanner] Chiamata callback con: {scan_result}")
                     QRScannerHTTPHandler.scan_callback(scan_result)
-                    logging.info(f"[QR Scanner] Callback completata")
+                    logging.info("[QR Scanner] Callback completata")
                 else:
                     logging.warning("[QR Scanner] Nessun callback configurato!")
                 
@@ -281,7 +290,7 @@ class QRScannerHTTPHandler(BaseHTTPRequestHandler):
                 if w > max_size or h > max_size:
                     ratio = min(max_size / w, max_size / h)
                     work_image = gray_image.resize((int(w * ratio), int(h * ratio)), Image.Resampling.LANCZOS)
-                    logging.info(f"[QR Scanner] Immagine ridimensionata per dmtx")
+                    logging.info("[QR Scanner] Immagine ridimensionata per dmtx")
                 else:
                     work_image = gray_image
                 
@@ -355,24 +364,40 @@ class QRScannerHTTPHandler(BaseHTTPRequestHandler):
             content_type = (self.headers.get('Content-Type') or '').lower()
 
             if 'application/json' in content_type:
-                # JSON con immagine base64
+                # JSON con file base64 (retrocompatibile con image_data)
                 data = json.loads(post_data.decode('utf-8', errors='replace'))
                 verification_code = data.get('verification_code', '')
                 verification_id = data.get('verification_id', 0)
                 description = data.get('description', '')
-                filename = data.get('filename', 'scan.jpg')
-                image_b64 = data.get('image_data', '')
+                filename = data.get('filename', 'allegato')
+                file_b64 = data.get('file_data', '') or data.get('image_data', '')
 
-                if not image_b64:
-                    self._send_json_response(400, {'status': 'error', 'message': 'Nessuna immagine fornita'})
+                if not file_b64:
+                    self._send_json_response(400, {'status': 'error', 'message': 'Nessun file fornito'})
                     return
 
                 # Rimuovi header data URL se presente
-                if ',' in image_b64 and image_b64.startswith('data:'):
-                    image_b64 = image_b64.split(',', 1)[1]
+                if ',' in file_b64 and file_b64.startswith('data:'):
+                    file_b64 = file_b64.split(',', 1)[1]
 
-                file_data = base64.b64decode(image_b64)
-                mime_type = data.get('mime_type', 'image/jpeg')
+                file_data = base64.b64decode(file_b64)
+                mime_type = (data.get('mime_type', 'application/octet-stream') or 'application/octet-stream').lower()
+
+                allowed_mime_types = {
+                    'application/pdf',
+                    'image/jpeg',
+                    'image/png',
+                    'image/bmp',
+                    'image/tiff',
+                    'image/webp',
+                    'image/gif',
+                }
+                if mime_type not in allowed_mime_types:
+                    self._send_json_response(
+                        400,
+                        {'status': 'error', 'message': f'Tipo file non supportato: {mime_type}'}
+                    )
+                    return
             else:
                 self._send_json_response(400, {'status': 'error', 'message': 'Content-Type non supportato'})
                 return
@@ -518,6 +543,12 @@ class QRScannerHTTPHandler(BaseHTTPRequestHandler):
             parsed = urlparse(self.path)
             params = url_parse_qs(parsed.query)
             device_id = params.get('device_id', [''])[0]
+            limit_raw = params.get('limit', ['20'])[0]
+
+            try:
+                limit = max(1, min(int(limit_raw), 100))
+            except (TypeError, ValueError):
+                limit = 20
 
             import database
             if device_id:
@@ -529,8 +560,17 @@ class QRScannerHTTPHandler(BaseHTTPRequestHandler):
                 start_date = (dt.now() - timedelta(days=90)).strftime('%Y-%m-%d')
                 verifications = database.get_functional_verifications_by_date_range(start_date, end_date)
 
+            def _recent_sort_key(item):
+                v_dict = dict(item) if not isinstance(item, dict) else item
+                return (
+                    str(v_dict.get('verification_date') or ''),
+                    int(v_dict.get('id') or 0),
+                )
+
+            verifications = sorted(verifications or [], key=_recent_sort_key, reverse=True)
+
             result = []
-            for v in (verifications or [])[:20]:
+            for v in verifications[:limit]:
                 v_dict = dict(v) if not isinstance(v, dict) else v
                 att_count = database.get_attachments_count(v_dict['id'], 'functional')
                 result.append({
@@ -541,6 +581,8 @@ class QRScannerHTTPHandler(BaseHTTPRequestHandler):
                     'profile_key': v_dict.get('profile_key', ''),
                     'overall_status': v_dict.get('overall_status', ''),
                     'technician_name': v_dict.get('technician_name', ''),
+                    'device_description': v_dict.get('description', ''),
+                    'device_model': v_dict.get('model', ''),
                     'attachments_count': att_count,
                 })
 
@@ -615,6 +657,21 @@ class QRScannerHTTPHandler(BaseHTTPRequestHandler):
             box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4);
         }
         .scan-btn:active { transform: scale(0.98); }
+        .app-btn {
+            width: 100%;
+            max-width: 350px;
+            padding: 14px 18px;
+            font-size: 1em;
+            font-weight: bold;
+            color: white;
+            background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            margin: 0 0 12px 0;
+            box-shadow: 0 4px 15px rgba(37, 99, 235, 0.35);
+        }
+        .app-btn:active { transform: scale(0.98); }
         
         #fileInput { display: none; }
         
@@ -692,6 +749,7 @@ class QRScannerHTTPHandler(BaseHTTPRequestHandler):
 <body>
     <h1>📱 Scanner Dispositivo</h1>
     <p class="subtitle">Scatta una foto del barcode/QR code</p>
+    <button class="app-btn" onclick="openVScannerApp()">Apri App VScanner</button>
     
     <input type="file" id="fileInput" accept="image/*" capture="environment">
     
@@ -723,6 +781,17 @@ class QRScannerHTTPHandler(BaseHTTPRequestHandler):
         const fileInput = document.getElementById('fileInput');
         const preview = document.getElementById('preview');
         const resultDiv = document.getElementById('result');
+        const vscannerDeepLink = 'vscanner://open/scanner';
+
+        function openVScannerApp() {
+            const isAndroid = /Android/i.test(navigator.userAgent || '');
+            if (!isAndroid) {
+                resultDiv.className = 'error';
+                resultDiv.innerHTML = 'Apri questa pagina da un dispositivo Android con VScanner installata.';
+                return;
+            }
+            window.location.href = vscannerDeepLink;
+        }
         
         fileInput.addEventListener('change', async (e) => {
             const file = e.target.files[0];
@@ -808,6 +877,286 @@ class QRScannerHTTPHandler(BaseHTTPRequestHandler):
         document.getElementById('manualCode').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') sendManualCode();
         });
+    </script>
+</body>
+</html>'''
+
+    def _get_attachment_upload_html(self):
+        """Restituisce la pagina HTML per caricare allegati da telefono."""
+        return '''<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Carica Allegato</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 24px 18px 32px;
+        }
+        .card {
+            max-width: 560px;
+            margin: 0 auto;
+            background: rgba(15, 23, 42, 0.78);
+            border: 1px solid rgba(148, 163, 184, 0.2);
+            border-radius: 20px;
+            padding: 22px 18px;
+            box-shadow: 0 20px 45px rgba(0,0,0,0.28);
+        }
+        h1 {
+            font-size: 1.5em;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+        .subtitle {
+            color: #cbd5e1;
+            text-align: center;
+            margin-bottom: 20px;
+            font-size: 0.95em;
+        }
+        .field {
+            margin-bottom: 16px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #e2e8f0;
+            font-weight: 600;
+        }
+        input, textarea {
+            width: 100%;
+            border: 1px solid rgba(148, 163, 184, 0.32);
+            border-radius: 14px;
+            background: rgba(255,255,255,0.08);
+            color: #fff;
+            padding: 14px 14px;
+            font-size: 16px;
+        }
+        textarea {
+            min-height: 88px;
+            resize: vertical;
+        }
+        input::placeholder, textarea::placeholder {
+            color: #94a3b8;
+        }
+        #fileInput {
+            padding: 12px;
+            background: rgba(255,255,255,0.04);
+        }
+        .actions {
+            display: grid;
+            gap: 12px;
+            margin-top: 18px;
+        }
+        button {
+            width: 100%;
+            border: none;
+            border-radius: 14px;
+            padding: 15px 16px;
+            font-size: 16px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .primary {
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            color: white;
+        }
+        .secondary {
+            background: rgba(148, 163, 184, 0.14);
+            color: white;
+            border: 1px solid rgba(148, 163, 184, 0.22);
+        }
+        .app-open {
+            margin-bottom: 16px;
+            background: linear-gradient(135deg, #2563eb, #1d4ed8);
+            color: white;
+        }
+        #fileInfo, #status {
+            margin-top: 14px;
+            border-radius: 14px;
+            padding: 14px;
+            font-size: 0.95em;
+        }
+        #fileInfo {
+            background: rgba(255,255,255,0.05);
+            color: #cbd5e1;
+            display: none;
+        }
+        #status {
+            display: none;
+        }
+        .success {
+            display: block !important;
+            background: rgba(34, 197, 94, 0.18);
+            border: 1px solid rgba(34, 197, 94, 0.35);
+            color: #dcfce7;
+        }
+        .error {
+            display: block !important;
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            color: #fecaca;
+        }
+        .processing {
+            display: block !important;
+            background: rgba(37, 99, 235, 0.18);
+            border: 1px solid rgba(37, 99, 235, 0.35);
+            color: #dbeafe;
+        }
+        .hint {
+            margin-top: 18px;
+            color: #94a3b8;
+            font-size: 0.88em;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h1>📎 Carica Allegato</h1>
+        <p class="subtitle">Allega immagini o PDF a una verifica funzionale</p>
+        <button class="app-open" onclick="openVScannerApp()">Apri App VScanner</button>
+
+        <div class="field">
+            <label for="verificationCode">Codice verifica</label>
+            <input type="text" id="verificationCode" placeholder="Es. VF-2026-00123">
+        </div>
+
+        <div class="field">
+            <label for="description">Descrizione allegato</label>
+            <textarea id="description" placeholder="Descrivi brevemente il contenuto del file"></textarea>
+        </div>
+
+        <div class="field">
+            <label for="fileInput">Seleziona file</label>
+            <input type="file" id="fileInput" accept="image/*,.pdf,application/pdf">
+            <div id="fileInfo"></div>
+        </div>
+
+        <div class="actions">
+            <button class="primary" onclick="uploadAttachment()">Carica Allegato</button>
+            <button class="secondary" onclick="document.getElementById('fileInput').click()">Scegli un altro file</button>
+        </div>
+
+        <div id="status"></div>
+
+        <div class="hint">
+            Formati supportati: JPG, PNG, BMP, TIFF, WEBP, GIF e PDF. Dimensione massima: 20 MB.
+        </div>
+    </div>
+
+    <script>
+        const verificationCodeInput = document.getElementById('verificationCode');
+        const descriptionInput = document.getElementById('description');
+        const fileInput = document.getElementById('fileInput');
+        const fileInfo = document.getElementById('fileInfo');
+        const statusBox = document.getElementById('status');
+        const vscannerDeepLink = 'vscanner://open/attachments';
+
+        function openVScannerApp() {
+            const isAndroid = /Android/i.test(navigator.userAgent || '');
+            if (!isAndroid) {
+                setStatus('error', 'Apri questa pagina da un dispositivo Android con VScanner installata.');
+                return;
+            }
+            window.location.href = vscannerDeepLink;
+        }
+
+        fileInput.addEventListener('change', () => {
+            const file = fileInput.files[0];
+            if (!file) {
+                fileInfo.style.display = 'none';
+                fileInfo.innerHTML = '';
+                return;
+            }
+
+            const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
+            fileInfo.style.display = 'block';
+            fileInfo.innerHTML = '<b>File selezionato:</b> ' + file.name + '<br><b>Tipo:</b> ' + (file.type || 'non rilevato') + '<br><b>Dimensione:</b> ' + sizeMb + ' MB';
+        });
+
+        function setStatus(cssClass, message) {
+            statusBox.className = cssClass;
+            statusBox.innerHTML = message;
+        }
+
+        function fileToBase64(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function uploadAttachment() {
+            const verificationCode = verificationCodeInput.value.trim();
+            const description = descriptionInput.value.trim();
+            const file = fileInput.files[0];
+
+            if (!verificationCode) {
+                setStatus('error', 'Inserisci il codice verifica.');
+                return;
+            }
+
+            if (!file) {
+                setStatus('error', 'Seleziona un file da allegare.');
+                return;
+            }
+
+            if (file.size > 20 * 1024 * 1024) {
+                setStatus('error', 'Il file supera il limite di 20 MB.');
+                return;
+            }
+
+            setStatus('processing', 'Caricamento allegato in corso...');
+
+            try {
+                const fileBase64 = await fileToBase64(file);
+                const response = await fetch(window.location.href, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        verification_code: verificationCode,
+                        description: description,
+                        filename: file.name,
+                        mime_type: file.type || inferMimeType(file.name),
+                        file_data: fileBase64
+                    })
+                });
+
+                const data = await response.json();
+                if (data.status === 'ok') {
+                    if (navigator.vibrate) navigator.vibrate([80, 40, 80]);
+                    setStatus('success', 'Allegato caricato con successo sulla verifica ' + verificationCode + '.');
+                    descriptionInput.value = '';
+                    fileInput.value = '';
+                    fileInfo.style.display = 'none';
+                    fileInfo.innerHTML = '';
+                } else {
+                    setStatus('error', data.message || 'Errore durante il caricamento.');
+                }
+            } catch (err) {
+                console.error(err);
+                setStatus('error', 'Errore: ' + err.message);
+            }
+        }
+
+        function inferMimeType(filename) {
+            const lower = filename.toLowerCase();
+            if (lower.endsWith('.pdf')) return 'application/pdf';
+            if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+            if (lower.endsWith('.png')) return 'image/png';
+            if (lower.endsWith('.bmp')) return 'image/bmp';
+            if (lower.endsWith('.tif') || lower.endsWith('.tiff')) return 'image/tiff';
+            if (lower.endsWith('.webp')) return 'image/webp';
+            if (lower.endsWith('.gif')) return 'image/gif';
+            return 'application/octet-stream';
+        }
     </script>
 </body>
 </html>'''
