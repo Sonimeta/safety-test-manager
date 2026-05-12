@@ -405,13 +405,32 @@ def get_all_unique_device_descriptions():
     with DatabaseConnection() as conn:
         query = "SELECT DISTINCT description FROM devices WHERE is_deleted = 0 AND description IS NOT NULL AND description <> '' ORDER BY description"
         rows = conn.execute(query).fetchall()
-        # Restituisce una lista di stringhe, non di tuple
         return [row['description'] for row in rows]
 
-def get_devices_by_description(description: str):
-    """Recupera tutti i dispositivi che corrispondono a una specifica descrizione."""
+def get_all_unique_device_descriptions_with_count():
+    """Recupera tutte le descrizioni uniche con il conteggio dei dispositivi associati."""
     with DatabaseConnection() as conn:
-        query = "SELECT id, description, serial_number, model FROM devices WHERE description = ? AND is_deleted = 0"
+        query = """
+            SELECT UPPER(description) as description, COUNT(*) as cnt
+            FROM devices
+            WHERE is_deleted = 0 AND description IS NOT NULL AND description <> ''
+            GROUP BY UPPER(description)
+            ORDER BY UPPER(description)
+        """
+        rows = conn.execute(query).fetchall()
+        return [(row['description'], row['cnt']) for row in rows]
+
+def get_devices_by_description(description: str):
+    """Recupera tutti i dispositivi che corrispondono a una specifica descrizione (case-insensitive)."""
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT d.id, d.description, d.serial_number, d.model, d.ams_inventory,
+                   dest.name as destination_name
+            FROM devices d
+            LEFT JOIN destinations dest ON d.destination_id = dest.id
+            WHERE UPPER(d.description) = UPPER(?) AND d.is_deleted = 0
+            ORDER BY d.ams_inventory, d.serial_number
+        """
         return conn.execute(query, (description,)).fetchall()
 
 def bulk_update_device_description(old_description: str, new_description: str, timestamp: str):
@@ -421,10 +440,83 @@ def bulk_update_device_description(old_description: str, new_description: str, t
     """
     with DatabaseConnection() as conn:
         cursor = conn.execute(
-            "UPDATE devices SET description = ?, last_modified = ?, is_synced = 0 WHERE description = ? AND is_deleted = 0",
+            "UPDATE devices SET description = ?, last_modified = ?, is_synced = 0 WHERE UPPER(description) = UPPER(?) AND is_deleted = 0",
             (new_description, timestamp, old_description)
         )
         logging.info(f"Aggiornate {cursor.rowcount} descrizioni da '{old_description}' a '{new_description}'.")
+        return cursor.rowcount
+
+
+def get_all_unique_manufacturers_with_count():
+    """Recupera tutte le marche uniche (case-insensitive) con il conteggio dei dispositivi."""
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT UPPER(TRIM(manufacturer)) as manufacturer, COUNT(*) as cnt
+            FROM devices
+            WHERE is_deleted = 0 AND manufacturer IS NOT NULL AND TRIM(manufacturer) <> ''
+            GROUP BY UPPER(TRIM(manufacturer))
+            ORDER BY UPPER(TRIM(manufacturer))
+        """
+        rows = conn.execute(query).fetchall()
+        return [(row['manufacturer'], row['cnt']) for row in rows]
+
+def get_devices_by_manufacturer(manufacturer: str):
+    """Recupera tutti i dispositivi con la marca indicata (case-insensitive)."""
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT d.id, d.manufacturer, d.serial_number, d.model, d.ams_inventory,
+                   dest.name as destination_name
+            FROM devices d
+            LEFT JOIN destinations dest ON d.destination_id = dest.id
+            WHERE UPPER(TRIM(d.manufacturer)) = UPPER(TRIM(?)) AND d.is_deleted = 0
+            ORDER BY d.ams_inventory, d.serial_number
+        """
+        return conn.execute(query, (manufacturer,)).fetchall()
+
+def bulk_update_device_manufacturer(old_manufacturer: str, new_manufacturer: str, timestamp: str):
+    """Aggiorna la marca per tutti i dispositivi corrispondenti (case-insensitive)."""
+    with DatabaseConnection() as conn:
+        cursor = conn.execute(
+            "UPDATE devices SET manufacturer = ?, last_modified = ?, is_synced = 0 WHERE UPPER(TRIM(manufacturer)) = UPPER(TRIM(?)) AND is_deleted = 0",
+            (new_manufacturer, timestamp, old_manufacturer)
+        )
+        logging.info(f"Aggiornate {cursor.rowcount} marche da '{old_manufacturer}' a '{new_manufacturer}'.")
+        return cursor.rowcount
+
+def get_all_unique_models_with_count():
+    """Recupera tutti i modelli unici (case-insensitive) con il conteggio dei dispositivi."""
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT UPPER(TRIM(model)) as model, COUNT(*) as cnt
+            FROM devices
+            WHERE is_deleted = 0 AND model IS NOT NULL AND TRIM(model) <> ''
+            GROUP BY UPPER(TRIM(model))
+            ORDER BY UPPER(TRIM(model))
+        """
+        rows = conn.execute(query).fetchall()
+        return [(row['model'], row['cnt']) for row in rows]
+
+def get_devices_by_model(model: str):
+    """Recupera tutti i dispositivi con il modello indicato (case-insensitive)."""
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT d.id, d.model, d.serial_number, d.manufacturer, d.ams_inventory,
+                   dest.name as destination_name
+            FROM devices d
+            LEFT JOIN destinations dest ON d.destination_id = dest.id
+            WHERE UPPER(TRIM(d.model)) = UPPER(TRIM(?)) AND d.is_deleted = 0
+            ORDER BY d.ams_inventory, d.serial_number
+        """
+        return conn.execute(query, (model,)).fetchall()
+
+def bulk_update_device_model(old_model: str, new_model: str, timestamp: str):
+    """Aggiorna il modello per tutti i dispositivi corrispondenti (case-insensitive)."""
+    with DatabaseConnection() as conn:
+        cursor = conn.execute(
+            "UPDATE devices SET model = ?, last_modified = ?, is_synced = 0 WHERE UPPER(TRIM(model)) = UPPER(TRIM(?)) AND is_deleted = 0",
+            (new_model, timestamp, old_model)
+        )
+        logging.info(f"Aggiornati {cursor.rowcount} modelli da '{old_model}' a '{new_model}'.")
         return cursor.rowcount
 
 

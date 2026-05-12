@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+
+{% block title %}{% if mode == 'edit' %}Modifica Dispositivo{% else %}Nuovo Dispositivo{% endif %} — STM Mobile{% endblock %}
+{% block header_title %}{% if mode == 'edit' %}Modifica Dispositivo{% else %}Nuovo Dispositivo{% endif %}{% endblock %}
+{% block header_subtitle %}<p class="text-blue-300 text-xs">{{ destination.name or 'Destinazione' }}</p>{% endblock %}
+
+{% block content %}
+<div class="px-4 py-4">
+    {% if error %}
+    <div class="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 mb-4 text-sm">⚠️ {{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="{{ form_action }}" class="space-y-4">
+        <div class="card p-4 space-y-4">
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Descrizione</label>
+                <input type="text" name="description" class="form-input" value="{{ device.description or '' }}">
+            </div>
+            <div class="grid grid-cols-1 gap-3">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Seriale</label>
+                    <input type="text" name="serial_number" class="form-input" value="{{ device.serial_number or '' }}">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Produttore</label>
+                    <input type="text" name="manufacturer" class="form-input" value="{{ device.manufacturer or '' }}">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Modello</label>
+                    <input type="text" name="model" class="form-input" value="{{ device.model or '' }}">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Reparto</label>
+                    <input type="text" name="department" class="form-input" value="{{ device.department or '' }}">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Nr. Inventario Cliente</label>
+                    <input type="text" name="customer_inventory" class="form-input" value="{{ device.customer_inventory or '' }}">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Nr. Inventario AMS</label>
+                    <input type="text" name="ams_inventory" class="form-input" value="{{ device.ams_inventory or '' }}">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Intervallo verifica (mesi)</label>
+                    <input type="number" min="1" name="verification_interval" class="form-input" value="{{ device.verification_interval or '' }}">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Stato dispositivo</label>
+                    <select name="status" class="form-input">
+                        <option value="active" {% if (device.status or 'active') == 'active' %}selected{% endif %}>✅ Attivo</option>
+                        <option value="maintenance" {% if device.status == 'maintenance' %}selected{% endif %}>🔧 In manutenzione</option>
+                        <option value="dismissed" {% if device.status == 'dismissed' %}selected{% endif %}>❌ Dismesso</option>
+                    </select>
+                </div>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Profilo elettrico di default</label>
+                <select name="default_profile_key" class="form-input">
+                    <option value="">— Nessuno —</option>
+                    {% for p in profiles %}
+                    <option value="{{ p.profile_key }}" {% if device.default_profile_key == p.profile_key %}selected{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Profilo funzionale di default</label>
+                <select name="default_functional_profile_key" class="form-input">
+                    <option value="">— Nessuno —</option>
+                    {% for p in functional_profiles %}
+                    <option value="{{ p.profile_key }}" {% if device.default_functional_profile_key == p.profile_key %}selected{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <!-- Parti applicate -->
+        <div class="card p-4 space-y-3" x-data="appliedPartsManager()">
+            <h2 class="text-sm font-bold text-gray-700 border-b border-gray-100 pb-2">Parti applicate</h2>
+
+            <!-- Existing parts list -->
+            <template x-for="(pa, idx) in parts" :key="idx">
+                <div class="flex items-center gap-2 border border-gray-200 rounded-xl px-3 py-2">
+                    <span class="text-xs font-bold px-2 py-0.5 rounded-full"
+                          :class="pa.part_type==='CF' ? 'bg-red-100 text-red-700' : pa.part_type==='BF' ? 'bg-yellow-100 text-yellow-700' : 'bg-blue-100 text-blue-700'"
+                          x-text="pa.part_type"></span>
+                    <span class="flex-1 text-sm text-gray-800" x-text="pa.name || '—'"></span>
+                    <button type="button" @click="remove(idx)"
+                            class="text-red-500 text-lg leading-none px-1">×</button>
+                    <input type="hidden" :name="'pa_name_' + idx" :value="pa.name">
+                    <input type="hidden" :name="'pa_type_' + idx" :value="pa.part_type">
+                </div>
+            </template>
+            <input type="hidden" name="pa_count" :value="parts.length">
+
+            <!-- Add new part row -->
+            <div class="flex gap-2 pt-1">
+                <input type="text" x-model="newName" placeholder="Nome (es. ECG Torace)"
+                       class="form-input flex-1 text-sm">
+                <select x-model="newType" class="form-input w-24 text-sm">
+                    <option value="B">B</option>
+                    <option value="BF">BF</option>
+                    <option value="CF">CF</option>
+                </select>
+                <button type="button" @click="add()"
+                        class="bg-blue-900 text-white text-xs font-semibold px-3 py-2 rounded-xl">+ P.A.</button>
+            </div>
+        </div>
+
+        <button type="submit" class="btn-primary">Salva</button>
+        <a href="{{ back_url }}" class="btn-secondary block text-center">Annulla</a>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function appliedPartsManager() {
+    return {
+        parts: {{ device.applied_parts_json | tojson if device.applied_parts_json else '[]' }},
+        newName: '',
+        newType: 'B',
+        add() {
+            if (!this.newType) return;
+            this.parts.push({ name: this.newName.trim(), part_type: this.newType, code: '' });
+            this.newName = '';
+        },
+        remove(idx) {
+            this.parts.splice(idx, 1);
+        }
+    }
+}
+</script>
+{% endblock %}

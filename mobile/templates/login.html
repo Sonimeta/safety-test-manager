@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1e3a8a">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>STM Mobile — Accesso</title>
+    <link rel="manifest" href="/mobile/static/manifest.json">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { -webkit-tap-highlight-color: transparent; }
+        .form-input { width:100%;border:1px solid #d1d5db;border-radius:.5rem;padding:.75rem .875rem;font-size:1rem;outline:none; }
+        .form-input:focus { border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.2); }
+        .btn-primary { width:100%;background:#1e3a8a;color:#fff;padding:.875rem 1rem;border-radius:.75rem;font-weight:700;font-size:1rem;border:none;cursor:pointer; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-900 via-blue-800 to-blue-600 min-h-screen flex flex-col">
+
+    <!-- Logo area -->
+    <div class="flex-1 flex flex-col items-center justify-center px-8 pt-16 pb-8">
+        <div class="bg-white rounded-2xl p-5 shadow-2xl mb-6">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 text-blue-900" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                      d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+            </svg>
+        </div>
+        <h1 class="text-white text-2xl font-bold tracking-wide">STM Mobile</h1>
+        <p class="text-blue-200 text-sm mt-1">Safety Test Manager</p>
+    </div>
+
+    <!-- Login card -->
+    <div class="bg-white rounded-t-3xl px-6 pt-8 pb-10 shadow-2xl">
+        <h2 class="text-xl font-bold text-gray-900 mb-1">Accedi</h2>
+        <p class="text-sm text-gray-500 mb-6">Inserisci le tue credenziali per continuare</p>
+
+        {% if error %}
+        <div class="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 mb-5 text-sm flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 flex-shrink-0" viewBox="0 0 20 20" fill="currentColor">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+            </svg>
+            {{ error }}
+        </div>
+        {% endif %}
+
+        <form method="POST" action="/mobile/auth/login" id="login-form">
+            <div class="mb-4">
+                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Username</label>
+                <input type="text" name="username" class="form-input"
+                       placeholder="Inserisci username" autocomplete="username"
+                       autocapitalize="none" required>
+            </div>
+            <div class="mb-6">
+                <label class="block text-sm font-semibold text-gray-700 mb-1.5">Password</label>
+                <input type="password" name="password" class="form-input"
+                       placeholder="Inserisci password" autocomplete="current-password" required>
+            </div>
+            <button type="submit" class="btn-primary" id="login-btn">
+                Accedi
+            </button>
+        </form>
+
+        <p class="text-center text-xs text-gray-400 mt-6">
+            Safety Test Manager &copy; 2026
+        </p>
+    </div>
+
+    <script>
+        document.getElementById('login-form').addEventListener('submit', function() {
+            const btn = document.getElementById('login-btn');
+            btn.textContent = 'Accesso in corso...';
+            btn.disabled = true;
+        });
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/mobile/static/sw.js').catch(() => {});
+        }
+    </script>
+</body>
+</html>

@@ -1560,12 +1560,7 @@ class DbManagerDialog(QDialog):
                 for sep in separators:
                     try:
                         # Leggi almeno 10 righe per assicurarsi che tutte le colonne vengano rilevate
-                        # Usa error_bad_lines=False per pandas < 1.3, on_bad_lines per pandas >= 1.3
-                        try:
-                            df_test = pd.read_csv(filename, sep=sep, dtype=str, nrows=10, encoding='utf-8', on_bad_lines='skip')
-                        except TypeError:
-                            # Fallback per versioni più vecchie di pandas
-                            df_test = pd.read_csv(filename, sep=sep, dtype=str, nrows=10, encoding='utf-8', error_bad_lines=False, warn_bad_lines=False)
+                        df_test = pd.read_csv(filename, sep=sep, dtype=str, nrows=10, encoding='utf-8', on_bad_lines='skip')
                         num_cols = len(df_test.columns)
                         if num_cols > max_cols:
                             max_cols = num_cols
@@ -1579,10 +1574,7 @@ class DbManagerDialog(QDialog):
                 if df_headers is None or len(df_headers) <= 1:
                     for sep in [';', ',']:
                         try:
-                            try:
-                                df_test = pd.read_csv(filename, sep=sep, dtype=str, nrows=10, encoding='utf-8', on_bad_lines='skip')
-                            except TypeError:
-                                df_test = pd.read_csv(filename, sep=sep, dtype=str, nrows=10, encoding='utf-8', error_bad_lines=False, warn_bad_lines=False)
+                            df_test = pd.read_csv(filename, sep=sep, dtype=str, nrows=10, encoding='utf-8', on_bad_lines='skip')
                             num_cols = len(df_test.columns)
                             if num_cols > max_cols:
                                 max_cols = num_cols

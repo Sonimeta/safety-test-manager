@@ -1,0 +1,23 @@
+{% if customers %}
+{% for c in customers %}
+<a href="/mobile/customers/{{ c.uuid }}" class="list-item">
+    <div class="bg-blue-100 w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 mr-3">
+        <span class="text-sm font-bold text-blue-800">{{ c.name[0].upper() }}</span>
+    </div>
+    <div class="flex-1 min-w-0">
+        <p class="text-sm font-semibold text-gray-900 truncate">{{ c.name }}</p>
+        {% if c.address %}<p class="text-xs text-gray-400 truncate">{{ c.address }}</p>{% endif %}
+    </div>
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+    </svg>
+</a>
+{% endfor %}
+{% else %}
+<div class="flex flex-col items-center justify-center py-12 text-gray-400">
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+    </svg>
+    <p class="text-sm font-medium">Nessun cliente trovato</p>
+</div>
+{% endif %}

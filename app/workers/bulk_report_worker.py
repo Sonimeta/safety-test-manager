@@ -794,10 +794,24 @@ class BulkReportWorker(QObject):
                 except (json.JSONDecodeError, TypeError):
                     pass
         
+        # Ordina devices_map secondo il naming_format scelto dall'utente
+        def _sort_key_for_device(item):
+            verif = item[1]['data']
+            if self.naming_format == 'serial_number':
+                val = str(verif.get('serial_number') or verif.get('ams_inventory') or '')
+            elif self.naming_format == 'customer_inventory':
+                val = str(verif.get('customer_inventory') or verif.get('ams_inventory') or verif.get('serial_number') or '')
+            else:  # ams_inventory (default)
+                val = str(verif.get('ams_inventory') or verif.get('serial_number') or '')
+            # Ordinamento alfanumerico naturale
+            return [int(t) if t.isdigit() else t.lower() for t in re.split(r'(\d+)', val)]
+
+        sorted_devices = sorted(devices_map.items(), key=_sort_key_for_device)
+
         # Costruisci la tabella consolidata
         table_data = []
         esiti_unificati = []  # Lista parallela con gli esiti per colorare le celle
-        for device_id, device_info in devices_map.items():
+        for device_id, device_info in sorted_devices:
             verif = device_info['data']
             esito_elettrico = device_info['esito_elettrico']
             esito_funzionale = device_info['esito_funzionale']

@@ -469,7 +469,7 @@ class MainWindow(QMainWindow):
         shortcuts_html = (
             "<h3>Schermata Principale</h3>"
             "<ul>"
-            "<li><b>Ctrl+F</b> - Focus su Trova Subito</li>"
+            "<li><b>Ctrl+F</b> - Focus su Ricerca rapida</li>"
             "<li><b>Ctrl+Shift+F</b> - Apre la ricerca avanzata</li>"
             "<li><b>Ctrl+N</b> - Aggiunge un nuovo dispositivo</li>"
             "<li><b>Ctrl+S</b> - Avvia la sincronizzazione</li>"
@@ -882,24 +882,43 @@ class MainWindow(QMainWindow):
 
     def open_advanced_report_dialog(self):
         dialog = AdvancedReportDialog(self)
-        if not dialog.exec():
-            return
-        options = dialog.get_options()
+
+        def on_close():
+            if dialog.result() != QDialog.Accepted:
+                return
+            options = dialog.get_options()
+            self._run_advanced_report(options)
+
+        self._show_embedded_dialog(dialog, "GENERA REPORT AVANZATO", on_close)
+
+    def _run_advanced_report(self, options: dict):
         start_date = options["start_date"]
         end_date = options["end_date"]
         scope = options["scope"]
         customer_id = options["customer_id"]
         destination_id = options["destination_id"]
 
+        # destination_ids: lista di dest selezionate (solo per scope=customer); vuota = tutte
+        destination_ids = options.get("destination_ids") or []
+
+        def _dest_ids_for_customer(cid):
+            """Restituisce la lista di destination_id da usare per scope=customer."""
+            if destination_ids:
+                return destination_ids
+            dests = database.get_destinations_for_customer(cid)
+            return [dict(d).get('id') for d in dests if dict(d).get('id')]
+
         all_verifications = []
         if options["include_electrical"]:
             if scope == "all":
                 rows = database.get_verifications_by_date_range(start_date, end_date)
+                electrical_verifs = [dict(r) for r in rows]
             elif scope == "customer":
-                rows = database.get_verifications_for_customer_by_date_range(customer_id, start_date, end_date)
+                electrical_verifs = []
+                for did in _dest_ids_for_customer(customer_id):
+                    electrical_verifs += [dict(r) for r in database.get_verifications_for_destination_by_date_range(did, start_date, end_date)]
             else:
-                rows = database.get_verifications_for_destination_by_date_range(destination_id, start_date, end_date)
-            electrical_verifs = [dict(r) for r in rows]
+                electrical_verifs = [dict(r) for r in database.get_verifications_for_destination_by_date_range(destination_id, start_date, end_date)]
             if options["latest_only"]:
                 electrical_verifs = self._filter_latest_verifications(electrical_verifs)
             for verif in electrical_verifs:
@@ -909,11 +928,13 @@ class MainWindow(QMainWindow):
         if options["include_functional"]:
             if scope == "all":
                 rows = database.get_functional_verifications_by_date_range(start_date, end_date)
+                functional_verifs = [dict(r) for r in rows]
             elif scope == "customer":
-                rows = database.get_functional_verifications_for_customer_by_date_range(customer_id, start_date, end_date)
+                functional_verifs = []
+                for did in _dest_ids_for_customer(customer_id):
+                    functional_verifs += [dict(r) for r in database.get_functional_verifications_for_destination_by_date_range(did, start_date, end_date)]
             else:
-                rows = database.get_functional_verifications_for_destination_by_date_range(destination_id, start_date, end_date)
-            functional_verifs = [dict(r) for r in rows]
+                functional_verifs = [dict(r) for r in database.get_functional_verifications_for_destination_by_date_range(destination_id, start_date, end_date)]
             if options["latest_only"]:
                 functional_verifs = self._filter_latest_verifications(functional_verifs)
             for verif in functional_verifs:
@@ -923,17 +944,13 @@ class MainWindow(QMainWindow):
         if options.get("include_system"):
             if scope == "all":
                 rows = database.get_system_verifications_by_date_range(start_date, end_date)
+                system_verifs = [dict(r) for r in rows]
             elif scope == "customer":
-                # Per il cliente, recupera tutte le destinazioni e le verifiche di sistema
-                customer_destinations = database.get_destinations_for_customer(customer_id)
-                rows = []
-                for dest in customer_destinations:
-                    dest_id = dict(dest).get('id')
-                    if dest_id:
-                        rows.extend(database.get_system_verifications_for_destination_by_date_range(dest_id, start_date, end_date))
+                system_verifs = []
+                for did in _dest_ids_for_customer(customer_id):
+                    system_verifs += [dict(r) for r in database.get_system_verifications_for_destination_by_date_range(did, start_date, end_date)]
             else:
-                rows = database.get_system_verifications_for_destination_by_date_range(destination_id, start_date, end_date)
-            system_verifs = [dict(r) for r in rows]
+                system_verifs = [dict(r) for r in database.get_system_verifications_for_destination_by_date_range(destination_id, start_date, end_date)]
             for verif in system_verifs:
                 verif["verification_type"] = "SISTEMA"
                 all_verifications.append(verif)
@@ -1005,12 +1022,22 @@ class MainWindow(QMainWindow):
         customer_id = options.get("customer_id")
         destination_id = options.get("destination_id")
 
+        destination_ids = options.get("destination_ids") or []
         try:
             if scope == "customer" and customer_id:
                 cust = database.get_customer_by_id(customer_id)
                 if cust:
                     customer_name = str(cust["name"]).upper()
-                destination_name = "TUTTE LE DESTINAZIONI"
+                if destination_ids:
+                    # Costruisce stringa con i nomi delle destinazioni selezionate
+                    dest_names = []
+                    for did in destination_ids:
+                        d = database.get_destination_by_id(did)
+                        if d:
+                            dest_names.append(str(d["name"]).upper())
+                    destination_name = ", ".join(dest_names) if dest_names else "DESTINAZIONI SELEZIONATE"
+                else:
+                    destination_name = "TUTTE LE DESTINAZIONI"
             elif scope == "destination" and destination_id:
                 dest = database.get_destination_by_id(destination_id)
                 if dest:
@@ -1511,10 +1538,10 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.add_device_button)
 
         self.device_verification_filter_combo = QComboBox()
-        self.device_verification_filter_combo.addItem("🔍 Da verificare", "UNVERIFIED_60")
+        self.device_verification_filter_combo.addItem("🔍 Nessuna verifica eseguita", "UNVERIFIED_60")
         self.device_verification_filter_combo.addItem("🫀 Manca funzionale", "ONLY_FUNCTIONAL_60")
         self.device_verification_filter_combo.addItem("⚡ Manca elettrica", "ONLY_ELECTRICAL_60")
-        self.device_verification_filter_combo.addItem("✅ Entrambe mancanti", "BOTH_60")
+        self.device_verification_filter_combo.addItem("✅ VE O VF MANCANTE", "BOTH_60")
         self.device_verification_filter_combo.addItem("📋 Tutti i dispositivi", "ALL")
         self.device_verification_filter_combo.setCurrentIndex(0)
         self.device_verification_filter_combo.setFixedHeight(38)
@@ -1920,7 +1947,7 @@ class MainWindow(QMainWindow):
     
     def _create_global_search_group(self):
         """Crea il gruppo di ricerca rapida globale."""
-        group = QGroupBox("🔍 Trova Subito")
+        group = QGroupBox("🔍 Ricerca rapida")
         group.setObjectName("searchGroupBox")
         # Gli stili sono gestiti dal QSS del tema
         layout = QHBoxLayout(group)
@@ -1930,6 +1957,7 @@ class MainWindow(QMainWindow):
         self.global_device_search_edit = QLineEdit()
         self.global_device_search_edit.setPlaceholderText("Cerca cliente, destinazione o dispositivo")
         self.global_device_search_edit.setMinimumHeight(45)
+        self.global_device_search_edit.setCompleter(None)  # Disabilita memoria/autocomplete
         self.global_device_search_edit.returnPressed.connect(self.perform_global_search)
         self.global_device_search_edit.textChanged.connect(lambda *_: self._persist_main_view_state())
         
@@ -2158,7 +2186,7 @@ class MainWindow(QMainWindow):
                         combo.blockSignals(False)
 
             if hasattr(self, "global_device_search_edit"):
-                self.global_device_search_edit.setText(self.settings.value("main_window/global_search_text", ""))
+                self.global_device_search_edit.setText("")  # Non ripristinare la ricerca rapida all'avvio
             if hasattr(self, "customer_search"):
                 self.customer_search.setText(self.settings.value("main_window/customer_search_text", ""))
 
@@ -2641,7 +2669,7 @@ class MainWindow(QMainWindow):
         
         self.btn_edit_device = QPushButton("Modifica Dispositivo Selezionato")
         self.btn_edit_device.setObjectName("editButton")
-        self.btn_edit_device.clicked.connect(self.on_edit_selected_device)
+        self.btn_edit_device.clicked.connect(self.on_edit_selected_device_new)
         box_layout.addWidget(self.btn_edit_device)
         
         self.on_device_selection_changed(self.device_selector.currentIndex())
@@ -2810,82 +2838,6 @@ class MainWindow(QMainWindow):
         self.device_details_layout.addWidget(status_label, row_idx, 1, 1, 3)
         row_idx += 1
 
-    def on_edit_selected_device(self):
-        dev_id = self.device_selector.currentData()
-        if not dev_id or dev_id == -1:
-            QMessageBox.warning(self, "Attenzione", "Seleziona un dispositivo da modificare.")
-            return
-
-        try:
-            from app.ui.dialogs.detail_dialogs import DeviceDialog
-
-            row = services.database.get_device_by_id(dev_id)
-            if not row:
-                QMessageBox.critical(self, "Errore", "Impossibile caricare i dati del dispositivo.")
-                return
-
-            dev = dict(row)
-            dest_id = dev.get("destination_id")
-            dest_row = services.database.get_destination_by_id(dest_id) if dest_id else None
-            customer_id = dict(dest_row).get("customer_id") if dest_row else None
-
-            dlg = DeviceDialog(customer_id=customer_id,
-                            destination_id=dest_id,
-                            device_data=dev,
-                            parent=self)
-
-            if dlg.exec():
-                data = dlg.get_data()
-                services.update_device(
-                    dev_id,
-                    data["destination_id"],
-                    data["serial"],
-                    data["desc"],
-                    data["mfg"],
-                    data["model"],
-                    data.get("department"),
-                    data.get("applied_parts", []),
-                    data.get("customer_inv"),
-                    data.get("ams_inv"),
-                    data.get("verification_interval"),
-                    data.get("default_profile_key"),
-                    data.get("default_functional_profile_key"),
-                    reactivate=False,
-                )
-                # Ricarica la lista dispositivi e mantieni la selezione del dispositivo modificato
-                current_destination_id = data.get("destination_id") or dest_id
-                # Se la destinazione è cambiata, cambia anche la selezione destinazione
-                if current_destination_id and current_destination_id != self.destination_selector.currentData():
-                    dest_index = self.destination_selector.findData(current_destination_id)
-                    if dest_index != -1:
-                        self.destination_selector.setCurrentIndex(dest_index)
-                        QApplication.processEvents()
-
-                # Ricarica i dispositivi per la destinazione corrente
-                self.on_destination_selected()
-                QApplication.processEvents()
-
-                # Prova a riselezionare il dispositivo modificato
-                device_index = self.device_selector.findData(dev_id)
-                if device_index != -1:
-                    self.device_selector.setCurrentIndex(device_index)
-                else:
-                    # Se non trovato, potrebbe essere filtrato: passa a "Tutti" e riprova
-                    if self._get_device_filter_mode() != "ALL":
-                        self._set_device_filter_mode("ALL")
-                        QApplication.processEvents()
-                        device_index = self.device_selector.findData(dev_id)
-                        if device_index != -1:
-                            self.device_selector.setCurrentIndex(device_index)
-
-                # Aggiorna i dettagli dopo aver forzato la selezione
-                self.update_device_details_view(dev_id)
-                self.show_success_feedback("Dispositivo aggiornato.")
-
-        except Exception as e:
-            logging.error("Errore durante la modifica del dispositivo", exc_info=True)
-            QMessageBox.critical(self, "Errore", f"Modifica non riuscita:\n{e}")
-
     def _create_search_group(self):
         """Crea il gruppo ricerca rapida con design moderno."""
         group = QGroupBox("🔍 Ricerca Rapida")
@@ -2944,76 +2896,6 @@ class MainWindow(QMainWindow):
             else:
                 QMessageBox.warning(self, "Dati Mancanti", "Selezionare uno strumento valido.")
 
-    def _create_manual_selection_group(self):
-        """Crea il gruppo di selezione dispositivi con etichette affiancate (risparmio spazio)."""
-        from PySide6.QtWidgets import QSizePolicy
-        
-        group = QGroupBox("🎯 Selezione Dispositivo")
-        form = QFormLayout(group)
-        form.setRowWrapPolicy(QFormLayout.DontWrapRows)
-        form.setFieldGrowthPolicy(QFormLayout.ExpandingFieldsGrow)
-        form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        
-        # Destinazione
-        self.destination_selector = QComboBox()
-        self.destination_selector.setEditable(True)
-        self.destination_selector.completer().setFilterMode(Qt.MatchContains)
-        self.destination_selector.setPlaceholderText("🏢 Digita per cercare cliente o destinazione...")
-        self.destination_selector.lineEdit().setPlaceholderText("🏢 Digita per cercare cliente o destinazione...")
-        self.destination_selector.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.destination_selector.setMinimumHeight(45)
-        self.destination_selector.setMinimumContentsLength(20)
-        self.destination_selector.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
-        form.addRow("Cliente / Destinazione:", self.destination_selector)
-        
-        # Dispositivo (selector + add button + counter + filtro)
-        device_row = QHBoxLayout()
-        self.device_selector = QComboBox() 
-        self.device_selector.setEditable(True)
-        self.device_selector.completer().setFilterMode(Qt.MatchContains)
-        self.device_selector.setPlaceholderText("🔧 Seleziona o cerca dispositivo...")
-        self.device_selector.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self.device_selector.setMinimumHeight(45)
-        self.device_selector.setMinimumContentsLength(20)
-        self.device_selector.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
-        
-        add_device_btn = QPushButton(qta.icon('fa5s.plus', scale_factor=1), "")
-        add_device_btn.setObjectName("autoButton")
-        add_device_btn.setToolTip("Aggiungi nuovo dispositivo")
-        add_device_btn.setMinimumHeight(45)
-        add_device_btn.setMinimumWidth(45)
-        add_device_btn.clicked.connect(self.quick_add_device)
-        
-        self.device_count_label = QLabel("<i style='color: #64748b;'>(0 dispositivi)</i>")
-        self.device_verification_filter_combo = QComboBox()
-        self.device_verification_filter_combo.addItem("Solo da verificare (60 gg)", "UNVERIFIED_60")
-        self.device_verification_filter_combo.addItem("Solo funzionale (60 gg)", "ONLY_FUNCTIONAL_60")
-        self.device_verification_filter_combo.addItem("Solo elettrica (60 gg)", "ONLY_ELECTRICAL_60")
-        self.device_verification_filter_combo.addItem("Elettrica + Funzionale (60 gg)", "BOTH_60")
-        self.device_verification_filter_combo.addItem("Tutti", "ALL")
-        self.device_verification_filter_combo.setCurrentIndex(0)
-        self.device_verification_filter_combo.setToolTip(
-            "Filtra in base alle verifiche elettriche/funzionali degli ultimi 60 giorni"
-        )
-        
-        device_row.addWidget(self.device_selector, 1)
-        device_row.addWidget(add_device_btn)
-        device_row.addWidget(self.device_count_label)
-        device_row.addWidget(self.device_verification_filter_combo)
-        form.addRow("Dispositivo:", device_row)
-        
-        # Profilo di verifica
-        self.profile_selector = QComboBox()
-        self.profile_selector.setMinimumHeight(45)
-        form.addRow("Profilo di Verifica:", self.profile_selector)
-        
-        # Connessioni segnali
-        self.destination_selector.currentIndexChanged.connect(self.on_destination_selected)
-        self.device_selector.currentIndexChanged.connect(self.on_device_selected)
-        self.device_verification_filter_combo.currentIndexChanged.connect(self.on_destination_selected)
-        
-        return group
-    
     # ========== GESTORI EVENTI PER IL NUOVO DESIGN A 3 COLONNE ==========
     
     def reset_selection(self):
@@ -3069,28 +2951,17 @@ class MainWindow(QMainWindow):
         self._update_guided_flow_ui()
     
     def _select_device_by_id(self, device_id):
-        """Seleziona un dispositivo per ID sia nella lista che nel selettore."""
+        """Seleziona un dispositivo per ID nella lista."""
         if not device_id:
             return
         
-        # Seleziona nella lista (device_list)
         for i in range(self.device_list.count()):
             item = self.device_list.item(i)
             if item.data(Qt.UserRole) == device_id:
                 self.device_list.setCurrentItem(item)
                 self.on_device_selected_new(item)
-                # Scrolla alla posizione del dispositivo
                 self.device_list.scrollToItem(item)
                 break
-        
-        # Seleziona nel selettore (device_selector)
-        device_index = self.device_selector.findData(device_id)
-        if device_index != -1:
-            self.device_selector.blockSignals(True)
-            self.device_selector.setCurrentIndex(device_index)
-            self.device_selector.blockSignals(False)
-            self.on_device_selected()
-            self.on_device_selection_changed(device_index)
     
     def on_device_selected_new(self, item):
         """Gestisce la selezione di un dispositivo."""
@@ -3763,18 +3634,6 @@ class MainWindow(QMainWindow):
         customer_count = len(customers)
         self.customer_count_label.setText(f"<span style='font-weight: bold;'>{customer_count} clienti</span>")
 
-    def load_destinations(self):
-        """Load destinations into the combo box (OLD - per compatibilità)."""
-        self.destination_selector.blockSignals(True)
-        self.destination_selector.clear()
-        
-        # Load actual destinations
-        destinations = services.database.get_all_destinations_with_customer()
-        for dest in destinations:
-            self.destination_selector.addItem(f"{dest['customer_name']} / {dest['name']}", dest['id'])
-        
-        self.destination_selector.blockSignals(False)
-
     def load_profiles(self):
         self.profile_selector.clear()
         self.profile_selector.addItem("— Nessun profilo —", None)
@@ -3788,94 +3647,9 @@ class MainWindow(QMainWindow):
             self.functional_profile_selector.addItem(profile.name.upper(), key)
 
     def load_control_panel_data(self):
-        """Ricarica i dati - ora non fa nulla perché il control panel è stato rimosso."""
+        """Ricarica i dati - il control panel è stato rimosso, metodo mantenuto per compatibilità."""
         pass
 
-    def on_destination_selected(self):
-        """Carica i dispositivi per la destinazione selezionata."""
-        self.device_selector.blockSignals(True)
-        self.device_selector.clear()
-        
-        destination_id = self.destination_selector.currentData()
-        if not destination_id or destination_id == -1:
-            self.device_selector.addItem("Seleziona prima una destinazione...", -1)
-            self.device_count_label.setText("<i>(0 dispositivi)</i>")
-            self.device_selector.blockSignals(False)
-            self.on_device_selected()
-            return
-
-        devices = self._get_filtered_devices_for_destination(destination_id)
-        
-        # Popola il selettore
-        for dev_row in devices:
-            dev = dict(dev_row)
-            display_text = f"{dev.get('description')} (S/N: {dev.get('serial_number')}) - (Inv AMS: {dev.get('ams_inventory')})"
-            self.device_selector.addItem(display_text, dev.get('id'))
-        
-        # Aggiorna contatore
-        device_count = len(devices)
-        active_filter = self._get_device_filter_label(self._get_device_filter_mode())
-        period_label = self._get_device_filter_period_label()
-        count_text = f"<span style='font-weight: bold;'>({device_count} dispositivi)</span> <span style='color:#64748b;'>(filtro: {active_filter}, periodo: {period_label})</span>"
-
-        self.device_count_label.setText(count_text)
-        
-        if self.device_selector.count() > 0:
-            self.device_selector.setCurrentIndex(0)
-
-        self.device_selector.blockSignals(False)
-        self.on_device_selected()
-        self.on_device_selection_changed(self.device_selector.currentIndex())
-
-    def on_device_selected(self):
-        device_id = self.device_selector.currentData()
-        self.profile_selector.blockSignals(True)
-        self.functional_profile_selector.blockSignals(True)
-        if not device_id or device_id == -1:
-            if self.profile_selector.count() > 0:
-                self.profile_selector.setCurrentIndex(0)
-            if self.functional_profile_selector.count() > 0:
-                self.functional_profile_selector.setCurrentIndex(0)
-            self.profile_selector.blockSignals(False)
-            self.functional_profile_selector.blockSignals(False)
-            return
-        
-        device_data = services.database.get_device_by_id(device_id)
-        if device_data and device_data.get('default_profile_key'):
-            index = self.profile_selector.findData(device_data['default_profile_key'])
-            if index != -1:
-                self.profile_selector.setCurrentIndex(index)
-            else:
-                self.profile_selector.setCurrentIndex(0)
-        elif self.profile_selector.count() > 0:
-            self.profile_selector.setCurrentIndex(0)
-
-        if device_data and device_data.get('default_functional_profile_key'):
-            default_func_key = device_data['default_functional_profile_key']
-            func_index = self.functional_profile_selector.findData(default_func_key)
-            if func_index != -1:
-                self.functional_profile_selector.setCurrentIndex(func_index)
-            else:
-                # Il profilo di default non è stato trovato, potrebbe essere stato modificato
-                # Verifica se esiste ancora nel dizionario dei profili
-                if default_func_key in config.FUNCTIONAL_PROFILES:
-                    # Il profilo esiste ma non è nel selector, ricarica i profili
-                    self.load_functional_profiles()
-                    func_index = self.functional_profile_selector.findData(default_func_key)
-                    if func_index != -1:
-                        self.functional_profile_selector.setCurrentIndex(func_index)
-                    elif self.functional_profile_selector.count() > 0:
-                        self.functional_profile_selector.setCurrentIndex(0)
-                elif self.functional_profile_selector.count() > 0:
-                    # Il profilo non esiste più, seleziona il primo disponibile
-                    self.functional_profile_selector.setCurrentIndex(0)
-        elif self.functional_profile_selector.count() > 0:
-            self.functional_profile_selector.setCurrentIndex(0)
-
-        self.profile_selector.blockSignals(False)
-        self.functional_profile_selector.blockSignals(False)
-        self.start_functional_button.setEnabled(self.functional_profile_selector.count() > 0)
-    
     def start_verification(self, manual_mode: bool):
         """Avvia la verifica con il nuovo sistema di selezione."""
         if not self.current_mti_info or not self.current_technician_name:
@@ -4499,7 +4273,7 @@ class MainWindow(QMainWindow):
                     # Seleziona il dispositivo appena creato
                     self._select_device_by_id(new_device_id)
                 else:
-                    self.on_destination_selected()
+                    self.reload_devices()
                     # Seleziona il dispositivo appena creato
                     self._select_device_by_id(new_device_id)
                 self.update_summary_panel()
@@ -4534,7 +4308,7 @@ class MainWindow(QMainWindow):
                                 # Seleziona il dispositivo riattivato
                                 self._select_device_by_id(reactivated_device_id)
                             else:
-                                self.on_destination_selected()
+                                self.reload_devices()
                                 # Seleziona il dispositivo riattivato
                                 self._select_device_by_id(reactivated_device_id)
                             self.update_summary_panel()
@@ -4552,7 +4326,7 @@ class MainWindow(QMainWindow):
                                 # Seleziona il dispositivo appena creato
                                 self._select_device_by_id(new_device_id)
                             else:
-                                self.on_destination_selected()
+                                self.reload_devices()
                                 # Seleziona il dispositivo appena creato
                                 self._select_device_by_id(new_device_id)
                             self.update_summary_panel()
@@ -4650,21 +4424,6 @@ class MainWindow(QMainWindow):
             self.stats_action.setVisible(is_quality_manager)
         if hasattr(self, 'audit_log_action'):
             self.audit_log_action.setVisible(is_quality_manager)
-
-    def update_device_list(self):
-        customer_id = self.customer_selector.currentData()
-        self.device_selector.clear()
-        if not customer_id or customer_id == -1:
-            return
-        # Compatibilità: in questo flusso legacy mostriamo tutti i dispositivi cliente.
-        devices = services.database.get_devices_for_customer(customer_id)
-        for dev_row in devices:
-            dev = dict(dev_row)
-            display_text = f"{dev.get('description')} (S/N: {dev.get('serial_number')} - (Inv AMS: {dev.get('ams_inventory')})"
-            if dev.get('ams_inventory'):
-                display_text += f" / Inv. AMS: {dev.get('ams_inventory')}"
-            display_text += ")"
-            self.device_selector.addItem(display_text, dev.get('id'))
 
     def open_profile_manager(self):
         """Apre la finestra di dialogo per la gestione dei profili."""
@@ -5444,7 +5203,7 @@ class MainWindow(QMainWindow):
             dialog.navigate_on_load(navigate_to)
 
         def on_close():
-            self.load_destinations()
+            self.load_customers()
             self.load_control_panel_data()
 
         self._show_embedded_dialog(dialog, "GESTIONE ANAGRAFICHE", on_close)

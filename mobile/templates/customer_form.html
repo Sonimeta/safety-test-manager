@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}{% if mode == 'edit' %}Modifica Cliente{% else %}Nuovo Cliente{% endif %} — STM Mobile{% endblock %}
+{% block header_title %}{% if mode == 'edit' %}Modifica Cliente{% else %}Nuovo Cliente{% endif %}{% endblock %}
+{% block header_subtitle %}<p class="text-blue-300 text-xs">Anagrafica cliente</p>{% endblock %}
+
+{% block content %}
+<div class="px-4 py-4">
+    {% if error %}
+    <div class="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 mb-4 text-sm">⚠️ {{ error }}</div>
+    {% endif %}
+
+    <form method="POST" action="{{ form_action }}" class="space-y-4">
+        <div class="card p-4 space-y-4">
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Nome cliente *</label>
+                <input type="text" name="name" class="form-input" value="{{ customer.name or '' }}" required>
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Indirizzo</label>
+                <input type="text" name="address" class="form-input" value="{{ customer.address or '' }}">
+            </div>
+            <div class="grid grid-cols-1 gap-3">
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Telefono</label>
+                    <input type="text" name="phone" class="form-input" value="{{ customer.phone or '' }}">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Email</label>
+                    <input type="email" name="email" class="form-input" value="{{ customer.email or '' }}">
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn-primary">Salva</button>
+        <a href="{{ back_url }}" class="btn-secondary block text-center">Annulla</a>
+    </form>
+</div>
+{% endblock %}

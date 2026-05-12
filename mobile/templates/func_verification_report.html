@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Report Verifica Funzionale — {{ fv.verification_code or fv.verification_date }}</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  @media print {
+    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .no-print { display: none !important; }
+    .page-break { page-break-before: always; }
+  }
+  body { font-family: 'Segoe UI', sans-serif; background: #f8f9fa; }
+</style>
+</head>
+<body class="bg-gray-50">
+
+<!-- Print button -->
+<div class="no-print fixed bottom-6 right-6 z-50">
+  <button onclick="window.print()"
+          class="bg-blue-900 text-white px-6 py-3 rounded-2xl shadow-xl text-sm font-bold">
+    🖨 Stampa / Salva PDF
+  </button>
+</div>
+
+<div class="max-w-3xl mx-auto p-6 space-y-6">
+
+  <!-- Header -->
+  <div class="bg-blue-900 text-white rounded-2xl p-6">
+    <div class="flex items-start justify-between">
+      <div>
+        <p class="text-blue-300 text-xs uppercase tracking-wider mb-1">Rapporto di Verifica Funzionale</p>
+        <h1 class="text-xl font-bold">{{ profile_name }}</h1>
+        {% if fv.verification_code %}
+        <p class="text-blue-300 text-sm font-mono mt-1">{{ fv.verification_code }}</p>
+        {% endif %}
+      </div>
+      {% if fv.overall_status in ('PASSATO', 'PASS', 'OK') %}
+      <span class="bg-green-500 text-white text-sm font-bold px-4 py-2 rounded-xl">✓ PASSATO</span>
+      {% else %}
+      <span class="bg-red-500 text-white text-sm font-bold px-4 py-2 rounded-xl">✗ NON PASSATO</span>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Device + context info -->
+  <div class="bg-white rounded-2xl p-5 shadow-sm">
+    <h2 class="text-xs font-bold uppercase text-gray-400 tracking-wider mb-3">Informazioni dispositivo</h2>
+    <div class="grid grid-cols-2 gap-3 text-sm">
+      {% if device.description %}
+      <div><p class="text-[10px] uppercase text-gray-400 font-semibold">Descrizione</p><p class="font-medium">{{ device.description }}</p></div>
+      {% endif %}
+      {% if device.manufacturer %}
+      <div><p class="text-[10px] uppercase text-gray-400 font-semibold">Produttore</p><p class="font-medium">{{ device.manufacturer }}</p></div>
+      {% endif %}
+      {% if device.model %}
+      <div><p class="text-[10px] uppercase text-gray-400 font-semibold">Modello</p><p class="font-medium">{{ device.model }}</p></div>
+      {% endif %}
+      {% if device.serial_number %}
+      <div><p class="text-[10px] uppercase text-gray-400 font-semibold">Numero di serie</p><p class="font-mono font-medium">{{ device.serial_number }}</p></div>
+      {% endif %}
+      {% if device.ams_inventory %}
+      <div><p class="text-[10px] uppercase text-gray-400 font-semibold">Inv. AMS</p><p class="font-medium">{{ device.ams_inventory }}</p></div>
+      {% endif %}
+      {% if device.customer_inventory %}
+      <div><p class="text-[10px] uppercase text-gray-400 font-semibold">Inv. Cliente</p><p class="font-medium">{{ device.customer_inventory }}</p></div>
+      {% endif %}
+      {% if customer %}<div><p class="text-[10px] uppercase text-gray-400 font-semibold">Cliente</p><p class="font-medium">{{ customer.name }}</p></div>{% endif %}
+      {% if destination %}<div><p class="text-[10px] uppercase text-gray-400 font-semibold">Sede</p><p class="font-medium">{{ destination.name }}</p></div>{% endif %}
+    </div>
+  </div>
+
+  <!-- Verification info -->
+  <div class="bg-white rounded-2xl p-5 shadow-sm">
+    <h2 class="text-xs font-bold uppercase text-gray-400 tracking-wider mb-3">Dettagli verifica</h2>
+    <div class="grid grid-cols-2 gap-3 text-sm">
+      <div><p class="text-[10px] uppercase text-gray-400 font-semibold">Data</p><p class="font-medium">{{ fv.verification_date }}</p></div>
+      {% if fv.technician_name %}
+      <div><p class="text-[10px] uppercase text-gray-400 font-semibold">Tecnico</p><p class="font-medium">{{ fv.technician_name }}</p></div>
+      {% endif %}
+      {% if fv.mti_instrument %}
+      <div><p class="text-[10px] uppercase text-gray-400 font-semibold">Strumento</p><p class="font-medium">{{ fv.mti_instrument }}</p></div>
+      {% endif %}
+      {% if fv.mti_serial %}
+      <div><p class="text-[10px] uppercase text-gray-400 font-semibold">Matricola strum.</p><p class="font-mono font-medium">{{ fv.mti_serial }}</p></div>
+      {% endif %}
+      {% if fv.mti_cal_date %}
+      <div><p class="text-[10px] uppercase text-gray-400 font-semibold">Scad. calibrazione</p><p class="font-medium">{{ fv.mti_cal_date }}</p></div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Results by section -->
+  {% for section in sections %}
+  <div class="bg-white rounded-2xl shadow-sm overflow-hidden">
+    <div class="bg-blue-50 px-5 py-3 border-b border-blue-100">
+      <h2 class="text-sm font-bold text-blue-900">{{ section.title }}</h2>
+    </div>
+    <table class="w-full text-sm">
+      <tbody>
+        {% for field_key, field_val in section.data.items() %}
+        <tr class="border-b border-gray-50 last:border-0">
+          <td class="px-5 py-3 text-gray-600 w-1/2">{{ field_key }}</td>
+          <td class="px-5 py-3 font-medium text-right">
+            {% if field_val in ('PASS', 'PASSATO', 'OK', 'Sì', 'Si') %}
+            <span class="bg-green-100 text-green-800 text-xs font-bold px-2.5 py-1 rounded-full">✓ {{ field_val }}</span>
+            {% elif field_val in ('FAIL', 'NON PASSATO', 'KO', 'No') %}
+            <span class="bg-red-100 text-red-800 text-xs font-bold px-2.5 py-1 rounded-full">✗ {{ field_val }}</span>
+            {% elif field_val in ('N/A', 'n/a', '') %}
+            <span class="bg-gray-100 text-gray-600 text-xs font-bold px-2.5 py-1 rounded-full">N/A</span>
+            {% else %}
+            {{ field_val }}
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+
+  {% if fv.notes %}
+  <div class="bg-white rounded-2xl p-5 shadow-sm">
+    <h2 class="text-xs font-bold uppercase text-gray-400 tracking-wider mb-2">Note</h2>
+    <p class="text-sm text-gray-700">{{ fv.notes }}</p>
+  </div>
+  {% endif %}
+
+  <!-- Signature -->
+  <div class="bg-white rounded-2xl p-5 shadow-sm">
+    <h2 class="text-xs font-bold uppercase text-gray-400 tracking-wider mb-3">Firma tecnico</h2>
+    {% if signature_img %}
+    <img src="data:image/png;base64,{{ signature_img }}" alt="Firma" class="max-h-24 max-w-xs border border-gray-200 rounded-lg p-2">
+    {% else %}
+    <div class="h-16 border-b-2 border-gray-300 w-64"></div>
+    {% endif %}
+    <p class="text-xs text-gray-500 mt-2">{{ fv.technician_name or '' }}</p>
+  </div>
+
+  <p class="text-center text-xs text-gray-400 pb-4">
+    Generato il {{ fv.verification_date }} · STM Mobile
+  </p>
+</div>
+</body>
+</html>

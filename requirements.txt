@@ -41,6 +41,8 @@ fastapi
 uvicorn[standard]
 pydantic
 python-multipart
+httpx
+jinja2
 
 # Database
 psycopg2-binary

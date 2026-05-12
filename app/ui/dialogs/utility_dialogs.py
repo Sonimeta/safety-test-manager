@@ -108,16 +108,25 @@ class AdvancedReportDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("GENERA REPORT AVANZATO")
-        self.setMinimumWidth(520)
 
         self.start_date = None
         self.end_date = None
 
-        layout = QVBoxLayout(self)
+        from PySide6.QtWidgets import QGridLayout, QSizePolicy as QSP
+        root = QVBoxLayout(self)
+        root.setContentsMargins(12, 10, 12, 10)
+        root.setSpacing(8)
+
+        grid = QGridLayout()
+        grid.setSpacing(8)
+        root.addLayout(grid, 1)
+
+        # ── COLONNA SINISTRA ──────────────────────────────────────────────
 
         # --- Ambito ---
         scope_group = QGroupBox("Ambito")
         scope_layout = QFormLayout(scope_group)
+        scope_layout.setSpacing(4)
         self.scope_combo = QComboBox()
         self.scope_combo.addItem("Tutto il database", "all")
         self.scope_combo.addItem("Cliente", "customer")
@@ -128,24 +137,60 @@ class AdvancedReportDialog(QDialog):
         self.customer_combo.currentIndexChanged.connect(self._on_customer_changed)
         self.destination_combo = QComboBox()
 
+        # Lista multi-selezione destinazioni (visibile solo per scope=cliente)
+        self.dest_list_widget = QListWidget()
+        self.dest_list_widget.setSelectionMode(QAbstractItemView.MultiSelection)
+        self.dest_list_widget.setFixedHeight(120)
+        dest_list_btns = QHBoxLayout()
+        dest_list_btns.setSpacing(4)
+        self._dest_select_all_btn = QPushButton("Seleziona tutto")
+        self._dest_select_all_btn.setFixedHeight(24)
+        self._dest_select_all_btn.clicked.connect(lambda: self.dest_list_widget.selectAll())
+        self._dest_deselect_all_btn = QPushButton("Deseleziona tutto")
+        self._dest_deselect_all_btn.setFixedHeight(24)
+        self._dest_deselect_all_btn.clicked.connect(lambda: self.dest_list_widget.clearSelection())
+        dest_list_btns.addWidget(self._dest_select_all_btn)
+        dest_list_btns.addWidget(self._dest_deselect_all_btn)
+        self._dest_list_label = QLabel("Destinazioni:")
+        self._dest_list_btns_widget = QWidget()
+        self._dest_list_btns_widget.setLayout(dest_list_btns)
+
         scope_layout.addRow("Selezione:", self.scope_combo)
         scope_layout.addRow("Cliente:", self.customer_combo)
         scope_layout.addRow("Destinazione:", self.destination_combo)
-        layout.addWidget(scope_group)
+        scope_layout.addRow(self._dest_list_label, self.dest_list_widget)
+        scope_layout.addRow("", self._dest_list_btns_widget)
+        grid.addWidget(scope_group, 0, 0)
 
         # --- Intervallo date ---
         date_group = QGroupBox("Intervallo Date")
         date_layout = QHBoxLayout(date_group)
+        date_layout.setContentsMargins(8, 6, 8, 6)
         self.date_label = QLabel("NESSUN INTERVALLO SELEZIONATO")
         select_date_btn = QPushButton("Seleziona intervallo")
         select_date_btn.clicked.connect(self._select_date_range)
         date_layout.addWidget(self.date_label, 1)
         date_layout.addWidget(select_date_btn)
-        layout.addWidget(date_group)
+        grid.addWidget(date_group, 1, 0)
+
+        # --- Output ---
+        output_group = QGroupBox("Cartella di destinazione")
+        output_layout = QHBoxLayout(output_group)
+        output_layout.setContentsMargins(8, 6, 8, 6)
+        self.output_path_edit = QLineEdit()
+        browse_btn = QPushButton("Sfoglia...")
+        browse_btn.clicked.connect(self._browse_output_folder)
+        output_layout.addWidget(self.output_path_edit, 1)
+        output_layout.addWidget(browse_btn)
+        grid.addWidget(output_group, 2, 0)
+
+        # ── COLONNA DESTRA ────────────────────────────────────────────────
 
         # --- Opzioni report ---
         options_group = QGroupBox("Opzioni Report")
         options_layout = QFormLayout(options_group)
+        options_layout.setSpacing(5)
+
         self.electrical_check = QCheckBox("Verifiche Elettriche")
         self.functional_check = QCheckBox("Verifiche Funzionali")
         self.system_check = QCheckBox("Verifiche di Sistema")
@@ -178,6 +223,7 @@ class AdvancedReportDialog(QDialog):
         self.merge_pdf_browse_btn.clicked.connect(self._browse_merge_pdf)
 
         type_row = QHBoxLayout()
+        type_row.setSpacing(6)
         type_row.addWidget(self.electrical_check)
         type_row.addWidget(self.functional_check)
         type_row.addWidget(self.system_check)
@@ -189,28 +235,29 @@ class AdvancedReportDialog(QDialog):
         options_layout.addRow(self.export_cover_single_check)
         options_layout.addRow(self.export_table_single_check)
         options_layout.addRow(self.keep_individual_check)
-        # Il percorso del file merged viene generato automaticamente nel formato: ANNO-MESE_Fascicolo verifiche_NOME DESTINAZIONE
-        layout.addWidget(options_group)
+        # La colonna destra occupa righe 0-2 (stessa altezza totale della sinistra)
+        grid.addWidget(options_group, 0, 1, 3, 1)
 
-        # --- Output ---
-        output_group = QGroupBox("Cartella di destinazione")
-        output_layout = QHBoxLayout(output_group)
-        self.output_path_edit = QLineEdit()
-        browse_btn = QPushButton("Sfoglia...")
-        browse_btn.clicked.connect(self._browse_output_folder)
-        output_layout.addWidget(self.output_path_edit, 1)
-        output_layout.addWidget(browse_btn)
-        layout.addWidget(output_group)
+        # Le due colonne hanno lo stesso peso orizzontale
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
 
         # --- Pulsanti ---
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
-        layout.addWidget(buttons)
+        root.addWidget(buttons)
 
         self._load_customers()
         self._update_scope_controls()
         self._update_merge_controls()
+
+    def keyPressEvent(self, event):
+        from PySide6.QtCore import Qt as _Qt
+        if event.key() == _Qt.Key_Escape:
+            self.reject()
+        else:
+            super().keyPressEvent(event)
 
     def _merge_path_row(self):
         row = QHBoxLayout()
@@ -231,17 +278,23 @@ class AdvancedReportDialog(QDialog):
     def _load_destinations(self, customer_id: int | None):
         self.destination_combo.clear()
         self.destination_combo.addItem("Seleziona destinazione...", None)
+        self.dest_list_widget.clear()
         if not customer_id:
             return
         destinations = services.database.get_destinations_for_customer(customer_id)
         for dest in destinations:
             dest_data = dict(dest)
-            self.destination_combo.addItem(dest_data.get("name", "N/D"), dest_data.get("id"))
+            name = dest_data.get("name", "N/D")
+            dest_id = dest_data.get("id")
+            self.destination_combo.addItem(name, dest_id)
+            item = QListWidgetItem(name)
+            item.setData(Qt.UserRole, dest_id)
+            self.dest_list_widget.addItem(item)
 
     def _on_customer_changed(self):
         scope = self.scope_combo.currentData()
-        if scope == "destination":
-            customer_id = self.customer_combo.currentData()
+        customer_id = self.customer_combo.currentData()
+        if scope in ("destination", "customer"):
             self._load_destinations(customer_id)
 
     def _update_scope_controls(self):
@@ -249,13 +302,22 @@ class AdvancedReportDialog(QDialog):
         if scope == "all":
             self.customer_combo.setEnabled(False)
             self.destination_combo.setEnabled(False)
+            self._set_dest_list_visible(False)
         elif scope == "customer":
             self.customer_combo.setEnabled(True)
             self.destination_combo.setEnabled(False)
+            self._set_dest_list_visible(True)
+            self._on_customer_changed()
         else:
             self.customer_combo.setEnabled(True)
             self.destination_combo.setEnabled(True)
+            self._set_dest_list_visible(False)
             self._on_customer_changed()
+
+    def _set_dest_list_visible(self, visible: bool):
+        self.dest_list_widget.setVisible(visible)
+        self._dest_list_label.setVisible(visible)
+        self._dest_list_btns_widget.setVisible(visible)
 
     def _select_date_range(self):
         dialog = SingleCalendarRangeDialog(self)
@@ -296,10 +358,17 @@ class AdvancedReportDialog(QDialog):
             self.keep_individual_check.setChecked(True)
 
     def get_options(self):
+        # Raccoglie le destinazioni selezionate nella list widget (solo per scope=customer)
+        selected_dest_ids = [
+            self.dest_list_widget.item(i).data(Qt.UserRole)
+            for i in range(self.dest_list_widget.count())
+            if self.dest_list_widget.item(i).isSelected()
+        ]
         return {
             "scope": self.scope_combo.currentData(),
             "customer_id": self.customer_combo.currentData(),
             "destination_id": self.destination_combo.currentData(),
+            "destination_ids": selected_dest_ids,  # lista dest selezionate (vuota = tutte)
             "start_date": self.start_date,
             "end_date": self.end_date,
             "include_electrical": self.electrical_check.isChecked(),

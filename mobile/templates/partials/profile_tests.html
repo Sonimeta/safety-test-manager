@@ -1,0 +1,167 @@
+﻿{% if tests %}
+<div class="card p-4 space-y-3" id="tests-section">
+    <div class="flex items-center justify-between border-b border-gray-100 pb-2">
+        <h2 class="text-sm font-bold text-gray-700">Misure ({{ tests|length }} test)</h2>
+        <span id="tests-summary" class="text-xs font-semibold text-gray-400"></span>
+    </div>
+
+    {% for test in tests %}
+    {% set idx = loop.index0 %}
+    {% set is_pause = "PAUSA" in test.name|upper %}
+
+    {% if is_pause %}
+    <div class="bg-yellow-50 border border-yellow-200 rounded-xl p-3 text-xs text-yellow-800 font-semibold">
+        &#9613; {{ test.parameter or 'Preparare il dispositivo per il prossimo test.' }}
+        <input type="hidden" name="test_name_{{ idx }}" value="{{ test.name }}">
+        <input type="hidden" name="test_status_{{ idx }}" value="PASS">
+        <input type="hidden" name="test_value_{{ idx }}" value="">
+        <input type="hidden" name="test_limit_{{ idx }}" value="">
+        <input type="hidden" name="test_unit_{{ idx }}" value="">
+    </div>
+
+    {% else %}
+    <div class="border border-gray-100 rounded-xl p-3 space-y-2 test-row" data-idx="{{ idx }}">
+
+        <div class="flex items-start justify-between gap-2">
+            <div class="flex-1">
+                <p class="text-sm font-semibold text-gray-800">{{ test.name }}</p>
+                {% if test.parameter %}<p class="text-xs text-gray-400">{{ test.parameter }}</p>{% endif %}
+            </div>
+            <div id="badge_{{ idx }}" class="flex-shrink-0 w-20 text-center"></div>
+        </div>
+
+        {% if test.limits %}
+        <div class="flex flex-wrap gap-1.5">
+            {% for lkey, lval in test.limits.items() %}
+            {% if lval.high_value is not none %}
+            <span class="inline-flex items-center gap-1 text-xs bg-orange-50 text-orange-700 border border-orange-200 rounded-full px-2 py-0.5">
+                <span class="font-semibold">
+                    {%- if lkey == '::ST' %}STD
+                    {%- elif lkey == '::B' %}B
+                    {%- elif lkey == '::BF' %}BF
+                    {%- elif lkey == '::CF' %}CF
+                    {%- else %}{{ lkey.replace('::', '') }}{%- endif %}
+                </span>
+                &le; {{ lval.high_value }} {{ lval.unit or '' }}
+            </span>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% set first_limit = test.limits.values()|list|first if test.limits else none %}
+        {% set unit = first_limit.unit if first_limit else '' %}
+        <div class="flex gap-2 items-center">
+            <input type="number" step="any" min="0"
+                   id="val_{{ idx }}"
+                   name="test_value_{{ idx }}"
+                   class="form-input flex-1 text-sm"
+                   placeholder="Valore misurato{% if unit %} ({{ unit }}){% endif %}"
+                   oninput="evaluateTest({{ idx }})">
+            {% if unit %}<span class="text-xs text-gray-500 font-semibold whitespace-nowrap">{{ unit }}</span>{% endif %}
+        </div>
+
+        <input type="hidden" name="test_name_{{ idx }}" value="{{ test.name }}">
+        <input type="hidden" id="status_{{ idx }}" name="test_status_{{ idx }}" value="PASS">
+        <input type="hidden" id="limit_{{ idx }}" name="test_limit_{{ idx }}"
+               value="{{ (test.limits['::ST'].high_value if test.limits and '::ST' in test.limits else ((test.limits.values()|list|first).high_value if test.limits else '')) or '' }}">
+        <input type="hidden" id="unit_{{ idx }}" name="test_unit_{{ idx }}" value="{{ unit }}">
+        <input type="hidden" id="limits_json_{{ idx }}" value='{{ test.limits | tojson if test.limits else "{}" }}'>
+    </div>
+    {% endif %}
+    {% endfor %}
+
+    <input type="hidden" name="test_count" value="{{ tests|length }}">
+</div>
+
+<script>
+(function() {
+    function evaluateTest(idx) {
+        var valInput = document.getElementById('val_' + idx);
+        var statusInput = document.getElementById('status_' + idx);
+        var badge = document.getElementById('badge_' + idx);
+        var limitsEl = document.getElementById('limits_json_' + idx);
+        if (!valInput || !statusInput || !badge) return;
+
+        var valStr = valInput.value.trim();
+        if (valStr === '') {
+            badge.innerHTML = '';
+            valInput.classList.remove('border-green-400', 'border-red-400');
+            statusInput.value = 'PASS';
+            updateSummary();
+            return;
+        }
+
+        var val = parseFloat(valStr);
+        if (isNaN(val)) {
+            badge.innerHTML = '<span class="bg-gray-100 text-gray-600 text-xs font-bold px-2 py-1 rounded-full">?</span>';
+            return;
+        }
+
+        var limits = {};
+        try { limits = JSON.parse(limitsEl ? limitsEl.value : '{}'); } catch(e) {}
+        var limitObj = limits['::ST'] || Object.values(limits)[0] || null;
+        var highValue = limitObj ? limitObj.high_value : null;
+
+        var passed = true;
+        if (highValue !== null && highValue !== undefined) {
+            passed = val <= parseFloat(highValue);
+        }
+
+        statusInput.value = passed ? 'PASS' : 'FAIL';
+        if (passed) {
+            badge.innerHTML = '<span class="bg-green-100 text-green-700 text-xs font-bold px-2 py-1 rounded-full">&#10003; PASS</span>';
+            valInput.classList.remove('border-red-400');
+            valInput.classList.add('border-green-400');
+        } else {
+            badge.innerHTML = '<span class="bg-red-100 text-red-700 text-xs font-bold px-2 py-1 rounded-full">&#10007; FAIL</span>';
+            valInput.classList.remove('border-green-400');
+            valInput.classList.add('border-red-400');
+        }
+
+        updateSummary();
+        autoOverallStatus();
+    }
+
+    function updateSummary() {
+        var passed = 0, failed = 0, empty = 0;
+        document.querySelectorAll('.test-row').forEach(function(row) {
+            var idx = row.dataset.idx;
+            var v = document.getElementById('val_' + idx);
+            var s = document.getElementById('status_' + idx);
+            if (!v) return;
+            if (v.value.trim() === '') { empty++; return; }
+            (s && s.value === 'FAIL') ? failed++ : passed++;
+        });
+        var el = document.getElementById('tests-summary');
+        if (!el) return;
+        var parts = [];
+        if (passed) parts.push('<span class="text-green-600">' + passed + ' &#10003;</span>');
+        if (failed) parts.push('<span class="text-red-600">' + failed + ' &#10007;</span>');
+        if (empty) parts.push('<span class="text-gray-400">' + empty + ' &mdash;</span>');
+        el.innerHTML = parts.join(' &middot; ');
+    }
+
+    function autoOverallStatus() {
+        var anyFail = false;
+        document.querySelectorAll('.test-row').forEach(function(row) {
+            var s = document.getElementById('status_' + row.dataset.idx);
+            if (s && s.value === 'FAIL') anyFail = true;
+        });
+        var passR = document.querySelector('input[name="overall_status"][value="PASSATO"]');
+        var failR = document.querySelector('input[name="overall_status"][value="NON PASSATO"]');
+        if (passR && failR) {
+            passR.checked = !anyFail;
+            failR.checked = anyFail;
+        }
+    }
+
+    window.evaluateTest = evaluateTest;
+})();
+</script>
+
+{% else %}
+<div class="card p-4 text-center text-xs text-gray-400 py-6">
+    &#9757; Seleziona un profilo di verifica per visualizzare i test
+</div>
+{% endif %}

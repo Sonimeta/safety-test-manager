@@ -28,7 +28,7 @@ def get_app_data_dir():
     # Crea la cartella se non esiste
     os.makedirs(app_data_path, exist_ok=True)
     return app_data_path
-VERSIONE = "10.0.11"
+VERSIONE = "10.0.13"
 BASE_DIR = get_base_dir() # La cartella del programma
 APP_DATA_DIR = get_app_data_dir() # La cartella dei dati utente
 
@@ -85,6 +85,25 @@ def load_ssl_ca_cert():
 
 SERVER_URL = load_server_url()
 SSL_CA_CERT = load_ssl_ca_cert()
+
+def load_cf_service_token() -> tuple[str | None, str | None]:
+    """Legge le credenziali Cloudflare Access Service Token da config.ini."""
+    parser = configparser.ConfigParser()
+    if os.path.exists(CONFIG_INI_PATH):
+        parser.read(CONFIG_INI_PATH)
+        client_id = parser.get('server', 'cf_client_id', fallback=None)
+        client_secret = parser.get('server', 'cf_client_secret', fallback=None)
+        if client_id and client_secret:
+            # Ignora i valori placeholder
+            if 'xxx' not in client_id and 'xxx' not in client_secret:
+                return client_id.strip(), client_secret.strip()
+    return None, None
+
+CF_CLIENT_ID, CF_CLIENT_SECRET = load_cf_service_token()
+if CF_CLIENT_ID:
+    logging.info(f"☁️  CF Service Token caricato: id={CF_CLIENT_ID[:12]}...")
+else:
+    logging.warning("⚠️  CF Service Token NON caricato - cf_client_id/cf_client_secret mancanti o placeholder in config.ini")
 PROFILES = {}
 FUNCTIONAL_PROFILES = {}
 

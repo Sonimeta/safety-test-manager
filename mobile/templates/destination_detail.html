@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+
+{% block title %}{{ destination.name }} — STM Mobile{% endblock %}
+{% block header_title %}{{ destination.name }}{% endblock %}
+{% block header_subtitle %}<p class="text-blue-300 text-xs">{{ customer_name }}</p>{% endblock %}
+
+{% block header_actions %}
+<a href="/mobile/destinations/{{ destination.uuid }}/edit" class="bg-white/15 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">Modifica</a>
+<form method="POST" action="/mobile/destinations/{{ destination.uuid }}/delete" onsubmit="return confirm('Eliminare questa sede?');" class="inline">
+    <button type="submit" class="bg-red-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">Elimina</button>
+</form>
+{% endblock %}
+
+{% block content %}
+<div class="px-4 py-4 space-y-4">
+
+    {% if destination.address %}
+    <div class="card p-4 flex items-start gap-2">
+        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-400 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+        </svg>
+        <p class="text-sm text-gray-700">{{ destination.address }}</p>
+    </div>
+    {% endif %}
+
+    <div class="flex items-center justify-between px-1">
+        <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Dispositivi</h2>
+        <a href="#" class="text-xs font-semibold text-green-700 bg-green-50 px-3 py-1 rounded-full opacity-50 pointer-events-none">+ Nuovo dispositivo</a>
+    </div>
+
+    <!-- Devices list -->
+    <div>
+        <div class="flex items-center justify-between mb-2 px-1">
+            <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Dispositivi ({{ devices|length }})</h2>
+        </div>
+
+        {% if devices %}
+        <div class="card overflow-hidden">
+            {% for dev in devices %}
+            <a href="/mobile/devices/{{ dev.uuid }}" class="list-item">
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-0.5">
+                        <p class="text-sm font-semibold text-gray-900 truncate">
+                            {{ dev.description or dev.model or 'Dispositivo' }}
+                        </p>
+                        {% if dev.status == 'inactive' %}
+                        <span class="badge-warn flex-shrink-0">Inattivo</span>
+                        {% endif %}
+                    </div>
+                    <p class="text-xs text-gray-400 truncate">
+                        {% if dev.manufacturer %}{{ dev.manufacturer }}{% endif %}
+                        {% if dev.model %} · {{ dev.model }}{% endif %}
+                        {% if dev.serial_number %} · S/N: {{ dev.serial_number }}{% endif %}
+                    </p>
+                    {% if dev.next_verification_date %}
+                    <p class="text-xs mt-0.5
+                        {% if dev.next_verification_date < today %}text-red-600 font-medium
+                        {% elif dev.next_verification_date <= expiry_threshold %}text-yellow-600 font-medium
+                        {% else %}text-gray-400{% endif %}">
+                        Prossima verifica: {{ dev.next_verification_date }}
+                    </p>
+                    {% endif %}
+                </div>
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-300 flex-shrink-0 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+                </svg>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="card flex flex-col items-center py-8 text-gray-400">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/>
+            </svg>
+            <p class="text-sm">Nessun dispositivo registrato</p>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

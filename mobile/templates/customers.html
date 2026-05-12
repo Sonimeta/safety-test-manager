@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Clienti — STM Mobile{% endblock %}
+{% block header_title %}Clienti{% endblock %}
+{% block header_subtitle %}<p class="text-blue-300 text-xs">{{ total }} clienti totali</p>{% endblock %}
+
+{% block content %}
+<div class="px-4 py-4">
+
+    <div class="flex items-center justify-between mb-4">
+        <div></div>
+        <a href="/mobile/customers/new" class="bg-green-600 text-white text-xs font-semibold px-3 py-2 rounded-lg active:bg-green-700">+ Nuovo cliente</a>
+    </div>
+
+    <!-- Search bar -->
+    <div class="relative mb-4">
+        <div class="absolute inset-y-0 left-3 flex items-center pointer-events-none">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+        </div>
+        <input type="search" name="q" id="search-customers"
+               class="form-input pl-9 bg-white"
+               placeholder="Cerca cliente..."
+               value="{{ query or '' }}"
+               hx-get="/mobile/partials/customers"
+               hx-trigger="input changed delay:300ms, search"
+               hx-target="#customers-list"
+               hx-include="[name='q']"
+               hx-indicator="#search-spinner">
+        <span id="search-spinner" class="htmx-indicator absolute inset-y-0 right-3 flex items-center">
+            <svg class="animate-spin h-4 w-4 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 22 6.477 22 12h-4z"></path>
+            </svg>
+        </span>
+    </div>
+
+    <!-- List -->
+    <div id="customers-list" class="card overflow-hidden">
+        {% include "partials/customers_list.html" %}
+    </div>
+
+</div>
+{% endblock %}

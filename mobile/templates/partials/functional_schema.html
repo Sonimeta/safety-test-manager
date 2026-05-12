@@ -1,0 +1,57 @@
+{% if sections %}
+{% for section in sections %}
+<div class="card p-4 space-y-3 mb-3">
+    <h3 class="text-sm font-bold text-gray-700 border-b border-gray-100 pb-2">{{ section.title }}</h3>
+
+    {% if section.section_type == 'checklist' %}
+        {% for field in section.fields %}
+        <div class="flex items-center justify-between py-1">
+            <label class="text-sm text-gray-700 flex-1 mr-3">{{ field.label }}</label>
+            <select name="field_{{ section.key }}_{{ field.key }}" class="form-input" style="width:auto;min-width:100px">
+                <option value="">—</option>
+                <option value="OK">✓ OK</option>
+                <option value="NON OK">✗ Non OK</option>
+                <option value="N/A">N/A</option>
+            </select>
+        </div>
+        {% endfor %}
+
+    {% elif section.section_type == 'table' %}
+        {% for row in section.rows %}
+        <div class="border border-gray-100 rounded-lg p-3">
+            {% if row.label %}<p class="text-xs font-semibold text-gray-500 mb-2">{{ row.label }}</p>{% endif %}
+            {% for field in row.fields %}
+            <div class="mb-2">
+                <label class="block text-xs text-gray-500 mb-1">{{ field.label }}{% if field.unit %} ({{ field.unit }}){% endif %}</label>
+                {% include "partials/func_field.html" %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endfor %}
+
+    {% else %}
+        {% for field in section.fields %}
+        {% if field.field_type != 'header' %}
+        <div>
+            <label class="block text-xs font-semibold text-gray-600 mb-1.5">
+                {{ field.label }}{% if field.unit %} <span class="font-normal text-gray-400">({{ field.unit }})</span>{% endif %}
+                {% if field.required %}<span class="text-red-500 ml-0.5">*</span>{% endif %}
+            </label>
+            <div data-section="{{ section.key }}" data-field="{{ field.key }}">
+                {% include "partials/func_field.html" %}
+            </div>
+            {% if field.help_text %}<p class="text-xs text-gray-400 mt-1">{{ field.help_text }}</p>{% endif %}
+        </div>
+        {% else %}
+        <p class="text-xs font-bold text-blue-900 uppercase tracking-wide pt-2">{{ field.label }}</p>
+        {% endif %}
+        {% endfor %}
+    {% endif %}
+
+</div>
+{% endfor %}
+{% else %}
+<div class="card p-4 text-center text-xs text-gray-400 py-6">
+    ☝️ Seleziona un profilo funzionale per visualizzare i campi
+</div>
+{% endif %}

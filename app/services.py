@@ -1803,6 +1803,11 @@ def get_all_unique_device_descriptions() -> list[str]:
     return database.get_all_unique_device_descriptions()
 
 
+def get_all_unique_device_descriptions_with_count() -> list[tuple]:
+    """Recupera tutte le descrizioni uniche con il conteggio dei dispositivi."""
+    return database.get_all_unique_device_descriptions_with_count()
+
+
 def get_devices_by_description(description: str):
     """Recupera i dispositivi attivi che corrispondono alla descrizione indicata."""
     return database.get_devices_by_description(description)
@@ -1812,6 +1817,34 @@ def correct_device_description(old_description: str, new_description: str) -> in
     """Corregge in blocco la descrizione dispositivi e restituisce il numero di righe aggiornate."""
     timestamp = datetime.now(timezone.utc).isoformat()
     return database.bulk_update_device_description(old_description, new_description, timestamp)
+
+
+def get_all_unique_manufacturers_with_count() -> list[tuple]:
+    """Recupera tutte le marche uniche con il conteggio dei dispositivi."""
+    return database.get_all_unique_manufacturers_with_count()
+
+def get_devices_by_manufacturer(manufacturer: str):
+    """Recupera i dispositivi attivi con la marca indicata."""
+    return database.get_devices_by_manufacturer(manufacturer)
+
+def correct_device_manufacturer(old_manufacturer: str, new_manufacturer: str) -> int:
+    """Corregge in blocco la marca dei dispositivi e restituisce il numero di righe aggiornate."""
+    timestamp = datetime.now(timezone.utc).isoformat()
+    return database.bulk_update_device_manufacturer(old_manufacturer, new_manufacturer, timestamp)
+
+
+def get_all_unique_models_with_count() -> list[tuple]:
+    """Recupera tutti i modelli unici con il conteggio dei dispositivi."""
+    return database.get_all_unique_models_with_count()
+
+def get_devices_by_model(model: str):
+    """Recupera i dispositivi attivi con il modello indicato."""
+    return database.get_devices_by_model(model)
+
+def correct_device_model(old_model: str, new_model: str) -> int:
+    """Corregge in blocco il modello dei dispositivi e restituisce il numero di righe aggiornate."""
+    timestamp = datetime.now(timezone.utc).isoformat()
+    return database.bulk_update_device_model(old_model, new_model, timestamp)
 
 
 def advanced_search(criteria: dict):
