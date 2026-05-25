@@ -1,0 +1,112 @@
+{# Partial: sezione allegati verifica (VE o VFUN)
+   Variabili richieste:
+     attachments  — lista dict(uuid, filename, mime_type, file_size, description, created_at)
+     ver_uuid     — uuid della verifica padre
+     ver_type     — "functional" o "electrical"
+#}
+<div id="attachments-section" class="space-y-3">
+
+    <!-- Lista allegati esistenti -->
+    {% if attachments %}
+    <div class="card overflow-hidden">
+        {% for att in attachments %}
+        {% set is_image = att.mime_type and att.mime_type.startswith('image/') %}
+        <div class="flex items-center gap-3 px-4 py-3 border-b border-gray-50 last:border-0">
+
+            <!-- Anteprima / icona -->
+            {% if is_image %}
+            <a href="/mobile/attachments/{{ att.uuid }}/view" target="_blank"
+               class="flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden bg-gray-100 block">
+                <img src="/mobile/attachments/{{ att.uuid }}/view"
+                     class="w-full h-full object-cover" alt="{{ att.filename }}">
+            </a>
+            {% else %}
+            <a href="/mobile/attachments/{{ att.uuid }}/view" target="_blank"
+               class="flex-shrink-0 w-12 h-12 rounded-lg bg-indigo-50 flex items-center justify-center">
+                <i class="ti ti-file text-indigo-400 text-2xl"></i>
+            </a>
+            {% endif %}
+
+            <!-- Info -->
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-gray-800 truncate">{{ att.filename }}</p>
+                {% if att.description %}
+                <p class="text-xs text-gray-500 truncate">{{ att.description }}</p>
+                {% endif %}
+                <p class="text-[10px] text-gray-400">
+                    {{ (att.file_size / 1024) | round(1) }} KB
+                    &bull; {{ att.created_at | string | truncate(10, True, '') }}
+                </p>
+            </div>
+
+            <!-- Elimina -->
+            <form method="POST" action="/mobile/attachments/{{ att.uuid }}/delete"
+                  onsubmit="return confirm('Eliminare questo allegato?')"
+                  class="flex-shrink-0"
+                  hx-post="/mobile/attachments/{{ att.uuid }}/delete"
+                  hx-target="#attachments-section"
+                  hx-swap="outerHTML"
+                  hx-vals='{"ver_uuid": "{{ ver_uuid }}", "ver_type": "{{ ver_type }}"}'
+                  hx-confirm="Eliminare questo allegato?">
+                <input type="hidden" name="ver_uuid" value="{{ ver_uuid }}">
+                <input type="hidden" name="ver_type" value="{{ ver_type }}">
+                <button type="submit"
+                        class="w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                    <i class="ti ti-trash text-base"></i>
+                </button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="card p-4 text-center text-gray-400 text-sm" id="no-attachments">
+        <i class="ti ti-photo-off text-2xl mb-1"></i>
+        <p>Nessun allegato</p>
+    </div>
+    {% endif %}
+
+    <!-- Form upload -->
+    <div class="card p-4" x-data="{ uploading: false, hasFile: false, fileName: '' }">
+        <p class="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+            <i class="ti ti-upload mr-1"></i>Aggiungi allegato
+        </p>
+        <form method="POST" action="/mobile/attachments/{{ ver_uuid }}/upload"
+              enctype="multipart/form-data"
+              hx-post="/mobile/attachments/{{ ver_uuid }}/upload"
+              hx-target="#attachments-section"
+              hx-swap="outerHTML"
+              hx-encoding="multipart/form-data"
+              hx-indicator="#upload-spinner-{{ ver_uuid }}"
+              @submit.prevent="uploading=true; $el.submit()"
+              class="space-y-3">
+            <input type="hidden" name="ver_type" value="{{ ver_type }}">
+
+            <!-- File picker -->
+            <label class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-gray-200 rounded-xl p-5 cursor-pointer hover:border-indigo-400 hover:bg-indigo-50/30 transition-colors"
+                   :class="hasFile ? 'border-indigo-400 bg-indigo-50/30' : ''">
+                <i class="ti ti-camera-plus text-3xl text-gray-300" :class="hasFile ? 'text-indigo-400' : ''"></i>
+                <span class="text-sm text-gray-500" x-text="hasFile ? fileName : 'Foto o file...'"></span>
+                <input type="file" name="file" accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx"
+                       capture="environment"
+                       class="hidden"
+                       @change="hasFile=$event.target.files.length>0; fileName=$event.target.files[0]?.name || ''">
+            </label>
+
+            <!-- Descrizione opzionale -->
+            <input type="text" name="description" placeholder="Descrizione (opzionale)"
+                   class="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300">
+
+            <!-- Submit -->
+            <button type="submit" :disabled="!hasFile || uploading"
+                    class="w-full py-2.5 rounded-xl text-sm font-semibold transition-all"
+                    :class="hasFile && !uploading
+                        ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                        : 'bg-gray-100 text-gray-400 cursor-not-allowed'">
+                <span x-show="!uploading"><i class="ti ti-upload mr-1"></i>Carica</span>
+                <span x-show="uploading" id="upload-spinner-{{ ver_uuid }}">
+                    <i class="ti ti-loader-2 animate-spin mr-1"></i>Caricamento…
+                </span>
+            </button>
+        </form>
+    </div>
+</div>

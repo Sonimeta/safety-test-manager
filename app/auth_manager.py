@@ -67,6 +67,10 @@ def get_current_role() -> str:
     """Restituisce il ruolo dell'utente loggato."""
     return CURRENT_USER["role"]
 
+def get_current_username() -> str:
+    """Restituisce lo username dell'utente loggato."""
+    return CURRENT_USER["username"] or ""
+
 def get_current_user_info() -> dict:
     """Restituisce l'intero dizionario con le informazioni dell'utente corrente."""
     return CURRENT_USER

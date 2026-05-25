@@ -1,0 +1,12 @@
+@import "tailwindcss";
+@source "./mobile/templates/**/*.html";
+
+/* Safelist: classi usate dinamicamente via Alpine.js o has-[] che il scanner non rileva */
+@layer utilities {
+  .border-green-500 { border-color: #22c55e; }
+  .border-red-500   { border-color: #ef4444; }
+  .border-gray-400  { border-color: #9ca3af; }
+  .bg-green-50      { background-color: #f0fdf4; }
+  .bg-red-50        { background-color: #fef2f2; }
+  .bg-gray-100      { background-color: #f3f4f6; }
+}

@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+
+{% block title %}Nuova Assegnazione — STM Mobile{% endblock %}
+{% block header_title %}Nuova Assegnazione{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] leading-tight mt-0.5">Assegna verifica a un tecnico</p>{% endblock %}
+
+{% block content %}
+<div class="px-4 py-5 space-y-4">
+
+    <form method="POST" action="/mobile/assignments/new" class="space-y-4">
+
+        <!-- Selezione modalità -->
+        <div>
+            <p class="section-title">Cosa assegnare</p>
+            <div class="flex gap-2">
+                <button type="button" id="tab_device" onclick="switchMode('device')"
+                        class="flex-1 py-2.5 rounded-xl text-sm font-bold border transition-colors tab-active"
+                        style="border-color:#1e3a8a;background:#1e3a8a;color:white;">
+                    🔧 Dispositivo
+                </button>
+                <button type="button" id="tab_dest" onclick="switchMode('dest')"
+                        class="flex-1 py-2.5 rounded-xl text-sm font-bold border transition-colors"
+                        style="border-color:#e2e8f0;background:white;color:#475569;">
+                    📍 Sede intera
+                </button>
+            </div>
+        </div>
+
+        <!-- ── MODALITÀ DISPOSITIVO ── -->
+        <div id="mode_device">
+            <p class="section-title">Dispositivo da verificare</p>
+            <div class="card p-4 space-y-3">
+                <input type="hidden" name="device_uuid" id="device_uuid_input"
+                       value="{{ device.uuid if device else '' }}">
+
+                {% if device %}
+                <div id="selected_device_display" class="flex items-start gap-3 p-3 rounded-xl"
+                     style="background:#eff6ff;border:1.5px solid #bfdbfe;">
+                    <div style="background:#dbeafe;border-radius:8px;padding:6px;flex-shrink:0;">
+                        <i class="ti ti-device-heart-monitor" style="font-size:1.1rem;color:#1d4ed8;display:block;"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-bold text-blue-900 truncate">
+                            {{ device.description or device.model or 'Dispositivo' }}
+                        </p>
+                        <p class="text-xs text-blue-600">
+                            {% if device.manufacturer %}{{ device.manufacturer }} · {% endif %}
+                            {% if device.serial_number %}S/N {{ device.serial_number }}{% endif %}
+                        </p>
+                        <p class="text-xs text-blue-500">{{ device.customer_name or '' }}{% if device.destination_name %} / {{ device.destination_name }}{% endif %}</p>
+                    </div>
+                    <button type="button" onclick="clearDevice()" class="text-blue-400 hover:text-blue-600">
+                        <i class="ti ti-x" style="font-size:1rem;"></i>
+                    </button>
+                </div>
+                {% else %}
+                <div id="selected_device_display" class="hidden flex items-start gap-3 p-3 rounded-xl"
+                     style="background:#eff6ff;border:1.5px solid #bfdbfe;">
+                    <div style="background:#dbeafe;border-radius:8px;padding:6px;flex-shrink:0;">
+                        <i class="ti ti-device-heart-monitor" style="font-size:1.1rem;color:#1d4ed8;display:block;"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p id="sel_device_name" class="text-sm font-bold text-blue-900 truncate"></p>
+                    </div>
+                    <button type="button" onclick="clearDevice()" class="text-blue-400 hover:text-blue-600">
+                        <i class="ti ti-x" style="font-size:1rem;"></i>
+                    </button>
+                </div>
+                {% endif %}
+
+                <div id="device_search_area" {% if device %}style="display:none;"{% endif %}>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                        Cerca dispositivo
+                    </label>
+                    <input type="text" id="device_search" class="form-input"
+                           placeholder="Digita descrizione, S/N, marca o cliente..."
+                           hx-get="/mobile/assignments/api/search-devices"
+                           hx-trigger="keyup changed delay:300ms"
+                           hx-target="#search_results"
+                           hx-include="[name='q']"
+                           oninput="this.setAttribute('name','q')"
+                           autocomplete="off">
+                    <div id="search_results" class="mt-2"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ── MODALITÀ SEDE ── -->
+        <div id="mode_dest" style="display:none;">
+            <p class="section-title">Sede da assegnare</p>
+            <div class="card p-4 space-y-3">
+                <input type="hidden" name="destination_uuid" id="destination_uuid_input"
+                       value="{{ destination.uuid if destination else '' }}">
+
+                {% if destination %}
+                <div id="selected_dest_display" class="flex items-start gap-3 p-3 rounded-xl"
+                     style="background:#f0fdf4;border:1.5px solid #86efac;">
+                    <div style="background:#dcfce7;border-radius:8px;padding:6px;flex-shrink:0;">
+                        <i class="ti ti-map-pin" style="font-size:1.1rem;color:#16a34a;display:block;"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-bold text-green-900">{{ destination.name }}</p>
+                        <p class="text-xs text-green-600">{{ destination.customer_name or '' }}</p>
+                    </div>
+                    <button type="button" onclick="clearDest()" class="text-green-400 hover:text-green-600">
+                        <i class="ti ti-x" style="font-size:1rem;"></i>
+                    </button>
+                </div>
+                {% else %}
+                <div id="selected_dest_display" class="hidden flex items-start gap-3 p-3 rounded-xl"
+                     style="background:#f0fdf4;border:1.5px solid #86efac;">
+                    <div style="background:#dcfce7;border-radius:8px;padding:6px;flex-shrink:0;">
+                        <i class="ti ti-map-pin" style="font-size:1.1rem;color:#16a34a;display:block;"></i>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <p id="sel_dest_name" class="text-sm font-bold text-green-900"></p>
+                    </div>
+                    <button type="button" onclick="clearDest()" class="text-green-400 hover:text-green-600">
+                        <i class="ti ti-x" style="font-size:1rem;"></i>
+                    </button>
+                </div>
+                {% endif %}
+
+                <div id="dest_select_area" {% if destination %}style="display:none;"{% endif %}>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                        Seleziona sede
+                    </label>
+                    <input type="text" id="dest_filter" class="form-input mb-2"
+                           placeholder="Filtra per nome sede o cliente..."
+                           oninput="filterDests(this.value)">
+                    <div id="dest_list" class="space-y-1 max-h-52 overflow-y-auto">
+                        {% for d in destinations %}
+                        <button type="button"
+                                onclick="selectDest('{{ d.uuid }}', '{{ (d.name)|replace("'","\\'") }}', '{{ (d.customer_name or '')|replace("'","\\'") }}')"
+                                class="dest-item w-full text-left px-3 py-2.5 rounded-lg border border-gray-100 hover:border-blue-300 hover:bg-blue-50 transition-colors"
+                                data-name="{{ d.name|lower }}" data-customer="{{ (d.customer_name or '')|lower }}">
+                            <p class="text-sm font-semibold text-gray-900">{{ d.name }}</p>
+                            <p class="text-xs text-gray-400">{{ d.customer_name or '' }}</p>
+                        </button>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tecnico assegnato -->
+        <div>
+            <p class="section-title">Tecnico assegnato</p>
+            <div class="card p-4">
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">
+                    Seleziona tecnico <span class="text-red-500">*</span>
+                </label>
+                <select name="assigned_to" class="form-input" required>
+                    <option value="">— Scegli tecnico —</option>
+                    {% for tech in technicians %}
+                    <option value="{{ tech.username }}">
+                        {{ tech.first_name or '' }} {{ tech.last_name or '' }}
+                        {% if tech.first_name or tech.last_name %}({{ tech.username }}){% else %}{{ tech.username }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <!-- Priorità e scadenza -->
+        <div>
+            <p class="section-title">Dettagli</p>
+            <div class="card p-4 space-y-3">
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Priorità</label>
+                    <select name="priority" class="form-input">
+                        <option value="low">🟢 Bassa</option>
+                        <option value="normal" selected>🔵 Normale</option>
+                        <option value="high">🟡 Alta</option>
+                        <option value="urgent">🔴 Urgente</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Data scadenza</label>
+                    <input type="date" name="due_date" class="form-input">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Note per il tecnico</label>
+                    <textarea name="notes" rows="3" class="form-input"
+                              placeholder="Istruzioni particolari, reparto, accessori richiesti..."></textarea>
+                </div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn-primary" id="submit_btn" onclick="return validateForm()">
+            <i class="ti ti-clipboard-check" style="margin-right:6px;"></i>
+            Crea Assegnazione
+        </button>
+        <a href="/mobile/assignments" class="btn-secondary">Annulla</a>
+    </form>
+
+</div>
+
+<script>
+var _mode = '{{ "dest" if destination else "device" }}';
+
+function switchMode(m) {
+    _mode = m;
+    document.getElementById('mode_device').style.display = m === 'device' ? '' : 'none';
+    document.getElementById('mode_dest').style.display   = m === 'dest'   ? '' : 'none';
+    var tDev  = document.getElementById('tab_device');
+    var tDest = document.getElementById('tab_dest');
+    if (m === 'device') {
+        tDev.style.background = '#1e3a8a'; tDev.style.color = 'white'; tDev.style.borderColor = '#1e3a8a';
+        tDest.style.background = 'white';  tDest.style.color = '#475569'; tDest.style.borderColor = '#e2e8f0';
+    } else {
+        tDest.style.background = '#16a34a'; tDest.style.color = 'white'; tDest.style.borderColor = '#16a34a';
+        tDev.style.background = 'white';   tDev.style.color = '#475569'; tDev.style.borderColor = '#e2e8f0';
+    }
+}
+
+function selectDevice(uuid, label) {
+    document.getElementById('device_uuid_input').value = uuid;
+    document.getElementById('sel_device_name').textContent = label;
+    document.getElementById('selected_device_display').classList.remove('hidden');
+    document.getElementById('selected_device_display').style.display = 'flex';
+    document.getElementById('device_search_area').style.display = 'none';
+    document.getElementById('search_results').innerHTML = '';
+}
+function clearDevice() {
+    document.getElementById('device_uuid_input').value = '';
+    document.getElementById('selected_device_display').classList.add('hidden');
+    document.getElementById('selected_device_display').style.display = '';
+    document.getElementById('device_search_area').style.display = '';
+}
+
+function selectDest(uuid, name, customer) {
+    document.getElementById('destination_uuid_input').value = uuid;
+    document.getElementById('sel_dest_name').textContent = name + (customer ? ' — ' + customer : '');
+    document.getElementById('selected_dest_display').classList.remove('hidden');
+    document.getElementById('selected_dest_display').style.display = 'flex';
+    document.getElementById('dest_select_area').style.display = 'none';
+}
+function clearDest() {
+    document.getElementById('destination_uuid_input').value = '';
+    document.getElementById('selected_dest_display').classList.add('hidden');
+    document.getElementById('selected_dest_display').style.display = '';
+    document.getElementById('dest_select_area').style.display = '';
+}
+
+function filterDests(text) {
+    text = text.toLowerCase();
+    document.querySelectorAll('.dest-item').forEach(function(el) {
+        var n = el.getAttribute('data-name') || '';
+        var c = el.getAttribute('data-customer') || '';
+        el.style.display = (!text || n.includes(text) || c.includes(text)) ? '' : 'none';
+    });
+}
+
+function validateForm() {
+    if (_mode === 'device' && !document.getElementById('device_uuid_input').value) {
+        alert('Seleziona un dispositivo dalla ricerca.');
+        return false;
+    }
+    if (_mode === 'dest' && !document.getElementById('destination_uuid_input').value) {
+        alert('Seleziona una sede dalla lista.');
+        return false;
+    }
+    // Svuota il campo dell'altro modo per non mandare entrambi
+    if (_mode === 'device') document.getElementById('destination_uuid_input').value = '';
+    if (_mode === 'dest')   document.getElementById('device_uuid_input').value = '';
+    return true;
+}
+
+// Imposta la modalità iniziale
+switchMode(_mode);
+</script>
+{% endblock %}

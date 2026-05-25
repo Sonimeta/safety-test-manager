@@ -53,6 +53,7 @@ from app.ui.dialogs.profile_manager_dialog import ProfileManagerDialog
 from app.ui.dialogs.functional_profile_manager_dialog import FunctionalProfileManagerDialog
 from app.ui.dialogs.qr_device_scanner_dialog import QRDeviceScannerDialog
 from app.ui.dialogs.system_verification_dialogs import SystemDeviceSelectionDialog
+from app.ui.dialogs.assignments_dialog import BulkAssignDialog, AssignmentsManagerDialog
 from app.config import LOG_DIR
 import database
 from app.workers.table_export_worker import InventoryExportWorker
@@ -295,6 +296,14 @@ class MainWindow(QMainWindow):
         self.audit_log_action.triggered.connect(self.open_audit_log)
         data_menu.addAction(self.audit_log_action)
 
+        self.new_assignment_action = QAction(get_icon("clipboard", theme=self.current_theme), "Nuova Assegnazione...", self)
+        self.new_assignment_action.triggered.connect(self._open_bulk_assign_dialog)
+        data_menu.addAction(self.new_assignment_action)
+
+        self.assignments_action = QAction(get_icon("clipboard", theme=self.current_theme), "Gestione Lavori Assegnati...", self)
+        self.assignments_action.triggered.connect(self.open_assignments_manager)
+        data_menu.addAction(self.assignments_action)
+
         # ===================== MENU IMPOSTAZIONI =====================
         settings_menu = menubar.addMenu("&Impostazioni")
 
@@ -372,6 +381,86 @@ class MainWindow(QMainWindow):
         self.about_action = QAction(get_icon("about", theme=self.current_theme), "Informazioni su Safety Test Manager...", self)
         self.about_action.triggered.connect(self._show_about_dialog)
         help_menu.addAction(self.about_action)
+
+    def open_assignments_manager(self):
+        """Apre la finestra di gestione dei lavori assegnati."""
+        dialog = AssignmentsManagerDialog(self)
+        dialog.exec()
+        # Navigazione automatica se il tecnico ha avviato un'attività
+        if dialog.started_assignment:
+            QTimer.singleShot(200, lambda: self._navigate_to_assignment(dialog.started_assignment))
+
+    def _navigate_to_assignment(self, assignment: dict):
+        """Naviga alla sede/dispositivo dell'assegnazione avviata."""
+        from app import services
+        device_id = assignment.get("device_id")
+        dest_id   = assignment.get("destination_id")
+
+        dev_name  = assignment.get("description") or assignment.get("model") or ""
+        dest_name = assignment.get("destination_name") or ""
+
+        if device_id:
+            # Navigazione verso il dispositivo specifico
+            device_data = services.database.get_device_by_id(device_id)
+            if device_data:
+                dev = dict(device_data)
+                ok = self.select_device_from_search(dev, notify=False)
+                if ok:
+                    self.show_inline_feedback(
+                        f"▶  Attività avviata: {dev_name or dev.get('description', 'Dispositivo')}"
+                        f"  —  puoi ora avviare le verifiche.",
+                        level="success")
+                    return
+        elif dest_id:
+            # Navigazione verso la sede intera
+            dest_data = services.database.get_destination_by_id(dest_id)
+            if dest_data:
+                d = dict(dest_data)
+                ok = self.select_destination_from_search(d, notify=False)
+                if ok:
+                    self.show_inline_feedback(
+                        f"▶  Attività avviata: Sede {dest_name or d.get('name', '')}"
+                        f"  —  seleziona il dispositivo e avvia le verifiche.",
+                        level="success")
+                    return
+
+        self.show_inline_feedback(
+            "Attività avviata. Naviga manualmente al dispositivo/sede.",
+            level="info")
+
+    def _show_device_context_menu(self, pos):
+        """Menu contestuale sulla lista dispositivi con 'Assegna Verifica'."""
+        item = self.device_list.itemAt(pos)
+        if not item:
+            return
+        device_id = item.data(Qt.UserRole)
+        if not device_id:
+            return
+        menu = QMenu(self)
+        assign_action = menu.addAction("📋  Assegna Verifica...")
+        role = auth_manager.get_current_role()
+        assign_action.setEnabled(role in ("admin", "moderator"))
+        action = menu.exec(self.device_list.viewport().mapToGlobal(pos))
+        if action == assign_action:
+            self._assign_verification_from_device(device_id)
+
+    def _open_bulk_assign_dialog(self):
+        """Apre il dialog di assegnazione multipla con contesto corrente."""
+        from app import auth_manager as _am
+        if _am.get_current_role() not in ('admin', 'moderator'):
+            return
+        dialog = BulkAssignDialog(
+            parent=self,
+            preselect_device_id=getattr(self, 'selected_device_id', None),
+            preselect_destination_id=getattr(self, 'selected_destination_id', None),
+            preselect_customer_id=getattr(self, 'selected_customer_id', None),
+        )
+        dialog.exec()
+
+    def _assign_verification_from_device(self, device_id: int):
+        """Apre il dialog di assegnazione per il dispositivo selezionato."""
+        dialog = BulkAssignDialog(parent=self, preselect_device_id=device_id)
+        dialog.exec()
 
     def open_duplicate_devices_dialog(self):
         """Apre la finestra per la gestione dei dispositivi duplicati."""
@@ -1566,6 +1655,8 @@ class MainWindow(QMainWindow):
         self.device_list = QListWidget()
         self.device_list.setObjectName("drillListWidget")
         self.device_list.itemClicked.connect(self.on_device_selected_new)
+        self.device_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.device_list.customContextMenuRequested.connect(self._show_device_context_menu)
         lay.addWidget(self.device_list, 1)
 
         self.device_count_label = QLabel("<i>Seleziona una destinazione</i>")
@@ -2591,6 +2682,7 @@ class MainWindow(QMainWindow):
         self.btn_edit_device.setEnabled(False)
         self.btn_edit_device.clicked.connect(self.on_edit_selected_device_new)
         action_col.addWidget(self.btn_edit_device)
+
 
         self.start_electrical_button = QPushButton(get_icon("electrical_verify", theme=self.current_theme), " Verifica Elettrica ▼")
         self.start_electrical_button.setObjectName("secondaryButton")
@@ -4424,6 +4516,8 @@ class MainWindow(QMainWindow):
             self.stats_action.setVisible(is_quality_manager)
         if hasattr(self, 'audit_log_action'):
             self.audit_log_action.setVisible(is_quality_manager)
+        if hasattr(self, 'new_assignment_action'):
+            self.new_assignment_action.setVisible(not is_technician)
 
     def open_profile_manager(self):
         """Apre la finestra di dialogo per la gestione dei profili."""

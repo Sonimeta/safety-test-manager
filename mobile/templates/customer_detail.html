@@ -2,77 +2,72 @@
 
 {% block title %}{{ customer.name }} — STM Mobile{% endblock %}
 {% block header_title %}{{ customer.name }}{% endblock %}
-{% block header_subtitle %}<p class="text-blue-300 text-xs">{{ destinations|length }} sede/i</p>{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">{{ destinations|length }} sede/i</p>{% endblock %}
 
 {% block header_actions %}
-<a href="/mobile/customers/{{ customer.uuid }}/edit" class="bg-white/15 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">Modifica</a>
-<form method="POST" action="/mobile/customers/{{ customer.uuid }}/delete" onsubmit="return confirm('Eliminare questo cliente?');" class="inline">
-    <button type="submit" class="bg-red-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">Elimina</button>
+<a href="/mobile/customers/{{ customer.uuid }}/edit" class="btn-sm" style="background:rgba(255,255,255,.15);color:#fff;">
+    <i class="ti ti-pencil"></i>
+</a>
+<form method="POST" action="/mobile/customers/{{ customer.uuid }}/delete" onsubmit="return confirm('Eliminare questo cliente?');" style="display:inline">
+    <button type="submit" class="btn-sm" style="background:#ef4444;color:#fff;"><i class="ti ti-trash"></i></button>
 </form>
 {% endblock %}
 
 {% block content %}
 <div class="px-4 py-4 space-y-4">
 
-    <!-- Customer info -->
-    <div class="card p-4 space-y-2">
+    <!-- Info card -->
+    <div class="card p-4 space-y-3">
         {% if customer.address %}
-        <div class="flex items-start gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-            </svg>
+        <div class="flex items-start gap-3">
+            <i class="ti ti-map-pin" style="color:#94a3b8;font-size:1.1rem;flex-shrink:0;margin-top:1px;"></i>
             <p class="text-sm text-gray-700">{{ customer.address }}</p>
         </div>
         {% endif %}
         {% if customer.phone %}
-        <div class="flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z"/>
-            </svg>
-            <a href="tel:{{ customer.phone }}" class="text-sm text-blue-700">{{ customer.phone }}</a>
+        <div class="flex items-center gap-3">
+            <i class="ti ti-phone" style="color:#94a3b8;font-size:1.1rem;flex-shrink:0;"></i>
+            <a href="tel:{{ customer.phone }}" class="text-sm text-blue-700 font-medium">{{ customer.phone }}</a>
         </div>
         {% endif %}
         {% if customer.email %}
-        <div class="flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-            </svg>
-            <a href="mailto:{{ customer.email }}" class="text-sm text-blue-700">{{ customer.email }}</a>
+        <div class="flex items-center gap-3">
+            <i class="ti ti-mail" style="color:#94a3b8;font-size:1.1rem;flex-shrink:0;"></i>
+            <a href="mailto:{{ customer.email }}" class="text-sm text-blue-700 font-medium">{{ customer.email }}</a>
         </div>
+        {% endif %}
+        {% if not customer.address and not customer.phone and not customer.email %}
+        <p class="text-sm text-gray-400">Nessuna informazione di contatto</p>
         {% endif %}
     </div>
 
-    <!-- Destinations list -->
+    <!-- Destinations -->
     <div>
         <div class="flex items-center justify-between mb-2 px-1">
-            <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Sedi / Destinazioni</h2>
-            <a href="/mobile/customers/{{ customer.uuid }}/destinations/new" class="text-xs font-semibold text-indigo-700 bg-indigo-50 px-3 py-1 rounded-full">+ Nuova sede</a>
+            <p class="section-title" style="margin-bottom:0;">Sedi / Destinazioni</p>
+            <a href="/mobile/customers/{{ customer.uuid }}/destinations/new"
+               style="font-size:.75rem;font-weight:700;color:#6366f1;background:#eef2ff;padding:.25rem .75rem;border-radius:20px;text-decoration:none;display:flex;align-items:center;gap:3px;">
+                <i class="ti ti-plus" style="font-size:.875rem;"></i> Nuova sede
+            </a>
         </div>
         {% if destinations %}
         <div class="card overflow-hidden">
             {% for dest in destinations %}
             <a href="/mobile/destinations/{{ dest.uuid }}" class="list-item">
-                <div class="bg-indigo-100 p-2 rounded-lg mr-3 flex-shrink-0">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-indigo-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-                    </svg>
+                <div style="background:#eef2ff;border-radius:10px;padding:8px;margin-right:12px;flex-shrink:0;">
+                    <i class="ti ti-map-pin" style="font-size:1rem;color:#6366f1;display:block;"></i>
                 </div>
                 <div class="flex-1 min-w-0">
                     <p class="text-sm font-semibold text-gray-900 truncate">{{ dest.name }}</p>
                     {% if dest.address %}<p class="text-xs text-gray-400 truncate">{{ dest.address }}</p>{% endif %}
                 </div>
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                </svg>
+                <i class="ti ti-chevron-right" style="color:#d1d5db;flex-shrink:0;"></i>
             </a>
             {% endfor %}
         </div>
         {% else %}
-        <div class="card flex flex-col items-center py-8 text-gray-400">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-            </svg>
+        <div class="card" style="display:flex;flex-direction:column;align-items:center;padding:2rem 1rem;color:#94a3b8;">
+            <i class="ti ti-map-pin-off" style="font-size:2.5rem;margin-bottom:.5rem;"></i>
             <p class="text-sm">Nessuna sede registrata</p>
         </div>
         {% endif %}

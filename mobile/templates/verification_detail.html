@@ -2,14 +2,15 @@
 
 {% block title %}Verifica {{ verification.verification_code or verification.verification_date }} — STM Mobile{% endblock %}
 {% block header_title %}Verifica Elettrica{% endblock %}
-{% block header_subtitle %}<p class="text-blue-300 text-xs">{{ device.description or device.model or 'Dispositivo' }}</p>{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">{{ device.description or device.model or 'Dispositivo' }}</p>{% endblock %}
 
 {% block header_actions %}
-<a href="/mobile/verifications/{{ verification.uuid }}/report"
-   class="btn-sm bg-blue-700 text-white text-xs">🖨 Stampa</a>
+<a href="/mobile/verifications/{{ verification.uuid }}/report" class="btn-sm" style="background:rgba(255,255,255,.15);color:#fff;">
+    <i class="ti ti-printer"></i>
+</a>
 <form method="POST" action="/mobile/verifications/{{ verification.uuid }}/delete"
       onsubmit="return confirm('Eliminare questa verifica?')" style="display:inline">
-    <button type="submit" class="btn-sm bg-red-600 text-white text-xs">🗑</button>
+    <button type="submit" class="btn-sm" style="background:#ef4444;color:#fff;"><i class="ti ti-trash"></i></button>
 </form>
 {% endblock %}
 
@@ -24,11 +25,11 @@
                 <p class="text-base font-bold text-gray-900">{{ verification.profile_name }}</p>
             </div>
             {% if verification.overall_status in ('PASSATO', 'PASS', 'OK') %}
-            <span class="badge-pass text-sm px-3 py-1">✓ PASSATO</span>
+            <span class="badge-pass" style="font-size:.875rem;padding:.25rem .75rem;"><i class="ti ti-circle-check"></i> PASSATO</span>
             {% elif verification.overall_status in ('NON PASSATO', 'FAIL', 'FALLITO') %}
-            <span class="badge-fail text-sm px-3 py-1">✗ NON PASSATO</span>
+            <span class="badge-fail" style="font-size:.875rem;padding:.25rem .75rem;"><i class="ti ti-circle-x"></i> NON PASSATO</span>
             {% else %}
-            <span class="badge-gray text-sm px-3 py-1">{{ verification.overall_status }}</span>
+            <span class="badge-gray" style="font-size:.875rem;padding:.25rem .75rem;">{{ verification.overall_status }}</span>
             {% endif %}
         </div>
 
@@ -75,16 +76,22 @@
             <p class="text-sm text-gray-700">{{ verification.notes }}</p>
         </div>
         {% endif %}
+    </div>
 
     <!-- Results -->
     {% if results %}
     <div>
-        <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">Risultati test</h2>
+        <h2 class="section-title px-1">Risultati test</h2>
         <div class="space-y-2">
             {% for test_name, result in results.items() %}
             <div class="card p-3 flex items-center justify-between">
                 <div class="flex-1 min-w-0 mr-3">
                     <p class="text-sm font-medium text-gray-800 truncate">{{ test_name }}</p>
+                    {% if result.get('ap_name') %}
+                    <p class="text-xs font-semibold" style="color:#6366f1;">
+                        <i class="ti ti-plug-connected" style="font-size:.7rem;"></i> {{ result.get('ap_name') }}
+                    </p>
+                    {% endif %}
                     {% if result.get('value') is not none %}
                     <p class="text-xs text-gray-500">
                         Valore: {{ result.get('value') }}
@@ -114,7 +121,7 @@
     <!-- Visual inspection -->
     {% if visual_inspection %}
     <div>
-        <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">Ispezione visiva</h2>
+        <h2 class="section-title px-1">Ispezione visiva</h2>
         <div class="card p-4 space-y-2">
             {% if visual_inspection.checklist %}
                 {% for entry in visual_inspection.checklist %}
@@ -149,6 +156,18 @@
         </div>
     </div>
     {% endif %}
+
+    <!-- Allegati -->
+    <div>
+        <h2 class="section-title px-1"><i class="ti ti-paperclip mr-1"></i>Allegati</h2>
+        <div hx-get="/mobile/attachments/{{ verification.uuid }}?ver_type=electrical"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <div class="card p-4 text-center text-gray-400 text-sm">
+                <i class="ti ti-loader-2 animate-spin text-xl"></i>
+            </div>
+        </div>
+    </div>
 
 </div>
 {% endblock %}

@@ -1,7 +1,7 @@
 ﻿{% if tests %}
 <div class="card p-4 space-y-3" id="tests-section">
     <div class="flex items-center justify-between border-b border-gray-100 pb-2">
-        <h2 class="text-sm font-bold text-gray-700">Misure ({{ tests|length }} test)</h2>
+        <h2 class="section-title" style="border-bottom:1px solid #f1f5f9;padding-bottom:.5rem;">Misure ({{ tests|length }} test)</h2>
         <span id="tests-summary" class="text-xs font-semibold text-gray-400"></span>
     </div>
 
@@ -17,24 +17,41 @@
         <input type="hidden" name="test_value_{{ idx }}" value="">
         <input type="hidden" name="test_limit_{{ idx }}" value="">
         <input type="hidden" name="test_unit_{{ idx }}" value="">
+        <input type="hidden" name="test_ap_name_{{ idx }}" value="">
     </div>
 
     {% else %}
-    <div class="border border-gray-100 rounded-xl p-3 space-y-2 test-row" data-idx="{{ idx }}">
+    {% set limit_key = test.limit_key if test.limit_key else "::ST" %}
+    {% set lval = test.limits[limit_key] if test.limits and limit_key in test.limits else (test.limits.values()|list|first if test.limits else none) %}
+    {% set unit = lval.unit if lval else '' %}
+
+    <div class="border border-gray-100 rounded-xl p-3 space-y-2 test-row" data-idx="{{ idx }}" data-limit-key="{{ limit_key }}">
 
         <div class="flex items-start justify-between gap-2">
             <div class="flex-1">
                 <p class="text-sm font-semibold text-gray-800">{{ test.name }}</p>
-                {% if test.parameter %}<p class="text-xs text-gray-400">{{ test.parameter }}</p>{% endif %}
+                {% if test.ap_name %}
+                <p class="text-xs font-semibold" style="color:#6366f1;">
+                    <i class="ti ti-plug-connected" style="font-size:.75rem;"></i>
+                    {{ test.ap_name }}
+                    {% if test.ap_type %}
+                    <span style="background:#eef2ff;color:#4338ca;border-radius:10px;padding:1px 6px;font-size:.6rem;font-weight:700;">{{ test.ap_type }}</span>
+                    {% endif %}
+                </p>
+                {% elif test.parameter %}
+                <p class="text-xs text-gray-400">{{ test.parameter }}</p>
+                {% endif %}
             </div>
             <div id="badge_{{ idx }}" class="flex-shrink-0 w-20 text-center"></div>
         </div>
 
         {% if test.limits %}
         <div class="flex flex-wrap gap-1.5">
-            {% for lkey, lval in test.limits.items() %}
-            {% if lval.high_value is not none %}
-            <span class="inline-flex items-center gap-1 text-xs bg-orange-50 text-orange-700 border border-orange-200 rounded-full px-2 py-0.5">
+            {% for lkey, lv in test.limits.items() %}
+            {% if lv.high_value is not none %}
+            <span class="inline-flex items-center gap-1 text-xs rounded-full px-2 py-0.5
+                {% if lkey == limit_key %}bg-indigo-50 text-indigo-700 border border-indigo-200
+                {% else %}bg-orange-50 text-orange-700 border border-orange-200{% endif %}">
                 <span class="font-semibold">
                     {%- if lkey == '::ST' %}STD
                     {%- elif lkey == '::B' %}B
@@ -42,15 +59,13 @@
                     {%- elif lkey == '::CF' %}CF
                     {%- else %}{{ lkey.replace('::', '') }}{%- endif %}
                 </span>
-                &le; {{ lval.high_value }} {{ lval.unit or '' }}
+                &le; {{ lv.high_value }} {{ lv.unit or '' }}
             </span>
             {% endif %}
             {% endfor %}
         </div>
         {% endif %}
 
-        {% set first_limit = test.limits.values()|list|first if test.limits else none %}
-        {% set unit = first_limit.unit if first_limit else '' %}
         <div class="flex gap-2 items-center">
             <input type="number" step="any" min="0"
                    id="val_{{ idx }}"
@@ -64,9 +79,11 @@
         <input type="hidden" name="test_name_{{ idx }}" value="{{ test.name }}">
         <input type="hidden" id="status_{{ idx }}" name="test_status_{{ idx }}" value="PASS">
         <input type="hidden" id="limit_{{ idx }}" name="test_limit_{{ idx }}"
-               value="{{ (test.limits['::ST'].high_value if test.limits and '::ST' in test.limits else ((test.limits.values()|list|first).high_value if test.limits else '')) or '' }}">
+               value="{{ lval.high_value if lval and lval.high_value is not none else '' }}">
         <input type="hidden" id="unit_{{ idx }}" name="test_unit_{{ idx }}" value="{{ unit }}">
         <input type="hidden" id="limits_json_{{ idx }}" value='{{ test.limits | tojson if test.limits else "{}" }}'>
+        <input type="hidden" id="limitkey_{{ idx }}" value="{{ limit_key }}">
+        <input type="hidden" name="test_ap_name_{{ idx }}" value="{{ test.ap_name or '' }}">
     </div>
     {% endif %}
     {% endfor %}
@@ -77,10 +94,11 @@
 <script>
 (function() {
     function evaluateTest(idx) {
-        var valInput = document.getElementById('val_' + idx);
+        var valInput    = document.getElementById('val_' + idx);
         var statusInput = document.getElementById('status_' + idx);
-        var badge = document.getElementById('badge_' + idx);
-        var limitsEl = document.getElementById('limits_json_' + idx);
+        var badge       = document.getElementById('badge_' + idx);
+        var limitsEl    = document.getElementById('limits_json_' + idx);
+        var limitKeyEl  = document.getElementById('limitkey_' + idx);
         if (!valInput || !statusInput || !badge) return;
 
         var valStr = valInput.value.trim();
@@ -100,7 +118,10 @@
 
         var limits = {};
         try { limits = JSON.parse(limitsEl ? limitsEl.value : '{}'); } catch(e) {}
-        var limitObj = limits['::ST'] || Object.values(limits)[0] || null;
+
+        // Use the specific limit_key for this test (correct for AP tests: ::BF, ::CF, etc.)
+        var limitKey = limitKeyEl ? limitKeyEl.value : '::ST';
+        var limitObj = limits[limitKey] || limits['::ST'] || Object.values(limits)[0] || null;
         var highValue = limitObj ? limitObj.high_value : null;
 
         var passed = true;

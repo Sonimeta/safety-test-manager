@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Lavori da Eseguire — STM Mobile{% endblock %}
+{% block header_title %}Lavori{% endblock %}
+{% block header_subtitle %}
+<p class="text-blue-200 text-[11px] leading-tight mt-0.5">
+    {% if is_manager %}Gestione assegnazioni{% else %}I tuoi lavori assegnati{% endif %}
+</p>
+{% endblock %}
+
+{% block header_actions %}
+{% if is_manager %}
+<a href="/mobile/assignments/new"
+   class="flex items-center justify-center w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 transition-colors text-white"
+   title="Nuova assegnazione">
+    <i class="ti ti-plus" style="font-size:1.1rem;"></i>
+</a>
+{% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="px-4 py-5 space-y-4">
+
+    <!-- Filtri stato -->
+    <div class="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1" style="scrollbar-width:none;">
+        {% set filters = [('', 'Tutti'), ('pending', 'In attesa'), ('in_progress', 'In corso'), ('completed', 'Completati'), ('cancelled', 'Annullati')] %}
+        {% for val, label in filters %}
+        <a href="/mobile/assignments{% if val %}?status={{ val }}{% endif %}"
+           class="flex-shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors
+                  {% if current_status == val %}bg-blue-800 text-white border-blue-800{% else %}bg-white text-gray-600 border-gray-200{% endif %}">
+            {{ label }}
+            {% set cnt = counts.get(val, 0) if val else (counts.values() | sum) %}
+            {% if cnt > 0 %}<span class="ml-1 opacity-75">({{ cnt }})</span>{% endif %}
+        </a>
+        {% endfor %}
+    </div>
+
+    {% if is_manager %}
+    <!-- Pulsante crea assegnazione -->
+    <a href="/mobile/assignments/new" class="btn-primary flex items-center justify-center gap-2">
+        <i class="ti ti-clipboard-plus" style="font-size:1.1rem;"></i>
+        Nuova Assegnazione
+    </a>
+    {% endif %}
+
+    <!-- Lista assegnazioni -->
+    {% if assignments %}
+    <div class="card overflow-hidden">
+        {% for a in assignments %}
+        <a href="/mobile/assignments/{{ a.uuid }}" class="list-item">
+            <!-- Indicatore priorità -->
+            <div style="width:4px;height:44px;border-radius:4px;flex-shrink:0;margin-right:12px;
+                background:{% if a.priority == 'urgent' %}#ef4444{% elif a.priority == 'high' %}#f59e0b{% elif a.priority == 'normal' %}#3b82f6{% else %}#9ca3af{% endif %};">
+            </div>
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-0.5">
+                    <span class="text-gray-400 flex-shrink-0" style="font-size:0.9rem;">
+                        {% if a.device_id %}🔧{% else %}📍{% endif %}
+                    </span>
+                    <p class="text-sm font-semibold text-gray-900 truncate">
+                        {% if a.device_id %}
+                            {{ a.description or a.model or 'Dispositivo' }}
+                        {% else %}
+                            Sede: {{ a.destination_name or 'Sede intera' }}
+                        {% endif %}
+                    </p>
+                    <!-- Badge stato -->
+                    {% if a.status == 'pending' %}
+                    <span class="badge-gray" style="flex-shrink:0;">In attesa</span>
+                    {% elif a.status == 'in_progress' %}
+                    <span class="badge-warn" style="flex-shrink:0;">In corso</span>
+                    {% elif a.status == 'completed' %}
+                    <span class="badge-pass" style="flex-shrink:0;">Completato</span>
+                    {% elif a.status == 'cancelled' %}
+                    <span class="badge-fail" style="flex-shrink:0;">Annullato</span>
+                    {% endif %}
+                </div>
+                <p class="text-xs text-gray-500 truncate">
+                    {% if a.device_id %}
+                        {% if a.manufacturer %}{{ a.manufacturer }} · {% endif %}
+                        {% if a.serial_number %}S/N {{ a.serial_number }} · {% endif %}
+                    {% endif %}
+                    {{ a.customer_name or '' }}{% if a.destination_name %} / {{ a.destination_name }}{% endif %}
+                </p>
+                <div class="flex items-center gap-3 mt-1">
+                    {% if is_manager %}
+                    <span class="text-[11px] text-blue-600 font-medium">
+                        <i class="ti ti-user"></i> {{ a.assigned_to }}
+                    </span>
+                    {% endif %}
+                    {% if a.due_date %}
+                    <span class="text-[11px] {% if a.due_date < today %}text-red-500 font-semibold{% else %}text-gray-400{% endif %}">
+                        <i class="ti ti-calendar"></i>
+                        Scadenza: {{ a.due_date.strftime('%d/%m/%Y') if a.due_date else '' }}
+                    </span>
+                    {% endif %}
+                    {% if a.priority in ('urgent','high') %}
+                    <span class="text-[11px] {% if a.priority == 'urgent' %}text-red-500{% else %}text-amber-500{% endif %} font-semibold">
+                        <i class="ti ti-alert-triangle"></i>
+                        {{ 'Urgente' if a.priority == 'urgent' else 'Alta' }}
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            <i class="ti ti-chevron-right text-gray-300 flex-shrink-0 ml-2"></i>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="card p-8 text-center">
+        <div style="background:#f0f4f8;border-radius:50%;width:64px;height:64px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;">
+            <i class="ti ti-clipboard-list" style="font-size:2rem;color:#94a3b8;"></i>
+        </div>
+        <p class="text-sm font-semibold text-gray-600 mb-1">
+            {% if current_status %}Nessun lavoro con stato "{{ current_status }}"{% else %}Nessun lavoro assegnato{% endif %}
+        </p>
+        <p class="text-xs text-gray-400">
+            {% if is_manager %}Crea una nuova assegnazione con il pulsante sopra.{% else %}Non hai lavori assegnati al momento.{% endif %}
+        </p>
+    </div>
+    {% endif %}
+
+</div>
+
+<script>
+// Variabile today per confronto date nel template (passata via Jinja2)
+</script>
+{% endblock %}

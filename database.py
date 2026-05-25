@@ -4630,5 +4630,251 @@ def get_functional_verification_by_code(verification_code: str) -> dict | None:
         return dict(row) if row else None
 
 
+# ==============================================================================
+# SEZIONE: ASSEGNAZIONI VERIFICHE (Verification Assignments)
+# ==============================================================================
+
+def ensure_assignments_table():
+    """Crea la tabella verification_assignments se non esiste (SQLite locale).
+    Gestisce anche la migrazione da versioni precedenti (device_id NOT NULL → nullable,
+    aggiunta colonna destination_id).
+    """
+    with DatabaseConnection() as conn:
+        # ── Schema target ───────────────────────────────────────────────────
+        _NEW_SCHEMA = """
+            CREATE TABLE IF NOT EXISTS verification_assignments (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                uuid            TEXT    NOT NULL UNIQUE,
+                device_id       INTEGER REFERENCES devices(id) ON DELETE CASCADE,
+                destination_id  INTEGER REFERENCES destinations(id) ON DELETE SET NULL,
+                assigned_to     TEXT    NOT NULL,
+                assigned_by     TEXT    NOT NULL,
+                notes           TEXT,
+                priority        TEXT    NOT NULL DEFAULT 'normal',
+                due_date        TEXT,
+                status          TEXT    NOT NULL DEFAULT 'pending',
+                created_at      TEXT    NOT NULL,
+                updated_at      TEXT    NOT NULL,
+                completed_at    TEXT,
+                is_deleted      INTEGER NOT NULL DEFAULT 0,
+                is_synced       INTEGER NOT NULL DEFAULT 0,
+                last_modified   TEXT    DEFAULT '1970-01-01T00:00:00'
+            )
+        """
+        conn.execute(_NEW_SCHEMA)
+
+        # ── Controlla se è necessaria una migrazione ─────────────────────
+        pragma = conn.execute("PRAGMA table_info(verification_assignments)").fetchall()
+        col_info = {row[1]: row for row in pragma}  # {name: (cid,name,type,notnull,dflt,pk)}
+
+        device_id_notnull  = col_info.get('device_id',  (None,)*4)[3]  # 1 = NOT NULL
+        has_destination_id = 'destination_id' in col_info
+
+        if device_id_notnull or not has_destination_id:
+            # Ricrea la tabella con lo schema aggiornato
+            logging.info("[assignments] Migrazione tabella verification_assignments → schema v2")
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS _va_migration (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    uuid            TEXT    NOT NULL UNIQUE,
+                    device_id       INTEGER REFERENCES devices(id) ON DELETE CASCADE,
+                    destination_id  INTEGER REFERENCES destinations(id) ON DELETE SET NULL,
+                    assigned_to     TEXT    NOT NULL,
+                    assigned_by     TEXT    NOT NULL,
+                    notes           TEXT,
+                    priority        TEXT    NOT NULL DEFAULT 'normal',
+                    due_date        TEXT,
+                    status          TEXT    NOT NULL DEFAULT 'pending',
+                    created_at      TEXT    NOT NULL,
+                    updated_at      TEXT    NOT NULL,
+                    completed_at    TEXT,
+                    is_deleted      INTEGER NOT NULL DEFAULT 0,
+                    is_synced       INTEGER NOT NULL DEFAULT 0,
+                    last_modified   TEXT    DEFAULT '1970-01-01T00:00:00'
+                )
+            """)
+            conn.execute("""
+                INSERT OR IGNORE INTO _va_migration
+                    (id, uuid, device_id, destination_id,
+                     assigned_to, assigned_by, notes, priority, due_date, status,
+                     created_at, updated_at, completed_at,
+                     is_deleted, is_synced, last_modified)
+                SELECT
+                    id, uuid, device_id, NULL,
+                    assigned_to, assigned_by, notes, priority, due_date, status,
+                    created_at, updated_at, completed_at,
+                    is_deleted,
+                    COALESCE(is_synced, 0),
+                    COALESCE(last_modified, '1970-01-01T00:00:00')
+                FROM verification_assignments
+            """)
+            conn.execute("DROP TABLE verification_assignments")
+            conn.execute("ALTER TABLE _va_migration RENAME TO verification_assignments")
+        else:
+            # Aggiungi eventuali colonne mancanti su tabella già aggiornata
+            for col, ddl in [
+                ('is_synced',    "ALTER TABLE verification_assignments ADD COLUMN is_synced INTEGER DEFAULT 0"),
+                ('last_modified',"ALTER TABLE verification_assignments ADD COLUMN last_modified TEXT DEFAULT '1970-01-01T00:00:00'"),
+                ('destination_id',"ALTER TABLE verification_assignments ADD COLUMN destination_id INTEGER"),
+            ]:
+                if col not in col_info:
+                    try:
+                        conn.execute(ddl)
+                    except Exception:
+                        pass
+
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_assign_to     ON verification_assignments(assigned_to)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_assign_status  ON verification_assignments(status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_assign_device  ON verification_assignments(device_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_assign_dest    ON verification_assignments(destination_id)")
+
+
+def create_assignment(device_id: int | None, assigned_to: str, assigned_by: str,
+                      notes: str | None, priority: str, due_date: str | None,
+                      destination_id: int | None = None) -> dict:
+    """Crea una nuova assegnazione di verifica.
+    Può essere a livello dispositivo (device_id impostato) o
+    a livello destinazione (destination_id impostato, device_id=None).
+    """
+    ensure_assignments_table()
+    now = datetime.now(timezone.utc).isoformat()
+    new_uuid = str(uuid.uuid4())
+    with DatabaseConnection() as conn:
+        conn.execute(
+            """
+            INSERT INTO verification_assignments
+                (uuid, device_id, destination_id, assigned_to, assigned_by, notes,
+                 priority, due_date, status, created_at, updated_at, is_synced, last_modified)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, 0, ?)
+            """,
+            (new_uuid, device_id, destination_id, assigned_to, assigned_by,
+             notes, priority, due_date, now, now, now),
+        )
+        row = conn.execute(
+            "SELECT * FROM verification_assignments WHERE uuid = ?", (new_uuid,)
+        ).fetchone()
+        return dict(row)
+
+
+def get_assignments_for_user(username: str, status_filter: str | None = None) -> list[dict]:
+    """Restituisce le assegnazioni per un tecnico specifico."""
+    ensure_assignments_table()
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT a.*,
+                   d.description, d.serial_number, d.manufacturer, d.model,
+                   d.department, d.uuid AS device_uuid,
+                   COALESCE(dest_d.name, dest_a.name) AS destination_name,
+                   COALESCE(c_d.name, c_a.name)      AS customer_name
+            FROM verification_assignments a
+            LEFT JOIN devices d          ON d.id = a.device_id
+            LEFT JOIN destinations dest_d ON dest_d.id = d.destination_id
+            LEFT JOIN customers   c_d    ON c_d.id = dest_d.customer_id
+            LEFT JOIN destinations dest_a ON dest_a.id = a.destination_id
+            LEFT JOIN customers   c_a    ON c_a.id = dest_a.customer_id
+            WHERE a.assigned_to = ? AND a.is_deleted = 0
+        """
+        params: list = [username]
+        if status_filter:
+            query += " AND a.status = ?"
+            params.append(status_filter)
+        query += " ORDER BY CASE a.priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END, a.due_date ASC, a.created_at DESC"
+        rows = conn.execute(query, params).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_all_assignments(status_filter: str | None = None) -> list[dict]:
+    """Restituisce tutte le assegnazioni (per manager/admin)."""
+    ensure_assignments_table()
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT a.*,
+                   d.description, d.serial_number, d.manufacturer, d.model,
+                   d.department, d.uuid AS device_uuid,
+                   COALESCE(dest_d.name, dest_a.name) AS destination_name,
+                   COALESCE(c_d.name, c_a.name)      AS customer_name
+            FROM verification_assignments a
+            LEFT JOIN devices d          ON d.id = a.device_id
+            LEFT JOIN destinations dest_d ON dest_d.id = d.destination_id
+            LEFT JOIN customers   c_d    ON c_d.id = dest_d.customer_id
+            LEFT JOIN destinations dest_a ON dest_a.id = a.destination_id
+            LEFT JOIN customers   c_a    ON c_a.id = dest_a.customer_id
+            WHERE a.is_deleted = 0
+        """
+        params: list = []
+        if status_filter:
+            query += " AND a.status = ?"
+            params.append(status_filter)
+        query += " ORDER BY CASE a.priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END, a.due_date ASC, a.created_at DESC"
+        rows = conn.execute(query, params).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_assignment_by_uuid(assignment_uuid: str) -> dict | None:
+    """Restituisce una singola assegnazione per UUID."""
+    ensure_assignments_table()
+    with DatabaseConnection() as conn:
+        row = conn.execute(
+            """
+            SELECT a.*,
+                   d.description, d.serial_number, d.manufacturer, d.model,
+                   d.department, d.uuid AS device_uuid,
+                   COALESCE(dest_d.name, dest_a.name) AS destination_name,
+                   COALESCE(c_d.name, c_a.name)      AS customer_name
+            FROM verification_assignments a
+            LEFT JOIN devices d          ON d.id = a.device_id
+            LEFT JOIN destinations dest_d ON dest_d.id = d.destination_id
+            LEFT JOIN customers   c_d    ON c_d.id = dest_d.customer_id
+            LEFT JOIN destinations dest_a ON dest_a.id = a.destination_id
+            LEFT JOIN customers   c_a    ON c_a.id = dest_a.customer_id
+            WHERE a.uuid = ? AND a.is_deleted = 0
+            """,
+            (assignment_uuid,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def update_assignment_status(assignment_uuid: str, new_status: str) -> bool:
+    """Aggiorna lo stato di un'assegnazione."""
+    ensure_assignments_table()
+    now = datetime.now(timezone.utc).isoformat()
+    completed_at = now if new_status == 'completed' else None
+    with DatabaseConnection() as conn:
+        cur = conn.execute(
+            """
+            UPDATE verification_assignments
+            SET status = ?, updated_at = ?, completed_at = COALESCE(completed_at, ?),
+                is_synced = 0, last_modified = ?
+            WHERE uuid = ? AND is_deleted = 0
+            """,
+            (new_status, now, completed_at, now, assignment_uuid),
+        )
+        return cur.rowcount > 0
+
+
+def delete_assignment(assignment_uuid: str) -> bool:
+    """Soft-delete di un'assegnazione."""
+    ensure_assignments_table()
+    now = datetime.now(timezone.utc).isoformat()
+    with DatabaseConnection() as conn:
+        cur = conn.execute(
+            "UPDATE verification_assignments SET is_deleted = 1, updated_at = ?, is_synced = 0, last_modified = ? WHERE uuid = ?",
+            (now, now, assignment_uuid),
+        )
+        return cur.rowcount > 0
+
+
+def count_pending_assignments_for_user(username: str) -> int:
+    """Conta le assegnazioni pendenti/in corso per un tecnico."""
+    ensure_assignments_table()
+    with DatabaseConnection() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) as cnt FROM verification_assignments WHERE assigned_to = ? AND status IN ('pending','in_progress') AND is_deleted = 0",
+            (username,),
+        ).fetchone()
+        return row["cnt"] if row else 0
+
+
 # Applica le migrazioni del database all'avvio del modulo
 migrate_database()
+ensure_assignments_table()

@@ -21,7 +21,7 @@ LOCK_FILE = config.LOCK_FILE_DIR
 SYNC_ORDER = [
     "customers", "mti_instruments", "signatures", "profiles", "profile_tests", "functional_profiles",
     "destinations", "devices", "verifications", "functional_verifications", "verification_attachments",
-    "system_verifications", "system_verification_devices", "audit_log"
+    "system_verifications", "system_verification_devices", "verification_assignments", "audit_log"
 ]
 
 # Timeout e retry configuration
@@ -680,6 +680,13 @@ def _get_unsynced_local_changes():
             "WHERE svd.is_synced = 0",
             ["system_verification_id", "device_id"]
         ),
+        "verification_assignments": (
+            "SELECT a.*, d.uuid as device_uuid "
+            "FROM verification_assignments a "
+            "JOIN devices d ON a.device_id = d.id "
+            "WHERE a.is_synced = 0",
+            ["device_id"]
+        ),
         "audit_log": ("SELECT * FROM {table} WHERE is_synced = 0", [])
     }
 
@@ -963,6 +970,15 @@ def _apply_server_changes(conn, changes):
                         record['system_verification_id'] = local_sv_id
 
                 if table == 'system_verification_devices' and not fk_missing and not fk_orphan:
+                    local_device_id = resolve_fk("devices", "device_uuid")
+                    if local_device_id == -1:
+                        fk_orphan = True
+                    elif local_device_id is None:
+                        fk_missing = True
+                    else:
+                        record['device_id'] = local_device_id
+
+                if table == 'verification_assignments' and not fk_missing and not fk_orphan:
                     local_device_id = resolve_fk("devices", "device_uuid")
                     if local_device_id == -1:
                         fk_orphan = True

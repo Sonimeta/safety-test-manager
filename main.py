@@ -214,9 +214,8 @@ QTableWidget.setItem = _uppercase_QTW_setItem
 # ═══════════════════════════════════════════════════════════════════════════════
 
 load_dotenv()
-# La SECRET_KEY qui deve essere IDENTICA a quella in real_server.py
-SECRET_KEY = os.getenv("SECRET_KEY")
-ALGORITHM = os.getenv("ALGORITHM")
+# SECRET_KEY e ALGORITHM non sono più necessari lato client:
+# il token JWT viene decodificato senza verifica firma (il server l'ha già validato al login)
 
 if __name__ == '__main__':
  # Configure High DPI settings BEFORE creating QApplication
@@ -325,7 +324,10 @@ if __name__ == '__main__':
             if login_dialog.exec() == QDialog.Accepted:
                 try:
                     token = login_dialog.token_data['access_token']
-                    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+                    # Il token è già stato validato dal server al login.
+                    # Decodifichiamo solo i claims senza ri-verificare la firma,
+                    # evitando di dover mantenere la SECRET_KEY nel client.
+                    payload = jwt.decode(token, key="", options={"verify_signature": False})
                     username = payload.get("sub")
                     role = payload.get("role")
                     full_name = payload.get("full_name", "N/D")
