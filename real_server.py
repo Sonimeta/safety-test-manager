@@ -390,7 +390,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         path = request.url.path
 
         # Rate limit generico (escluso /health e /mobile/static per file statici)
-        if path != "/health" and not path.startswith("/mobile/static") and not path.startswith("/mobile/pwa-manifest"):
+        if path != "/health" and not path.startswith("/mobile/static") and not path.startswith("/mobile/pwa-manifest") and path != "/mobile/sw.js":
             if not rate_limiter.check_general(client_ip):
                 retry_after = rate_limiter.get_retry_after(client_ip)
                 logger.warning(f"⚠️ Rate limit GENERALE superato per IP {client_ip}")
@@ -741,6 +741,7 @@ class SyncChanges(BaseModel):
     system_verifications: List[SyncRecord] = []
     system_verification_devices: List[SyncRecord] = []
     verification_assignments: List[SyncRecord] = []
+    device_unavailability_reports: List[SyncRecord] = []
     audit_log: List[SyncRecord] = []
 
 class SyncPayload(BaseModel):
@@ -911,34 +912,25 @@ def process_client_changes(conn_or_cursor, table_name: str, records: list[dict],
                 normalized_serial = raw_serial.upper()
                 r["serial_number"] = normalized_serial
 
-            # --- GESTIONE CONFLITTO: numero di serie già esistente ---
-            # Se esiste già un dispositivo ATTIVO con lo stesso serial_number ma UUID diverso,
-            # non generiamo un errore 500 ma un conflitto esplicito.
-            # Skip: non controlliamo i record in fase di eliminazione (is_deleted)
+            # --- AVVISO duplicato numero di serie (non bloccante) ---
+            # Il seriale non è più univoco: i duplicati sono permessi per scelta applicativa.
+            # Logghiamo solo un avviso informativo senza interrompere la sincronizzazione.
             if normalized_serial and not r.get('is_deleted'):
                 cursor.execute(
                     """
-                    SELECT * FROM devices
+                    SELECT uuid, description FROM devices
                     WHERE serial_number = %s
                       AND is_deleted = FALSE
                       AND uuid <> %s
                     """,
                     (normalized_serial, r.get("uuid")),
                 )
-                existing = cursor.fetchone()
-                if existing:
-                    conflict = {
-                        "table": "devices",
-                        "uuid": r.get("uuid"),
-                        "reason": "serial_conflict",
-                        "message": f"Il numero di serie '{normalized_serial}' esiste già su un altro dispositivo sul server.",
-                        "client_version": r,
-                        "server_version": existing,
-                    }
-                    logging.warning(f"Conflitto di numero di serie rilevato durante sync: {conflict}")
-                    conflicts.append(conflict)
-                    # Salta questo record: non verrà upsertato
-                    continue
+                existing_dup = cursor.fetchone()
+                if existing_dup:
+                    logging.info(
+                        f"[sync] Numero di serie '{normalized_serial}' già presente su un altro dispositivo "
+                        f"(uuid={existing_dup.get('uuid')}) — duplicato permesso, sync prosegue."
+                    )
 
         elif table_name == "profile_tests":
             prof_uuid = r.pop("profile_uuid", None)
@@ -1033,6 +1025,25 @@ def process_client_changes(conn_or_cursor, table_name: str, records: list[dict],
                 r["device_id"] = row["id"]
             # Rimuovi colonne locali-only che non esistono sul server
             r.pop("is_synced", None)
+
+        elif table_name == "device_unavailability_reports":
+            dev_uuid = r.pop("device_uuid", None)
+            dest_uuid = r.pop("destination_uuid", None)
+            r.pop("is_synced", None)
+            if dev_uuid:
+                cursor.execute("SELECT id FROM devices WHERE uuid=%s AND is_deleted=FALSE", (dev_uuid,))
+                row = cursor.fetchone()
+                if not row:
+                    logging.warning(f"Salto unavailability report: device {dev_uuid} assente sul server.")
+                    continue
+                r["device_id"] = row["id"]
+            if dest_uuid:
+                cursor.execute("SELECT id FROM destinations WHERE uuid=%s AND is_deleted=FALSE", (dest_uuid,))
+                row = cursor.fetchone()
+                if not row:
+                    logging.warning(f"Salto unavailability report: destination {dest_uuid} assente sul server.")
+                    continue
+                r["destination_id"] = row["id"]
 
         for k, v in list(r.items()):
             r[k] = _normalize_incoming_value(table_name, k, v)
@@ -1521,11 +1532,23 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                     cursor.execute("""
                         SELECT a.*, d.uuid as device_uuid
                         FROM verification_assignments a
-                        INNER JOIN devices d ON a.device_id = d.id
+                        LEFT JOIN devices d ON d.id = a.device_id
                         WHERE a.is_deleted = FALSE
                     """)
                     changes_to_send["verification_assignments"] = cursor.fetchall()
-                else:
+
+                    # Device unavailability reports (prima sync: tutti)
+                    _ensure_unavailability_table(cursor)
+                    cursor.execute("""
+                        SELECT r.*, d.uuid as device_uuid, dest.uuid as destination_uuid
+                        FROM device_unavailability_reports r
+                        JOIN devices d ON d.id = r.device_id
+                        JOIN destinations dest ON dest.id = r.destination_id
+                        WHERE r.is_deleted = 0
+                    """)
+                    changes_to_send["device_unavailability_reports"] = cursor.fetchall()
+
+                else:  # sync incrementale
                     last_sync_ts = payload.last_sync_timestamp
                     if last_sync_ts is None:
                         raise HTTPException(status_code=400, detail="last_sync_timestamp must not be None for incremental sync.")
@@ -1620,21 +1643,32 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                     cursor.execute("""
                         SELECT a.*, d.uuid as device_uuid
                         FROM verification_assignments a
-                        INNER JOIN devices d ON a.device_id = d.id
+                        LEFT JOIN devices d ON d.id = a.device_id
                         WHERE a.last_modified > %s AND a.last_modified <= %s
                     """, (last_sync_dt, new_sync_timestamp))
                     changes_to_send["verification_assignments"] = cursor.fetchall()
+
+                    # Device unavailability reports (incrementale)
+                    _ensure_unavailability_table(cursor)
+                    cursor.execute("""
+                        SELECT r.*, d.uuid as device_uuid, dest.uuid as destination_uuid
+                        FROM device_unavailability_reports r
+                        JOIN devices d ON d.id = r.device_id
+                        JOIN destinations dest ON dest.id = r.destination_id
+                        WHERE r.last_modified > %s AND r.last_modified <= %s
+                    """, (last_sync_dt, new_sync_timestamp))
+                    changes_to_send["device_unavailability_reports"] = cursor.fetchall()
 
                 if "signatures" in changes_to_send:
                     for signature_record in changes_to_send["signatures"]:
                         if signature_record.get("signature_data"):
                             signature_record["signature_data"] = base64.b64encode(signature_record["signature_data"]).decode('utf-8')
 
-                # Base64 encode file_data degli allegati per il trasferimento JSON
+                # Non inviare file_data nella sync: i client desktop scaricano on-demand
+                # via GET /api/attachments/{uuid}. Riduce drasticamente la dimensione del payload.
                 if "verification_attachments" in changes_to_send:
                     for att_record in changes_to_send["verification_attachments"]:
-                        if att_record.get("file_data"):
-                            att_record["file_data"] = base64.b64encode(att_record["file_data"]).decode('utf-8')
+                        att_record.pop("file_data", None)
 
                 for _, rows in changes_to_send.items():
                     for row in rows:
@@ -2202,9 +2236,9 @@ _MOBILE_STATIC    = os.path.join(_THIS_DIR, "mobile", "static")
 
 mobile_templates = Jinja2Templates(directory=_MOBILE_TEMPLATES)
 
-# Aggiunge la data odierna come globale Jinja2 (usata nei template assignments)
+# Aggiunge la data odierna come globale Jinja2 (usata nei template che chiamano today())
 from datetime import date as _date_cls
-mobile_templates.env.globals["today"] = _date_cls.today
+mobile_templates.env.globals["today"] = _date_cls.today  # callable: usare today() nei template
 
 
 def _get_pending_assignments_count(username: str, role: str) -> int:
@@ -2227,6 +2261,26 @@ def _get_pending_assignments_count(username: str, role: str) -> int:
 if os.path.isdir(_MOBILE_STATIC):
     app.mount("/mobile/static", StaticFiles(directory=_MOBILE_STATIC), name="mobile_static")
 
+# ─── manifest.json con Content-Type corretto (bypassa CF Access via /mobile/static) ─
+# La route /mobile/static è già esclusa dalla protezione CF Access.
+# Serviamo manifest.json con application/manifest+json per il browser.
+@app.get("/mobile/static/manifest.json", response_class=FastAPIResponse, include_in_schema=False)
+def mobile_manifest_json():
+    manifest_path = os.path.join(_MOBILE_STATIC, "manifest.json")
+    try:
+        content = open(manifest_path, "rb").read()
+    except Exception:
+        content = b'{}'
+    return FastAPIResponse(
+        content=content,
+        media_type="application/manifest+json",
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Access-Control-Allow-Origin": "*",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
 # ─── Explicit manifest.json endpoint (bypasses Cloudflare Access auth check) ─
 # Cloudflare Access intercepts /mobile/static/manifest.json with a redirect
 # to its login page, breaking PWA installation. This dedicated route adds
@@ -2245,6 +2299,25 @@ def mobile_pwa_manifest():
         headers={
             "Cache-Control": "public, max-age=86400",
             "Access-Control-Allow-Origin": "*",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+# Service Worker served from /mobile/sw.js so its default scope is /mobile/
+# The Service-Worker-Allowed header extends the scope to /mobile/
+@app.get("/mobile/sw.js", response_class=FastAPIResponse, include_in_schema=False)
+def mobile_service_worker():
+    sw_path = os.path.join(_MOBILE_STATIC, "sw.js")
+    try:
+        content = open(sw_path, "rb").read()
+    except Exception:
+        content = b''
+    return FastAPIResponse(
+        content=content,
+        media_type="application/javascript",
+        headers={
+            "Service-Worker-Allowed": "/mobile/",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
         },
     )
 
@@ -2944,6 +3017,7 @@ async def mobile_device_create(destination_uuid: str, request: Request, mobile_s
     device_status = (form.get("status") or "active").strip()
     if device_status not in ("active", "dismissed", "maintenance"):
         device_status = "active"
+    force_duplicate_serial = form.get("force_duplicate_serial", "0") == "1"
 
     try:
         conn = get_db_connection()
@@ -2953,6 +3027,62 @@ async def mobile_device_create(destination_uuid: str, request: Request, mobile_s
         if not destination_row:
             conn.close()
             raise HTTPException(status_code=404, detail="Destinazione non trovata")
+
+        # Controllo duplicato numero di serie (non bloccante)
+        if serial and not force_duplicate_serial:
+            normalized = serial.upper()
+            cur2 = conn.cursor(cursor_factory=RealDictCursor)
+            cur2.execute(
+                """
+                SELECT d.description, d.manufacturer, d.model, dest.name AS destination_name
+                FROM devices d
+                LEFT JOIN destinations dest ON dest.id = d.destination_id
+                WHERE d.serial_number = %s AND d.is_deleted = FALSE
+                LIMIT 1
+                """,
+                (normalized,),
+            )
+            dup = cur2.fetchone()
+            conn.close()
+            if dup:
+                # Ricarica dati form per rimostrare il template con avviso
+                cur3 = get_db_connection().cursor(cursor_factory=RealDictCursor)
+                cur3.execute("SELECT id FROM destinations WHERE uuid = %s AND is_deleted = FALSE", (destination_uuid,))
+                dest_row2 = cur3.fetchone()
+                cur3.execute("SELECT profile_key, name FROM profiles WHERE is_deleted = FALSE ORDER BY name")
+                profiles = cur3.fetchall()
+                cur3.execute("SELECT profile_key, name FROM functional_profiles WHERE is_deleted = FALSE ORDER BY name")
+                functional_profiles = cur3.fetchall()
+                cur3.connection.close()
+                dest_row3 = get_db_connection().cursor(cursor_factory=RealDictCursor)
+                dest_row3.execute("SELECT * FROM destinations WHERE uuid = %s", (destination_uuid,))
+                destination = dest_row3.fetchone()
+                dest_row3.connection.close()
+                device_prefill = {
+                    "serial_number": serial, "description": description,
+                    "manufacturer": manufacturer, "model": model,
+                    "department": department, "customer_inventory": customer_inventory,
+                    "ams_inventory": ams_inventory, "verification_interval": int(verification_interval) if verification_interval else None,
+                    "default_profile_key": default_profile_key,
+                    "default_functional_profile_key": default_functional_profile_key,
+                    "status": device_status,
+                    "applied_parts_json": applied_parts,
+                }
+                dup_warning = (
+                    f"Il numero di serie <strong>{serial.upper()}</strong> è già presente nel database: "
+                    f"{dict(dup).get('description','N/D')} — {dict(dup).get('manufacturer','N/D')} "
+                    f"{dict(dup).get('model','N/D')} ({dict(dup).get('destination_name','N/D')}). "
+                    f"Vuoi inserire comunque il nuovo dispositivo?"
+                )
+                return mobile_templates.TemplateResponse("device_form.html", {
+                    "request": request, "user": user, "active_nav": "customers",
+                    "mode": "create", "destination": destination, "device": device_prefill,
+                    "profiles": profiles, "functional_profiles": functional_profiles,
+                    "form_action": f"/mobile/destinations/{destination_uuid}/devices/new",
+                    "back_url": f"/mobile/destinations/{destination_uuid}",
+                    "duplicate_warning": dup_warning,
+                    "pa_count_prefill": pa_count,
+                })
 
         cur.execute(
             """
@@ -2964,7 +3094,8 @@ async def mobile_device_create(destination_uuid: str, request: Request, mobile_s
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, FALSE, TRUE, %s)
             """,
             (
-                str(__import__("uuid").uuid4()), destination_row[0], serial, description, manufacturer, model,
+                str(__import__("uuid").uuid4()), destination_row[0], serial.upper() if serial else None,
+                description, manufacturer, model,
                 department, customer_inventory, ams_inventory, applied_parts_json,
                 int(verification_interval) if verification_interval else None, default_profile_key,
                 default_functional_profile_key, datetime.now(timezone.utc), device_status,
@@ -3059,11 +3190,73 @@ async def mobile_device_update(uuid: str, request: Request, mobile_session: Opti
     upd_status = (form.get("status") or "active").strip()
     if upd_status not in ("active", "dismissed", "maintenance"):
         upd_status = "active"
+    force_duplicate_serial = form.get("force_duplicate_serial", "0") == "1"
 
     try:
         conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute(
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Controllo duplicato numero di serie (non bloccante per l'update)
+        if serial and not force_duplicate_serial:
+            normalized = serial.upper()
+            cur.execute(
+                """
+                SELECT d.description, d.manufacturer, d.model, dest.name AS destination_name
+                FROM devices d
+                LEFT JOIN destinations dest ON dest.id = d.destination_id
+                WHERE d.serial_number = %s AND d.is_deleted = FALSE AND d.uuid <> %s
+                LIMIT 1
+                """,
+                (normalized, uuid),
+            )
+            dup = cur.fetchone()
+            if dup:
+                cur.execute("""
+                    SELECT d.*, dest.uuid AS destination_uuid, dest.name AS destination_name,
+                           c.uuid AS customer_uuid, c.name AS customer_name
+                    FROM devices d
+                    JOIN destinations dest ON dest.id = d.destination_id
+                    JOIN customers c ON c.id = dest.customer_id
+                    WHERE d.uuid = %s AND d.is_deleted = FALSE
+                """, (uuid,))
+                device_row = cur.fetchone()
+                cur.execute("SELECT profile_key, name FROM profiles WHERE is_deleted = FALSE ORDER BY name")
+                profiles = cur.fetchall()
+                cur.execute("SELECT profile_key, name FROM functional_profiles WHERE is_deleted = FALSE ORDER BY name")
+                functional_profiles = cur.fetchall()
+                conn.close()
+                device_prefill = dict(device_row) if device_row else {}
+                device_prefill.update({
+                    "serial_number": serial, "description": description,
+                    "manufacturer": manufacturer, "model": model,
+                    "department": department, "customer_inventory": customer_inventory,
+                    "ams_inventory": ams_inventory,
+                    "verification_interval": int(verification_interval) if verification_interval else None,
+                    "default_profile_key": default_profile_key,
+                    "default_functional_profile_key": default_functional_profile_key,
+                    "status": upd_status, "applied_parts_json": applied_parts,
+                })
+                dup_d = dict(dup)
+                dup_warning = (
+                    f"Il numero di serie <strong>{serial.upper()}</strong> è già presente nel database: "
+                    f"{dup_d.get('description','N/D')} — {dup_d.get('manufacturer','N/D')} "
+                    f"{dup_d.get('model','N/D')} ({dup_d.get('destination_name','N/D')}). "
+                    f"Vuoi salvare comunque le modifiche?"
+                )
+                destination = {"uuid": device_prefill.get("destination_uuid"), "name": device_prefill.get("destination_name")}
+                return mobile_templates.TemplateResponse("device_form.html", {
+                    "request": request, "user": user, "active_nav": "customers",
+                    "mode": "edit", "device": device_prefill,
+                    "destination": destination,
+                    "profiles": profiles, "functional_profiles": functional_profiles,
+                    "form_action": f"/mobile/devices/{uuid}/edit",
+                    "back_url": f"/mobile/devices/{uuid}",
+                    "duplicate_warning": dup_warning,
+                    "pa_count_prefill": pa_count,
+                })
+
+        cur2 = conn.cursor()
+        cur2.execute(
             """
             UPDATE devices
             SET serial_number = %s,
@@ -3086,7 +3279,7 @@ async def mobile_device_update(uuid: str, request: Request, mobile_session: Opti
             WHERE uuid = %s AND is_deleted = FALSE
             """,
             (
-                serial, description, manufacturer, model, department,
+                serial.upper() if serial else None, description, manufacturer, model, department,
                 customer_inventory, ams_inventory, applied_parts_json,
                 int(verification_interval) if verification_interval else None,
                 int(verification_interval) if verification_interval else None,
@@ -3174,7 +3367,158 @@ def mobile_destination_detail(uuid: str, request: Request, mobile_session: Optio
     })
 
 
+# ─── Verification Round (chiudi giro / non messi a disposizione) ─────────────
+
+@app.get("/mobile/destinations/{uuid}/verification-round", response_class=HTMLResponse)
+def mobile_verification_round_form(uuid: str, request: Request, mobile_session: Optional[str] = Cookie(None)):
+    """Mostra il form di selezione periodo per il giro verifiche."""
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_unavailability_table(cur)
+        conn.commit()
+        cur.execute("""
+            SELECT d.*, c.name AS customer_name
+            FROM destinations d JOIN customers c ON c.id = d.customer_id
+            WHERE d.uuid = %s AND d.is_deleted = FALSE
+        """, (uuid,))
+        destination = cur.fetchone()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] verification-round form error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+    if not destination:
+        raise HTTPException(status_code=404, detail="Destinazione non trovata")
+    today_str = date.today().isoformat()
+    return mobile_templates.TemplateResponse("verification_round.html", {
+        "request": request, "user": user,
+        "destination": destination, "customer_name": destination["customer_name"],
+        "show_results": False, "today": today_str,
+    })
+
+
+@app.post("/mobile/destinations/{uuid}/verification-round", response_class=HTMLResponse)
+async def mobile_verification_round_post(
+    uuid: str, request: Request,
+    mobile_session: Optional[str] = Cookie(None),
+):
+    """Gestisce: mostra stato, segna non disponibile, rimuovi segnalazione."""
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    form = await request.form()
+    action = form.get("action", "show")
+    period_start = (form.get("period_start") or "").strip()
+    period_end   = (form.get("period_end")   or "").strip()
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_unavailability_table(cur)
+        conn.commit()
+        cur.execute("""
+            SELECT d.*, c.name AS customer_name
+            FROM destinations d JOIN customers c ON c.id = d.customer_id
+            WHERE d.uuid = %s AND d.is_deleted = FALSE
+        """, (uuid,))
+        destination = cur.fetchone()
+        if not destination:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Destinazione non trovata")
+        dest_id = destination["id"]
+
+        if action == "mark":
+            # Segna un dispositivo come non messo a disposizione
+            device_uuid = (form.get("device_uuid") or "").strip()
+            reason      = (form.get("reason") or "").strip()
+            if device_uuid and reason and period_start and period_end:
+                cur.execute("SELECT id FROM devices WHERE uuid = %s AND is_deleted = FALSE", (device_uuid,))
+                dev_row = cur.fetchone()
+                if dev_row:
+                    import uuid as _uuid_mod
+                    report_uuid = str(_uuid_mod.uuid4())
+                    now_str = datetime.utcnow().isoformat()
+                    tech_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or user.username
+                    cur.execute("""
+                        INSERT INTO device_unavailability_reports
+                            (uuid, device_id, destination_id, period_start, period_end,
+                             report_date, reason, technician_name, technician_username,
+                             created_at, last_modified, is_deleted, is_synced)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,0,0)
+                    """, (
+                        report_uuid, dev_row["id"], dest_id,
+                        period_start, period_end,
+                        period_start[:10],
+                        reason,
+                        tech_name, user.username,
+                        now_str, now_str,
+                    ))
+                    conn.commit()
+
+        elif action == "remove":
+            report_uuid = (form.get("report_uuid") or "").strip()
+            if report_uuid:
+                cur.execute(
+                    "UPDATE device_unavailability_reports SET is_deleted = 1, last_modified = %s WHERE uuid = %s",
+                    (datetime.utcnow().isoformat(), report_uuid),
+                )
+                conn.commit()
+
+        # Recupera stato verifiche per il periodo
+        cur.execute("""
+            SELECT id, uuid, description, serial_number, model
+            FROM devices WHERE destination_id = %s AND is_deleted = FALSE ORDER BY description
+        """, (dest_id,))
+        all_devices = {row["id"]: dict(row) for row in cur.fetchall()}
+
+        verified_ids: set = set()
+        if period_start and period_end:
+            cur.execute("""
+                SELECT DISTINCT device_id FROM verifications
+                WHERE device_id = ANY(SELECT id FROM devices WHERE destination_id = %s)
+                  AND verification_date BETWEEN %s AND %s AND is_deleted = FALSE
+            """, (dest_id, period_start, period_end))
+            verified_ids = {r["device_id"] for r in cur.fetchall()}
+
+        # Segnalazioni esistenti per il periodo
+        cur.execute("""
+            SELECT r.*, d.description, d.serial_number
+            FROM device_unavailability_reports r
+            JOIN devices d ON d.id = r.device_id
+            WHERE r.destination_id = %s AND r.period_start = %s AND r.period_end = %s AND r.is_deleted = 0
+        """, (dest_id, period_start, period_end))
+        unavailable_reports = [dict(r) for r in cur.fetchall()]
+        unavailable_device_ids = {r["device_id"] for r in unavailable_reports}
+
+        conn.close()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[mobile] verification-round post error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    verified   = [all_devices[did] for did in verified_ids if did in all_devices]
+    unverified = [d for did, d in all_devices.items()
+                  if did not in verified_ids and did not in unavailable_device_ids]
+
+    today_str = date.today().isoformat()
+    return mobile_templates.TemplateResponse("verification_round.html", {
+        "request": request, "user": user,
+        "destination": destination, "customer_name": destination["customer_name"],
+        "show_results": bool(period_start and period_end),
+        "period_start": period_start, "period_end": period_end,
+        "verified": verified, "unverified": unverified, "unavailable": unavailable_reports,
+        "today": today_str,
+    })
+
+
 # ─── Devices ─────────────────────────────────────────────────────────────────
+
 
 @app.get("/mobile/devices/{uuid}", response_class=HTMLResponse)
 def mobile_device_detail(uuid: str, request: Request, mobile_session: Optional[str] = Cookie(None)):
@@ -3410,6 +3754,36 @@ async def mobile_attachment_delete(att_uuid: str, request: Request,
     )
 
 
+# ─── Desktop API: download allegato on-demand ────────────────────────────────
+
+@app.get("/api/attachments/{att_uuid}")
+def api_download_attachment(att_uuid: str, current_user: User = Depends(get_current_user)):
+    """Scarica i byte di un allegato per i client desktop (autenticato con JWT Bearer)."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT filename, file_data, mime_type FROM verification_attachments
+            WHERE uuid=%s AND is_deleted=FALSE
+        """, (att_uuid,))
+        row = cur.fetchone()
+        conn.close()
+        if not row or not row["file_data"]:
+            raise HTTPException(status_code=404, detail="Allegato non trovato o privo di dati")
+        raw = bytes(row["file_data"]) if isinstance(row["file_data"], memoryview) else row["file_data"]
+        from fastapi.responses import Response as FastAPIResponse
+        return FastAPIResponse(
+            content=raw,
+            media_type=row["mime_type"] or "application/octet-stream",
+            headers={"Content-Disposition": f'inline; filename="{row["filename"]}"'},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[api] attachment download error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+
 # ─── Verifications ───────────────────────────────────────────────────────────
 
 @app.get("/mobile/verifications/{uuid}", response_class=HTMLResponse)
@@ -3441,7 +3815,7 @@ def mobile_verification_detail(uuid: str, request: Request, mobile_session: Opti
         try:
             raw_res = json.loads(verification.get("results_json") or "{}")
             if isinstance(raw_res, list):
-                # Formato lista: [{"name": ..., "status": ..., "value": ..., "ap_name": ...}, ...]
+                # Formato lista: [{"name": ..., "passed": bool, "value": ..., "ap_name": ...}, ...]
                 # Duplicate names (AP tests) → append index to key
                 seen = {}
                 for i, item in enumerate(raw_res):
@@ -3456,8 +3830,12 @@ def mobile_verification_detail(uuid: str, request: Request, mobile_session: Opti
                         key = f"{key} ({seen[key]})"
                     else:
                         seen[key] = 1
+                    # Normalizza status: accetta sia "status" che "passed" (bool)
+                    raw_status = item.get("status", "")
+                    if not raw_status and "passed" in item:
+                        raw_status = "PASS" if item["passed"] else "FAIL"
                     results[key] = {
-                        "status":  item.get("status", ""),
+                        "status":  raw_status,
                         "value":   item.get("value"),
                         "unit":    item.get("unit"),
                         "limit":   item.get("limit") or item.get("limit_value"),
@@ -5102,12 +5480,14 @@ def mobile_expiring(request: Request, mobile_session: Optional[str] = Cookie(Non
 # ─── Assegnazioni Verifiche ───────────────────────────────────────────────────
 
 def _ensure_assignments_table(cur):
-    """Crea la tabella verification_assignments su PostgreSQL se non esiste."""
+    """Crea la tabella verification_assignments su PostgreSQL se non esiste.
+    Esegue anche le migrazioni per DB già esistenti (aggiunta colonne mancanti).
+    """
     cur.execute("""
         CREATE TABLE IF NOT EXISTS verification_assignments (
             id              SERIAL PRIMARY KEY,
             uuid            TEXT        NOT NULL UNIQUE,
-            device_id       INTEGER     NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+            device_id       INTEGER     REFERENCES devices(id) ON DELETE CASCADE,
             assigned_to     TEXT        NOT NULL,
             assigned_by     TEXT        NOT NULL,
             notes           TEXT,
@@ -5121,9 +5501,50 @@ def _ensure_assignments_table(cur):
             last_modified   TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
     """)
+    # --- Migrazioni per tabelle già esistenti ---
+    # Aggiunge last_modified se mancante (tabella creata con versione precedente)
+    cur.execute("""
+        ALTER TABLE verification_assignments
+        ADD COLUMN IF NOT EXISTS last_modified TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    """)
+    # Aggiunge destination_id per assignment a livello di sede
+    cur.execute("""
+        ALTER TABLE verification_assignments
+        ADD COLUMN IF NOT EXISTS destination_id INTEGER REFERENCES destinations(id) ON DELETE CASCADE
+    """)
+    # Rende device_id nullable (era NOT NULL nelle versioni precedenti)
+    cur.execute("""
+        ALTER TABLE verification_assignments ALTER COLUMN device_id DROP NOT NULL
+    """)
     cur.execute("CREATE INDEX IF NOT EXISTS idx_assign_to     ON verification_assignments(assigned_to)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_assign_status  ON verification_assignments(status)")
     cur.execute("CREATE INDEX IF NOT EXISTS idx_assign_device  ON verification_assignments(device_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_assign_dest    ON verification_assignments(destination_id)")
+
+
+def _ensure_unavailability_table(cur):
+    """Crea la tabella device_unavailability_reports su PostgreSQL se non esiste."""
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS device_unavailability_reports (
+            id                  SERIAL PRIMARY KEY,
+            uuid                TEXT        NOT NULL UNIQUE,
+            device_id           INTEGER     NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+            destination_id      INTEGER     NOT NULL REFERENCES destinations(id) ON DELETE CASCADE,
+            period_start        TEXT        NOT NULL,
+            period_end          TEXT        NOT NULL,
+            report_date         TEXT        NOT NULL,
+            reason              TEXT        NOT NULL,
+            technician_name     TEXT,
+            technician_username TEXT,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_modified       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            is_deleted          INTEGER     NOT NULL DEFAULT 0,
+            is_synced           INTEGER     NOT NULL DEFAULT 0
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_unavail_device  ON device_unavailability_reports(device_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_unavail_dest    ON device_unavailability_reports(destination_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_unavail_period  ON device_unavailability_reports(period_start, period_end)")
 
 
 _ASSIGNMENT_SELECT = """
@@ -5198,6 +5619,7 @@ def mobile_assignments(request: Request, status: Optional[str] = None,
         "current_status": status or "",
         "back_url": "/mobile/dashboard",
         "pending_assignments_count": sum(v for k, v in counts.items() if k in ("pending", "in_progress")),
+        "today": _date_cls.today(),
     })
 
 
@@ -5517,6 +5939,148 @@ def mobile_assignments_search_devices(q: str = "", request: Request = None,
         items_html = '<p class="text-sm text-gray-400 text-center py-3">Nessun risultato</p>'
 
     return HTMLResponse(f'<div class="card overflow-hidden">{items_html}</div>')
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# INTEGRAZIONE ESTERNA — endpoint richiamabile da altri gestionali (es. TechBusiness_PRO)
+# Autenticazione via API Key (header X-STM-API-Key)
+# ════════════════════════════════════════════════════════════════════════════════
+
+_STM_EXTERNAL_API_KEY = os.getenv("STM_EXTERNAL_API_KEY", "")
+
+
+class ExternalAssignmentRequest(BaseModel):
+    """Payload inviato dal gestionale esterno per creare un assignment STM."""
+    assigned_to: str                     # username tecnico STM
+    serial_number: Optional[str] = None  # matricola/seriale per trovare il device
+    device_description: Optional[str] = None  # descrizione come fallback
+    destination_name: Optional[str] = None    # nome sede (fallback se nessun device trovato)
+    notes: Optional[str] = None
+    priority: Optional[str] = "normal"        # low / normal / high / urgent
+    due_date: Optional[str] = None            # ISO date string YYYY-MM-DD
+    # Campi informativi extra (vengono appesi alle note)
+    titolo: Optional[str] = None
+    apparecchiatura: Optional[str] = None
+    cliente: Optional[str] = None
+    indirizzo: Optional[str] = None
+    rdi: Optional[str] = None
+    gestionale_id: Optional[int] = None       # ID record nel gestionale esterno
+
+
+@app.post("/api/v1/external/create-assignment", tags=["external"])
+def external_create_assignment(
+    payload: ExternalAssignmentRequest,
+    request: Request,
+):
+    """
+    Crea un assignment STM a partire da un evento del gestionale esterno.
+    Richiede l'header HTTP:  X-STM-API-Key: <STM_EXTERNAL_API_KEY>
+    """
+    # --- Verifica API Key ---
+    api_key = request.headers.get("X-STM-API-Key", "")
+    if not _STM_EXTERNAL_API_KEY:
+        raise HTTPException(status_code=503, detail="Integrazione esterna non configurata (STM_EXTERNAL_API_KEY mancante)")
+    if api_key != _STM_EXTERNAL_API_KEY:
+        logger.warning(f"[external] Tentativo con API key errata da {request.client.host}")
+        raise HTTPException(status_code=401, detail="API Key non valida")
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_assignments_table(cur)
+
+        # --- Ricerca device per serial_number ---
+        device_id  = None
+        dest_id    = None
+
+        if payload.serial_number:
+            cur.execute(
+                "SELECT id FROM devices WHERE serial_number ILIKE %s AND is_deleted = FALSE LIMIT 1",
+                (payload.serial_number.strip(),)
+            )
+            row = cur.fetchone()
+            if row:
+                device_id = row["id"]
+
+        # Fallback: ricerca per descrizione dispositivo
+        if device_id is None and payload.device_description:
+            cur.execute(
+                "SELECT id FROM devices WHERE description ILIKE %s AND is_deleted = FALSE LIMIT 1",
+                (f"%{payload.device_description.strip()}%",)
+            )
+            row = cur.fetchone()
+            if row:
+                device_id = row["id"]
+
+        # Fallback ulteriore: ricerca per nome sede
+        if device_id is None and payload.destination_name:
+            cur.execute(
+                "SELECT id FROM destinations WHERE name ILIKE %s AND is_deleted = FALSE LIMIT 1",
+                (f"%{payload.destination_name.strip()}%",)
+            )
+            row = cur.fetchone()
+            if row:
+                dest_id = row["id"]
+
+        if device_id is None and dest_id is None:
+            conn.close()
+            raise HTTPException(
+                status_code=404,
+                detail="Nessun dispositivo o sede trovata con i dati forniti"
+            )
+
+        # --- Verifica che il tecnico esista ---
+        cur.execute("SELECT username FROM users WHERE username = %s AND is_deleted = FALSE LIMIT 1", (payload.assigned_to,))
+        if not cur.fetchone():
+            conn.close()
+            raise HTTPException(status_code=404, detail=f"Tecnico '{payload.assigned_to}' non trovato in STM")
+
+        # --- Costruzione note arricchite ---
+        note_parts = []
+        if payload.titolo:
+            note_parts.append(f"Intervento: {payload.titolo}")
+        if payload.apparecchiatura:
+            note_parts.append(f"Apparecchiatura: {payload.apparecchiatura}")
+        if payload.cliente:
+            note_parts.append(f"Cliente: {payload.cliente}")
+        if payload.indirizzo:
+            note_parts.append(f"Indirizzo: {payload.indirizzo}")
+        if payload.rdi:
+            note_parts.append(f"RDI: {payload.rdi}")
+        if payload.gestionale_id:
+            note_parts.append(f"ID gestionale: {payload.gestionale_id}")
+        if payload.notes:
+            note_parts.append(payload.notes)
+        final_notes = " | ".join(note_parts) if note_parts else None
+
+        # --- Due date ---
+        due_date_val = None
+        if payload.due_date:
+            try:
+                due_date_val = date.fromisoformat(payload.due_date)
+            except ValueError:
+                pass
+
+        import uuid as _uuid_mod
+        new_uuid = str(_uuid_mod.uuid4())
+        cur.execute("""
+            INSERT INTO verification_assignments
+                (uuid, device_id, destination_id, assigned_to, assigned_by,
+                 notes, priority, due_date, status, last_modified)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending', NOW())
+        """, (new_uuid, device_id, dest_id, payload.assigned_to,
+              "techbusiness_pro", final_notes, payload.priority or "normal", due_date_val))
+        conn.commit()
+        conn.close()
+
+        logger.info(f"[external] Assignment creato da TechBusiness_PRO: uuid={new_uuid}, tecnico={payload.assigned_to}")
+        return {"status": "ok", "assignment_uuid": new_uuid}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[external] Errore creazione assignment: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ════════════════════════════════════════════════════════════════════════════════

@@ -215,6 +215,10 @@ class AdvancedSearchDialog(QDialog):
         self.interval_combo = QComboBox()
         self.interval_combo.addItems(["QUALSIASI", "6", "12", "24", "36", "48", "60"])
 
+        self.with_attachments_combo = QComboBox()
+        self.with_attachments_combo.addItems(["QUALSIASI", "CON ALLEGATI", "SENZA ALLEGATI"])
+        self.with_attachments_combo.setToolTip("Filtra verifiche in base alla presenza di allegati")
+
         # --- Data range ---
         self.date_range_button = QPushButton(qta.icon('fa5s.calendar-alt'), " Seleziona Periodo")
         self.date_range_button.setObjectName("secondaryButton")
@@ -270,18 +274,22 @@ class AdvancedSearchDialog(QDialog):
         grid_layout.addWidget(self.profile_combo, row, 5)
 
         row += 1
-        # Riga 5: Stato Dispositivo | Int. Verifica | Periodo
+        # Riga 5: Stato Dispositivo | Int. Verifica | Allegati
         grid_layout.addWidget(QLabel("<b>Stato Disp.:</b>"), row, 0)
         grid_layout.addWidget(self.device_status_combo, row, 1)
         grid_layout.addWidget(QLabel("<b>Int. Verifica (mesi):</b>"), row, 2)
         grid_layout.addWidget(self.interval_combo, row, 3)
+        grid_layout.addWidget(QLabel("<b>Allegati:</b>"), row, 4)
+        grid_layout.addWidget(self.with_attachments_combo, row, 5)
 
+        row += 1
+        # Riga 6: Periodo
         date_layout = QHBoxLayout()
         date_layout.addWidget(self.date_range_button)
         date_layout.addWidget(self.date_range_label)
         date_layout.addStretch()
-        grid_layout.addWidget(QLabel("<b>Periodo:</b>"), row, 4)
-        grid_layout.addLayout(date_layout, row, 5)
+        grid_layout.addWidget(QLabel("<b>Periodo:</b>"), row, 0)
+        grid_layout.addLayout(date_layout, row, 1, 1, 5)
 
         # Imposta colonne con stretch uniforme per le colonne input
         grid_layout.setColumnStretch(1, 1)
@@ -516,6 +524,7 @@ class AdvancedSearchDialog(QDialog):
         self.verification_type_combo.setCurrentIndex(0)
         self.profile_combo.setCurrentIndex(0)
         self.interval_combo.setCurrentIndex(0)
+        self.with_attachments_combo.setCurrentIndex(0)
         self.start_date = None
         self.end_date = None
         self.date_range_label.setText("<i>Nessun periodo selezionato</i>")
@@ -552,6 +561,7 @@ class AdvancedSearchDialog(QDialog):
             "verification_type": self.verification_type_combo.currentText(),
             "profile_key": profile_key,
             "verification_interval": self.interval_combo.currentText(),
+            "with_attachments": self.with_attachments_combo.currentText(),
             "start_date": self.start_date,
             "end_date": self.end_date,
         }

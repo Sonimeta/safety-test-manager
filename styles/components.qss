@@ -180,6 +180,7 @@ QCalendarWidget QToolButton {
     font-weight: 600;
     padding: 8px;
     border-radius: 8px;
+    min-width: 28px;
 }
 
 QCalendarWidget QToolButton:hover {
@@ -190,6 +191,12 @@ QCalendarWidget QToolButton:pressed {
     background-color: #e0e7f1;
 }
 
+/* Nasconde i pulsanti freccia interni al mese/anno (usano ToolButton con testo "...") */
+QCalendarWidget QToolButton::menu-indicator {
+    image: none;
+    width: 0;
+}
+
 QCalendarWidget QWidget#qt_calendar_navigationbar {
     background-color: #f8faff;
     border-bottom: 1px solid #e0e7f1;
@@ -197,19 +204,47 @@ QCalendarWidget QWidget#qt_calendar_navigationbar {
     padding: 8px;
 }
 
+/* Griglia giorni */
+QCalendarWidget QTableView {
+    selection-background-color: #6366f1;
+    selection-color: white;
+    background-color: white;
+    border: none;
+    outline: none;
+}
+
+QCalendarWidget QTableView QHeaderView {
+    background-color: #f8faff;
+}
+
+QCalendarWidget QTableView QHeaderView::section {
+    background-color: #f8faff;
+    color: #64748b;
+    font-weight: 700;
+    font-size: 11px;
+    padding: 4px 0;
+    border: none;
+    min-width: 32px;
+    min-height: 24px;
+}
+
 QCalendarWidget QAbstractItemView {
     selection-background-color: #6366f1;
     selection-color: white;
     background-color: white;
     border: none;
+    outline: none;
+    min-width: 32px;
+    min-height: 32px;
 }
 
 QCalendarWidget QAbstractItemView:enabled {
     color: #0f172a;
+    font-size: 13px;
 }
 
 QCalendarWidget QAbstractItemView:disabled {
-    color: #94a3b8;
+    color: #cbd5e1;
 }
 
 /* === DIALOG BUTTONS === */

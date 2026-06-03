@@ -12,6 +12,47 @@
     </div>
     {% endif %}
 
+    {% if duplicate_warning %}
+    <div style="background:#fffbeb;border:1.5px solid #fbbf24;color:#92400e;border-radius:12px;padding:.85rem 1rem;margin-bottom:1rem;font-size:.875rem;">
+        <div style="display:flex;align-items:flex-start;gap:.5rem;margin-bottom:.75rem;">
+            <i class="ti ti-alert-triangle" style="flex-shrink:0;margin-top:.1rem;"></i>
+            <span>{{ duplicate_warning | safe }}</span>
+        </div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
+            <form method="POST" action="{{ form_action }}">
+                <!-- Ripropaga tutti i campi nascosti per confermare -->
+                <input type="hidden" name="serial_number" value="{{ device.serial_number or '' }}">
+                <input type="hidden" name="description" value="{{ device.description or '' }}">
+                <input type="hidden" name="manufacturer" value="{{ device.manufacturer or '' }}">
+                <input type="hidden" name="model" value="{{ device.model or '' }}">
+                <input type="hidden" name="department" value="{{ device.department or '' }}">
+                <input type="hidden" name="customer_inventory" value="{{ device.customer_inventory or '' }}">
+                <input type="hidden" name="ams_inventory" value="{{ device.ams_inventory or '' }}">
+                <input type="hidden" name="verification_interval" value="{{ device.verification_interval or '' }}">
+                <input type="hidden" name="default_profile_key" value="{{ device.default_profile_key or '' }}">
+                <input type="hidden" name="default_functional_profile_key" value="{{ device.default_functional_profile_key or '' }}">
+                <input type="hidden" name="status" value="{{ device.status or 'active' }}">
+                {% if device.applied_parts_json %}
+                {% for pa in device.applied_parts_json %}
+                <input type="hidden" name="pa_name_{{ loop.index0 }}" value="{{ pa.name or '' }}">
+                <input type="hidden" name="pa_type_{{ loop.index0 }}" value="{{ pa.part_type or 'B' }}">
+                {% endfor %}
+                <input type="hidden" name="pa_count" value="{{ device.applied_parts_json | length }}">
+                {% else %}
+                <input type="hidden" name="pa_count" value="0">
+                {% endif %}
+                <input type="hidden" name="force_duplicate_serial" value="1">
+                <button type="submit" style="background:#b45309;color:#fff;border:none;border-radius:8px;padding:.45rem .9rem;font-size:.8rem;font-weight:600;cursor:pointer;">
+                    <i class="ti ti-check"></i> Sì, inserisci comunque
+                </button>
+            </form>
+            <a href="{{ back_url }}" style="background:#f3f4f6;color:#374151;border-radius:8px;padding:.45rem .9rem;font-size:.8rem;font-weight:600;text-decoration:none;">
+                <i class="ti ti-x"></i> Annulla
+            </a>
+        </div>
+    </div>
+    {% endif %}
+
     <form method="POST" action="{{ form_action }}" class="space-y-4">
         <div class="card p-4 space-y-4">
             <div>
@@ -46,7 +87,7 @@
                 <div>
                     <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Intervallo verifica (mesi)</label>
                     <select name="verification_interval" class="form-input">
-                        <option value="" {% if device.verification_interval is none %}selected{% endif %}>Nessuno</option>
+                        <option value="" {% if not device.verification_interval %}selected{% endif %}>Nessuno</option>
                         <option value="6" {% if device.verification_interval == 6 %}selected{% endif %}>6</option>
                         <option value="12" {% if device.verification_interval == 12 %}selected{% endif %}>12</option>
                         <option value="24" {% if device.verification_interval == 24 %}selected{% endif %}>24</option>
@@ -104,8 +145,8 @@
             <!-- Add new part row -->
             <div class="flex gap-2 pt-1">
                 <input type="text" x-model="newName" placeholder="Nome (es. ECG Torace)"
-                       class="form-input flex-1 text-sm">
-                <select x-model="newType" class="form-input w-24 text-sm">
+                       class="form-input flex-1 text-sm" style="width: 70% !important;">
+                <select x-model="newType" class="form-input w-24 text-sm" style="width: 30% !important;">
                     <option value="B">B</option>
                     <option value="BF">BF</option>
                     <option value="CF">CF</option>
@@ -128,7 +169,7 @@ function appliedPartsManager() {
         newName: '',
         newType: 'B',
         add() {
-            if (!this.newType) return;
+            if (!this.newName.trim()) return;
             this.parts.push({ name: this.newName.trim(), part_type: this.newType, code: '' });
             this.newName = '';
         },

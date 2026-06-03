@@ -77,7 +77,8 @@
             btn.disabled = true;
         });
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/mobile/static/sw.js').catch(() => {});
+            navigator.serviceWorker.register('/mobile/sw.js', { scope: '/mobile/' })
+              .catch(() => {});
         }
         const style = document.createElement('style');
         style.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';

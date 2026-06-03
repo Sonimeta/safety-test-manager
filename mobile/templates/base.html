@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="STM Mobile">
     <title>{% block title %}STM Mobile{% endblock %}</title>
-    <link rel="manifest" href="/mobile/pwa-manifest" crossorigin="use-credentials">
+    <link rel="manifest" href="/mobile/static/manifest.json">
     <link rel="apple-touch-icon" href="/mobile/static/icon-192.png">
     <!-- Tabler Icons (local) -->
     <link rel="stylesheet" href="/mobile/static/tabler-icons.min.css">
@@ -96,12 +96,6 @@
                     <i class="ti ti-loader-2 animate-spin" style="font-size:1.25rem;display:block;"></i>
                 </span>
                 {% block header_actions %}{% endblock %}
-                {% if user %}
-                <a href="/mobile/profile" title="Profilo"
-                   class="flex items-center justify-center w-8 h-8 rounded-full bg-white/15 hover:bg-white/25 transition-colors text-white">
-                    <i class="ti ti-user" style="font-size:1rem;"></i>
-                </a>
-                {% endif %}
             </div>
         </div>
     </header>
@@ -170,7 +164,8 @@
 
     <script>
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/mobile/static/sw.js').catch(() => {});
+            navigator.serviceWorker.register('/mobile/sw.js', { scope: '/mobile/' })
+              .catch(() => {});
         }
         document.addEventListener('htmx:afterRequest', () => {
             document.getElementById('global-spinner').style.opacity = '0';

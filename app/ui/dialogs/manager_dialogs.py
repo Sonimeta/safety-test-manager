@@ -577,11 +577,14 @@ class DbManagerDialog(QDialog):
         self.view_sv_btn.setObjectName("editButton")
         self.gen_sv_pdf_btn = self.create_button("📄 PDF", self._generate_sv_pdf, "addButton", enabled=False)
         self.gen_sv_pdf_btn.setObjectName("autoButton")
+        self.print_sv_btn = self.create_button("🖨️ Stampa", self._print_sv_pdf, "addButton", enabled=False)
+        self.print_sv_btn.setObjectName("autoButton")
         self.del_sv_btn = self.create_button("🗑️ Elimina", self._delete_system_verification, "deleteButton", enabled=False)
         self.del_sv_btn.setObjectName("deleteButton")
 
         layout.addWidget(self.view_sv_btn)
         layout.addWidget(self.gen_sv_pdf_btn)
+        layout.addWidget(self.print_sv_btn)
         layout.addWidget(self.del_sv_btn)
         layout.addStretch()
 
@@ -973,7 +976,7 @@ class DbManagerDialog(QDialog):
             self.customer_table.setItem(row, 1, QTableWidgetItem(customer_dict['name'].upper()))
             self.customer_table.setItem(row, 2, QTableWidgetItem(customer_dict['address'].upper()))
             self.customer_table.setItem(row, 3, QTableWidgetItem(customer_dict.get('phone', '').upper()))
-            self.customer_table.setItem(row, 4, QTableWidgetItem(customer_dict.get('email', '').upper()))
+            self.customer_table.setItem(row, 4, QTableWidgetItem((customer_dict.get('email') or '').upper()))
         
         self._center_table_items(self.customer_table)
         self.customer_table.setSortingEnabled(True)
@@ -1416,6 +1419,27 @@ class DbManagerDialog(QDialog):
             try:
                 services.add_device(**dialog.get_data())
                 self.load_devices_table(dest_id)
+            except services.DuplicateActiveSerialException as e:
+                existing = e.existing_device
+                from PySide6.QtWidgets import QMessageBox as _QMB
+                dest_info = services.database.get_destination_by_id(existing.get('destination_id')) if existing.get('destination_id') else None
+                dest_name = dict(dest_info).get('name', 'N/D') if dest_info else 'N/D'
+                msg = (
+                    f"Il numero di serie {e.serial_number} è già presente nel database:\n\n"
+                    f"  Dispositivo: {existing.get('description', 'N/D')}\n"
+                    f"  Costruttore: {existing.get('manufacturer', 'N/D')}\n"
+                    f"  Modello: {existing.get('model', 'N/D')}\n"
+                    f"  Destinazione: {dest_name}\n\n"
+                    f"Vuoi inserire comunque il nuovo dispositivo con lo stesso numero di serie?"
+                )
+                reply = _QMB.question(self, "NUMERO DI SERIE DUPLICATO", msg,
+                                      _QMB.Yes | _QMB.No, _QMB.No)
+                if reply == _QMB.Yes:
+                    try:
+                        services.add_device(**dialog.get_data(), force_duplicate_serial=True)
+                        self.load_devices_table(dest_id)
+                    except Exception as ex:
+                        QMessageBox.critical(self, "ERRORE", f"IMPOSSIBILE SALVARE IL DISPOSITIVO:\n{str(ex).upper()}")
             except services.DeletedDeviceFoundException as e:
                 # Dispositivo eliminato trovato con lo stesso S/N
                 from app.ui.dialogs.reactivate_device_dialog import ReactivateDeviceDialog
@@ -1478,6 +1502,27 @@ class DbManagerDialog(QDialog):
             try:
                 services.update_device(dev_id, **dialog.get_data())
                 self.load_devices_table(dest_id)
+            except services.DuplicateActiveSerialException as e:
+                existing = e.existing_device
+                from PySide6.QtWidgets import QMessageBox as _QMB
+                dest_info = services.database.get_destination_by_id(existing.get('destination_id')) if existing.get('destination_id') else None
+                dest_name = dict(dest_info).get('name', 'N/D') if dest_info else 'N/D'
+                msg = (
+                    f"Il numero di serie {e.serial_number} è già presente nel database:\n\n"
+                    f"  Dispositivo: {existing.get('description', 'N/D')}\n"
+                    f"  Costruttore: {existing.get('manufacturer', 'N/D')}\n"
+                    f"  Modello: {existing.get('model', 'N/D')}\n"
+                    f"  Destinazione: {dest_name}\n\n"
+                    f"Vuoi salvare comunque le modifiche mantenendo questo numero di serie duplicato?"
+                )
+                reply = _QMB.question(self, "NUMERO DI SERIE DUPLICATO", msg,
+                                      _QMB.Yes | _QMB.No, _QMB.No)
+                if reply == _QMB.Yes:
+                    try:
+                        services.update_device(dev_id, **dialog.get_data(), force_duplicate_serial=True)
+                        self.load_devices_table(dest_id)
+                    except Exception as ex:
+                        QMessageBox.critical(self, "ERRORE", f"IMPOSSIBILE SALVARE IL DISPOSITIVO:\n{str(ex).upper()}")
             except ValueError as e:
                 QMessageBox.warning(self, "ERRORE VALIDAZIONE", str(e).upper())
                 return
@@ -1878,7 +1923,12 @@ class DbManagerDialog(QDialog):
         start_date, end_date = date_dialog.get_date_range()
         try:
             verified, unverified = services.database.get_devices_verification_status_by_period(dest_id, start_date, end_date)
-            results_dialog = VerificationStatusDialog(verified, unverified, self)
+            results_dialog = VerificationStatusDialog(
+                verified, unverified, self,
+                destination_id=dest_id,
+                period_start=start_date,
+                period_end=end_date,
+            )
             results_dialog.exec()
         except Exception as e:
             QMessageBox.critical(self, "ERRORE", f"IMPOSSIBILE RECUPERARE LO STATO: {str(e).upper()}")
@@ -2063,6 +2113,7 @@ class DbManagerDialog(QDialog):
         """Abilita/disabilita i pulsanti delle verifiche di sistema."""
         self.view_sv_btn.setEnabled(enabled)
         self.gen_sv_pdf_btn.setEnabled(enabled)
+        self.print_sv_btn.setEnabled(enabled)
         self.del_sv_btn.setEnabled(enabled)
 
     def _on_system_verification_selection_changed(self):
@@ -2193,6 +2244,21 @@ class DbManagerDialog(QDialog):
         except Exception as e:
             logging.error(f"Errore generazione report verifica di sistema: {e}", exc_info=True)
             QMessageBox.critical(self, "Errore", f"Impossibile generare il report:\n{e}")
+
+    def _print_sv_pdf(self):
+        """Stampa il report della verifica di sistema selezionata."""
+        sv_id = self._get_selected_sv_id()
+        if sv_id is None:
+            QMessageBox.information(self, "Info", "Selezionare una verifica di sistema dalla tabella.")
+            return
+        try:
+            report_settings = {}
+            if self.main_window and hasattr(self.main_window, 'logo_path'):
+                report_settings['logo_path'] = self.main_window.logo_path
+            services.print_system_pdf_report(sv_id, report_settings, parent_widget=self)
+        except Exception as e:
+            logging.error(f"Errore stampa report verifica di sistema: {e}", exc_info=True)
+            QMessageBox.critical(self, "Errore", f"Impossibile stampare il report:\n{e}")
 
     def _delete_system_verification(self):
         """Elimina la verifica di sistema selezionata."""

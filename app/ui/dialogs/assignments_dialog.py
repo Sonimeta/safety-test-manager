@@ -395,6 +395,8 @@ class BulkAssignDialog(QDialog):
         dr = QHBoxLayout()
         self._due_edit = QDateEdit()
         self._due_edit.setCalendarPopup(True)
+        from app.ui.widgets import fix_calendar_popup
+        fix_calendar_popup(self._due_edit)
         self._due_edit.setDate(QDate.currentDate().addDays(14))
         self._due_edit.setMinimumDate(QDate.currentDate())
         self._due_edit.dateChanged.connect(lambda _: self._refresh_preview())

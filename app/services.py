@@ -8,7 +8,7 @@ import uuid
 
 import database
 from .functional_models import FunctionalProfile
-from .exceptions import DeletedDeviceFoundException  # Import custom exception
+from .exceptions import DeletedDeviceFoundException, DuplicateActiveSerialException  # Import custom exceptions
 import report_generator
 import tempfile
 import os
@@ -336,7 +336,7 @@ def check_deleted_device_by_serial(serial):
         return None
     return database.find_deleted_device_by_serial_with_details(serial)
 
-def add_device(destination_id, serial, desc, mfg, model, department, applied_parts, customer_inv, ams_inv, verification_interval, default_profile_key, default_functional_profile_key, force_create=False):
+def add_device(destination_id, serial, desc, mfg, model, department, applied_parts, customer_inv, ams_inv, verification_interval, default_profile_key, default_functional_profile_key, force_create=False, force_duplicate_serial=False):
     """
     Aggiunge un nuovo dispositivo.
     
@@ -354,8 +354,9 @@ def add_device(destination_id, serial, desc, mfg, model, department, applied_par
     """
     serial = normalize_serial(serial)
     if serial:
-        if database.device_exists(serial):
-            raise ValueError(f"Il numero di serie '{serial}' è già utilizzato da un altro dispositivo attivo.")
+        if database.device_exists(serial) and not force_duplicate_serial:
+            existing = database.find_device_by_serial(serial, include_deleted=False)
+            raise DuplicateActiveSerialException(dict(existing) if existing else {}, serial)
 
         if not force_create:
             deleted_device = database.find_deleted_device_by_serial_with_details(serial)
@@ -428,6 +429,7 @@ def update_device(
     default_functional_profile_key,
     reactivate=False,
     new_destination_id=None,
+    force_duplicate_serial=False,
 ):
     serial = normalize_serial(serial)
     current_device_row = database.get_device_by_id(dev_id)
@@ -435,8 +437,8 @@ def update_device(
 
     if serial:
         existing = database.find_device_by_serial(serial, include_deleted=False)
-        if existing and int(existing.get('id', -1)) != int(dev_id):
-            raise ValueError(f"Il numero di serie '{serial}' è già utilizzato da un altro dispositivo attivo.")
+        if existing and int(existing.get('id', -1)) != int(dev_id) and not force_duplicate_serial:
+            raise DuplicateActiveSerialException(dict(existing), serial)
 
     timestamp = datetime.now(timezone.utc).isoformat()
     database.update_device(
@@ -2169,3 +2171,82 @@ def update_profile_sync_status(profile_uuid: str):
         """
         conn.execute(query, (profile_uuid,))
         conn.commit()
+
+
+# ─────────────────────────────────────────────
+# SEGNALAZIONI "NON MESSO A DISPOSIZIONE"
+# ─────────────────────────────────────────────
+
+def save_unavailability_report(
+    device_id: int,
+    destination_id: int,
+    period_start: str,
+    period_end: str,
+    reason: str,
+    technician_name: str = None,
+    technician_username: str = None,
+) -> dict:
+    """Salva una segnalazione 'non messo a disposizione' per un dispositivo."""
+    return database.save_unavailability_report(
+        device_id=device_id,
+        destination_id=destination_id,
+        period_start=period_start,
+        period_end=period_end,
+        reason=reason,
+        technician_name=technician_name,
+        technician_username=technician_username,
+    )
+
+
+def get_unavailability_reports_for_period(
+    destination_id: int,
+    period_start: str,
+    period_end: str,
+) -> list:
+    """Recupera le segnalazioni 'non disponibile' per una destinazione in un periodo."""
+    return database.get_unavailability_reports_for_period(destination_id, period_start, period_end)
+
+
+def get_unavailability_reports_for_device(device_id: int) -> list:
+    """Recupera lo storico delle segnalazioni 'non disponibile' per un dispositivo."""
+    return database.get_unavailability_reports_for_device(device_id)
+
+
+def delete_unavailability_report(report_uuid: str) -> bool:
+    """Rimuove una segnalazione 'non disponibile'."""
+    return database.delete_unavailability_report(report_uuid)
+
+
+# ── Gestione spazio allegati ──────────────────────────────────────────────────
+
+def get_attachments_disk_usage() -> dict:
+    """Utilizzo disco della cartella allegati locali."""
+    return database.get_attachments_disk_usage()
+
+
+def purge_synced_attachments() -> dict:
+    """Elimina i file locali degli allegati già sincronizzati con il server."""
+    return database.purge_synced_attachments()
+
+
+def download_attachment_bytes(att_uuid: str) -> bytes | None:
+    """
+    Scarica i byte di un allegato direttamente dal server (on-demand).
+    Usato quando il file non è presente in cache locale (file_path vuoto).
+    """
+    from app.http_client import http_session
+    from app import auth_manager, config
+    import logging
+    try:
+        headers = auth_manager.get_auth_headers()
+        url = f"{config.SERVER_URL}/api/attachments/{att_uuid}"
+        logging.info(f"Download allegato on-demand: {url}")
+        response = http_session.get(url, headers=headers, timeout=30)
+        if response.status_code == 200:
+            logging.info(f"Download allegato {att_uuid} completato: {len(response.content)} bytes")
+            return response.content
+        logging.warning(f"Download allegato {att_uuid} fallito: HTTP {response.status_code} - {response.text[:200]}")
+        return None
+    except Exception as e:
+        logging.error(f"Errore download allegato {att_uuid}: {e}")
+        return None

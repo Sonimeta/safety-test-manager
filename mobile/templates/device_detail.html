@@ -5,9 +5,6 @@
 {% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">{{ customer_name }} · {{ destination_name }}</p>{% endblock %}
 
 {% block header_actions %}
-<a href="/mobile/devices/{{ device.uuid }}/new-verification" class="btn-sm" style="background:#059669;color:#fff;">
-    <i class="ti ti-plus"></i> VE
-</a>
 {% if user.role in ('admin', 'moderator') %}
 <a href="/mobile/assignments/new?device_uuid={{ device.uuid }}" class="btn-sm" style="background:#7c3aed;color:#fff;" title="Assegna verifica">
     <i class="ti ti-clipboard-plus"></i>

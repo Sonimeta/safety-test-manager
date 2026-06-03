@@ -26,6 +26,23 @@ from app.ui.state_manager import AppState
 from app.hardware.fluke_esa612 import FLUKE_ERROR_CODES, FlukeESA612
 
 
+def fix_calendar_popup(date_edit: QDateEdit) -> None:
+    """Imposta dimensioni minime corrette sul QCalendarWidget popup di un QDateEdit.
+    Necessario perché Qt non ridimensiona automaticamente le celle del calendario,
+    causando la visualizzazione di '...' al posto dei numeri dei giorni."""
+    cal = date_edit.calendarWidget()
+    if cal is None:
+        return
+    cal.setMinimumSize(420, 300)
+    # Accede al QTableView interno per impostare le section size
+    from PySide6.QtWidgets import QTableView
+    table = cal.findChild(QTableView)
+    if table:
+        table.horizontalHeader().setMinimumSectionSize(48)
+        table.horizontalHeader().setDefaultSectionSize(48)
+        table.verticalHeader().setMinimumSectionSize(34)
+        table.verticalHeader().setDefaultSectionSize(34)
+
 class NoAutoSelectLineEdit(QLineEdit):
     """QLineEdit che non seleziona automaticamente il testo quando riceve il focus."""
     def focusInEvent(self, event: QFocusEvent):
@@ -1891,6 +1908,7 @@ class FunctionalTestRunnerWidget(QWidget):
         elif field_type == "date":
             widget = QDateEdit()
             widget.setCalendarPopup(True)
+            fix_calendar_popup(widget)
             widget.setDisplayFormat("dd/MM/yyyy")
             if default_value not in (None, ""):
                 try:

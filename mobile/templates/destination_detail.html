@@ -35,6 +35,11 @@
                     <i class="ti ti-clipboard-plus" style="font-size:.875rem;"></i> Assegna
                 </a>
                 {% endif %}
+                <a href="/mobile/destinations/{{ destination.uuid }}/verification-round"
+                   style="font-size:.75rem;font-weight:700;color:#7c3aed;background:#f5f3ff;padding:.25rem .75rem;border-radius:20px;text-decoration:none;display:flex;align-items:center;gap:3px;"
+                   title="Chiudi giro verifiche e segnala non disponibili">
+                    <i class="ti ti-checkbox" style="font-size:.875rem;"></i> Chiudi giro
+                </a>
                 <a href="/mobile/destinations/{{ destination.uuid }}/devices/new"
                    style="font-size:.75rem;font-weight:700;color:#059669;background:#ecfdf5;padding:.25rem .75rem;border-radius:20px;text-decoration:none;display:flex;align-items:center;gap:3px;">
                     <i class="ti ti-plus" style="font-size:.875rem;"></i> Nuovo dispositivo

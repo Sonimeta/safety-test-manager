@@ -657,6 +657,15 @@ class BulkReportWorker(QObject):
             c.setFillColor(HexColor("#ffffff"))
             c.drawString(box_x + 1.8*cm, detail_y, f"{info.get('non_conformi_count', 0)} NON CONFORMI")
 
+            # Dispositivi non messi a disposizione (solo se presenti)
+            non_disp = info.get('non_disponibili_count', 0)
+            if non_disp:
+                detail_y -= 0.8*cm
+                c.setFillColor(HexColor("#7c3aed"))  # Viola
+                c.circle(box_x + 1.2*cm, detail_y + 0.15*cm, 0.2*cm, fill=1, stroke=0)
+                c.setFillColor(HexColor("#ffffff"))
+                c.drawString(box_x + 1.8*cm, detail_y, f"{non_disp} NON MESSI A DISPOSIZIONE")
+
             if include_table:
                 c.showPage()
         
@@ -689,6 +698,8 @@ class BulkReportWorker(QObject):
         COLOR_ANNOTATION_BG = HexColor("#f2d305") # Sfondo giallo chiaro
         COLOR_FAIL = HexColor("#dc2626")         # Rosso per NON CONFORME
         COLOR_FAIL_BG = HexColor("#fee2e2")      # Sfondo rosso chiaro
+        COLOR_UNAVAIL = HexColor("#7c3aed")      # Viola per NON MESSO A DISPOSIZIONE
+        COLOR_UNAVAIL_BG = HexColor("#ede9fe")   # Sfondo viola chiaro
         COLOR_BORDER = HexColor("#cbd5e1")       # Bordo grigio
         COLOR_TEXT = HexColor("#1e293b")         # Testo principale
         
@@ -757,6 +768,21 @@ class BulkReportWorker(QObject):
             if not device_id:
                 continue
 
+            # Segnalazioni "non messo a disposizione": entry sintetica dedicata.
+            # Usano una chiave composta (device_id, uuid) per non collidere con
+            # eventuali verifiche dello stesso dispositivo nello stesso periodo.
+            if verification_type == "NON_DISPONIBILE":
+                key = (device_id, verif.get('unavail_report_uuid') or device_id)
+                reason = str(verif.get('notes') or '').strip()
+                devices_map[key] = {
+                    'data': verif,
+                    'esito_elettrico': '',
+                    'esito_funzionale': '',
+                    'note_parts': [reason] if reason else [],
+                    'esito_override': 'NON MESSO A DISPOSIZIONE',
+                }
+                continue
+
             if device_id not in devices_map:
                 devices_map[device_id] = {
                     'data': verif,
@@ -815,17 +841,16 @@ class BulkReportWorker(QObject):
             verif = device_info['data']
             esito_elettrico = device_info['esito_elettrico']
             esito_funzionale = device_info['esito_funzionale']
-            
+
+            # ===== ESITO OVERRIDE (es. NON MESSO A DISPOSIZIONE) =====
+            if 'esito_override' in device_info:
+                esito_unificato = device_info['esito_override']
             # ===== NUOVO ESITO UNIFICATO =====
             # Priorità assoluta: NON CONFORME > CONFORME CON ANNOTAZIONE > CONFORME
             
             # Paso 1: Controlla se c'è NON CONFORME (ha priorità massima)
-            has_non_conforme = (
-                ("NON CONFORME" in esito_elettrico if esito_elettrico else False) or
-                ("NON CONFORME" in esito_funzionale if esito_funzionale else False)
-            )
-            
-            if has_non_conforme:
+            elif ("NON CONFORME" in esito_elettrico if esito_elettrico else False) or \
+                 ("NON CONFORME" in esito_funzionale if esito_funzionale else False):
                 esito_unificato = "NON CONFORME"
             else:
                 # Passo 2: Se ci sono note (anche senza non conforme), diventa CONFORME CON ANNOTAZIONE
@@ -972,6 +997,9 @@ class BulkReportWorker(QObject):
                 if esito == "NON CONFORME":
                     style_commands.append(('BACKGROUND', (7, row_idx), (7, row_idx), COLOR_FAIL_BG))
                     style_commands.append(('TEXTCOLOR', (7, row_idx), (7, row_idx), COLOR_FAIL))
+                elif esito == "NON MESSO A DISPOSIZIONE":
+                    style_commands.append(('BACKGROUND', (7, row_idx), (7, row_idx), COLOR_UNAVAIL_BG))
+                    style_commands.append(('TEXTCOLOR', (7, row_idx), (7, row_idx), COLOR_UNAVAIL))
                 elif esito == "CONFORME CON ANNOTAZIONE":
                     style_commands.append(('BACKGROUND', (7, row_idx), (7, row_idx), COLOR_ANNOTATION_BG))
                     style_commands.append(('TEXTCOLOR', (7, row_idx), (7, row_idx), COLOR_ANNOTATION))

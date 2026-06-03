@@ -246,7 +246,11 @@ if __name__ == '__main__':
     app.setFont(base_font)
 
     try:
-        _base_dir = os.path.dirname(os.path.abspath(__file__))
+        # Compatibile sia con esecuzione diretta (.py) che come exe PyInstaller
+        if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+            _base_dir = sys._MEIPASS
+        else:
+            _base_dir = os.path.dirname(os.path.abspath(__file__))
         logo_path = os.path.join(_base_dir, "logo.png")
         logo_pixmap = QPixmap(logo_path)
         if logo_pixmap.isNull():

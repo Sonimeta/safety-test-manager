@@ -219,10 +219,8 @@ CREATE INDEX IF NOT EXISTS idx_verifications_device_id ON verifications(device_i
 CREATE INDEX IF NOT EXISTS idx_functional_verifications_device_id ON functional_verifications(device_id);
 CREATE INDEX IF NOT EXISTS idx_profile_tests_profile_id ON profile_tests(profile_id);
 
--- Unicità del seriale SOLO quando valorizzato E NON CANCELLATO
-CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_serial_unique
-    ON devices(serial_number)
-    WHERE serial_number IS NOT NULL AND serial_number <> '' AND is_deleted = FALSE;
+-- Unicità del seriale rimossa: i duplicati vengono gestiti a livello applicativo con avviso utente.
+-- DROP INDEX IF EXISTS idx_devices_serial_unique;  -- eseguire manualmente su DB esistenti
 
 -- Unicità profile_key SOLO per profili NON cancellati
 CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_profile_key_unique
@@ -351,3 +349,25 @@ CREATE TRIGGER trg_assignments_updated_at
     EXECUTE FUNCTION update_assignments_updated_at();
 
 CREATE INDEX IF NOT EXISTS idx_assignments_last_modified ON verification_assignments(last_modified);
+-- SEGNALAZIONI "NON MESSO A DISPOSIZIONE"
+CREATE TABLE IF NOT EXISTS device_unavailability_reports (
+    id                  SERIAL PRIMARY KEY,
+    uuid                TEXT    NOT NULL UNIQUE,
+    device_id           INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    destination_id      INTEGER NOT NULL REFERENCES destinations(id) ON DELETE CASCADE,
+    period_start        TEXT    NOT NULL,
+    period_end          TEXT    NOT NULL,
+    report_date         TEXT    NOT NULL,
+    reason              TEXT    NOT NULL,
+    technician_name     TEXT,
+    technician_username TEXT,
+    created_at          TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    last_modified       TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    is_deleted          INTEGER NOT NULL DEFAULT 0,
+    is_synced           INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_unavailability_device_id ON device_unavailability_reports(device_id);
+CREATE INDEX IF NOT EXISTS idx_unavailability_destination ON device_unavailability_reports(destination_id);
+CREATE INDEX IF NOT EXISTS idx_unavailability_period ON device_unavailability_reports(period_start, period_end);
+CREATE INDEX IF NOT EXISTS idx_unavailability_last_modified ON device_unavailability_reports(last_modified);

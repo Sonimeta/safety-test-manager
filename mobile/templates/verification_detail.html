@@ -103,9 +103,9 @@
                     {% endif %}
                 </div>
                 {% set status = result.get('status', '') %}
-                {% if status in ('PASS', 'PASSATO', 'OK') %}
+                {% if status in ('PASS', 'PASSATO', 'OK', 'CONFORME') %}
                 <span class="badge-pass flex-shrink-0">✓</span>
-                {% elif status in ('FAIL', 'NON PASSATO', 'FALLITO') %}
+                {% elif status in ('FAIL', 'NON PASSATO', 'FALLITO', 'NON CONFORME') %}
                 <span class="badge-fail flex-shrink-0">✗</span>
                 {% elif status == 'N/A' %}
                 <span class="badge-gray flex-shrink-0">N/A</span>

@@ -5,7 +5,63 @@
 {% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">{{ device.description or device.model or 'Dispositivo' }}</p>{% endblock %}
 
 {% block content %}
-<div class="px-4 py-4">
+<div class="px-4 py-4" x-data="vfInstrPicker()" x-init="init()">
+
+    {# ── Modal selezione strumenti ──────────────────────────────────────── #}
+    <div x-show="showModal" x-cloak
+         style="position:fixed;inset:0;z-index:200;background:rgba(15,23,42,.55);display:flex;align-items:flex-end;justify-content:center;">
+        <div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:1.5rem 1.25rem 2rem;max-height:85vh;overflow-y:auto;"
+             @click.stop>
+            <div style="width:40px;height:4px;background:#e2e8f0;border-radius:2px;margin:0 auto .75rem;"></div>
+            <h2 style="font-size:1rem;font-weight:700;color:#1e293b;margin-bottom:.25rem;"><i class="ti ti-ruler-2" style="margin-right:.375rem;color:#7c3aed;"></i>Strumenti di misura</h2>
+            <p style="font-size:.75rem;color:#94a3b8;margin-bottom:1.25rem;">Seleziona uno o più strumenti prima di avviare la verifica funzionale.</p>
+
+            {% if instruments %}
+            <div style="margin-bottom:1rem;">
+                <select class="form-input" @change="addInstr($event.target)">
+                    <option value="">+ Aggiungi strumento</option>
+                    {% for i in instruments %}
+                    <option value="{{ i.uuid }}"
+                            data-name="{{ i.instrument_name }}"
+                            data-serial="{{ i.serial_number or '' }}"
+                            data-cal="{{ i.calibration_date or '' }}">
+                        {{ i.instrument_name }}{% if i.serial_number %} — {{ i.serial_number }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="space-y-2" style="margin-bottom:1rem;">
+                <template x-for="(instr, idx) in selected" :key="instr.uuid">
+                    <div style="display:flex;align-items:center;justify-content:space-between;background:#f5f3ff;border:1.5px solid #ddd6fe;border-radius:12px;padding:.625rem .875rem;">
+                        <div style="flex:1;min-width:0;">
+                            <p style="font-size:.825rem;font-weight:700;color:#4c1d95;" x-text="instr.name"></p>
+                            <p style="font-size:.7rem;color:#7c3aed;opacity:.8;" x-show="instr.serial">S/N: <span x-text="instr.serial"></span></p>
+                            <p style="font-size:.7rem;color:#7c3aed;opacity:.8;" x-show="instr.cal">Scad: <span x-text="instr.cal"></span></p>
+                        </div>
+                        <button type="button" @click="removeInstr(idx)"
+                                style="margin-left:.75rem;flex-shrink:0;color:#ef4444;background:none;border:none;cursor:pointer;font-size:1.125rem;"><i class="ti ti-x"></i></button>
+                    </div>
+                </template>
+                <template x-if="selected.length === 0">
+                    <p style="font-size:.75rem;color:#94a3b8;text-align:center;padding:.5rem 0;">Nessuno strumento selezionato</p>
+                </template>
+            </div>
+            {% else %}
+            <div style="background:#fffbeb;border:1.5px solid #fde68a;color:#92400e;border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.875rem;">
+                <i class="ti ti-alert-triangle"></i> Nessuno strumento funzionale. Aggiungerne uno di tipo <strong>funzionale</strong>.
+            </div>
+            {% endif %}
+
+            <button type="button"
+                    :disabled="selected.length === 0"
+                    @click="confirm()"
+                    class="btn-primary"
+                    :style="selected.length === 0 ? 'opacity:.45;cursor:not-allowed;' : ''">
+                <i class="ti ti-player-play" style="margin-right:.375rem;"></i>Avvia verifica
+            </button>
+            <a href="/mobile/devices/{{ device.uuid }}" class="btn-secondary block text-center" style="margin-top:.625rem;">Annulla</a>
+        </div>
+    </div>
 
     {% if error %}
     <div style="background:#fef2f2;border:1.5px solid #fca5a5;color:#991b1b;border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.875rem;display:flex;align-items:center;gap:.5rem;">
@@ -14,7 +70,7 @@
     {% endif %}
 
     <form method="POST" action="/mobile/devices/{{ device.uuid }}/new-func-verification"
-          id="vf-form" class="space-y-5">
+          id="vf-form" class="space-y-5" x-show="!showModal" x-cloak>
 
         <!-- Base info -->
         <div class="card p-4 space-y-4">
@@ -56,6 +112,23 @@
             </div>
         </div>
 
+        {# Riepilogo strumenti selezionati + hidden inputs #}
+        <div style="background:#f5f3ff;border:1.5px solid #ddd6fe;border-radius:12px;padding:.625rem 1rem;display:flex;align-items:center;gap:.625rem;">
+            <i class="ti ti-ruler-2" style="color:#7c3aed;font-size:1.125rem;flex-shrink:0;"></i>
+            <div style="flex:1;min-width:0;">
+                <template x-for="(instr, idx) in selected" :key="instr.uuid">
+                    <p style="font-size:.8rem;font-weight:700;color:#4c1d95;" x-text="instr.name + (instr.serial ? ' — ' + instr.serial : '')"></p>
+                </template>
+                <input type="hidden" name="instrument_uuid"
+                       x-bind:value="selected.map(s=>s.uuid).join(',')">
+                <template x-for="instr in selected" :key="instr.uuid">
+                    <input type="hidden" name="instrument_uuid" :value="instr.uuid">
+                </template>
+            </div>
+            <button type="button" @click="showModal=true"
+                    style="font-size:.7rem;color:#7c3aed;background:none;border:none;cursor:pointer;text-decoration:underline;">Cambia</button>
+        </div>
+
         <!-- Dynamic profile schema -->
         <div class="relative">
             <span id="schema-spinner" class="htmx-indicator absolute top-2 right-2 z-10">
@@ -67,61 +140,6 @@
                  hx-include="[name='profile_key']"
                  hx-swap="innerHTML">
             </div>
-        </div>
-
-        <!-- Instrument selection — multi-select -->
-        <div class="card p-4 space-y-3" x-data="instrPicker()">
-            <h2 class="section-title" style="border-bottom:1px solid #f1f5f9;padding-bottom:.5rem;">
-                Strumenti di misura
-                <span class="text-xs font-normal text-gray-400 ml-1">(seleziona uno o più)</span>
-            </h2>
-            {% if instruments %}
-            <!-- Quick-add dropdown -->
-            <div>
-                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Aggiungi strumento</label>
-                <select class="form-input" x-model="picked"
-                        @change="addInstr($event.target)">
-                    <option value="">— Seleziona strumento —</option>
-                    {% for i in instruments %}
-                    <option value="{{ i.uuid }}"
-                            data-name="{{ i.instrument_name }}"
-                            data-serial="{{ i.serial_number or '' }}"
-                            data-cal="{{ i.calibration_date or '' }}">
-                        {{ i.instrument_name }}{% if i.serial_number %} — {{ i.serial_number }}{% endif %}
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
-
-            <!-- Selected instruments list -->
-            <div id="selected-instrs" class="space-y-2">
-                <template x-for="(instr, idx) in selected" :key="instr.uuid">
-                    <div class="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-xl px-3 py-2">
-                        <div class="flex-1 min-w-0">
-                            <p class="text-sm font-semibold text-indigo-900" x-text="instr.name"></p>
-                            <p class="text-xs text-indigo-500">
-                                <span x-show="instr.serial">S/N: <span x-text="instr.serial"></span></span>
-                                <span x-show="instr.serial && instr.cal"> · </span>
-                                <span x-show="instr.cal">Scad: <span x-text="instr.cal"></span></span>
-                            </p>
-                        </div>
-                        <button type="button" @click="removeInstr(idx)"
-                                class="ml-3 flex-shrink-0 text-red-400 hover:text-red-600">
-                            <i class="ti ti-x" style="font-size:1rem;"></i>
-                        </button>
-                        <!-- Hidden inputs submitted with form -->
-                        <input type="hidden" name="instrument_uuid" :value="instr.uuid">
-                    </div>
-                </template>
-                <template x-if="selected.length === 0">
-                    <p class="text-xs text-gray-400 text-center py-2">Nessuno strumento selezionato</p>
-                </template>
-            </div>
-            {% else %}
-            <div style="background:#fffbeb;border:1.5px solid #fde68a;color:#92400e;border-radius:12px;padding:.75rem 1rem;font-size:.875rem;display:flex;align-items:center;gap:.5rem;">
-                <i class="ti ti-alert-triangle" style="flex-shrink:0;"></i> Nessuno strumento funzionale. Aggiungerne uno di tipo <strong>funzionale</strong> dalla sezione Strumenti.
-            </div>
-            {% endif %}
         </div>
 
         <!-- Notes -->
@@ -151,17 +169,17 @@ document.getElementById('vf-form').addEventListener('submit', function() {
     btn.disabled = true;
 });
 
-// ── Multi-instrument picker (Alpine component) ────────────────────────────────
-function instrPicker() {
+// ── Multi-instrument picker per verifica funzionale ─────────────────────────
+function vfInstrPicker() {
     return {
-        picked: '',
+        showModal: true,
         selected: [],
+        init() {},
         addInstr(selectEl) {
             const val = selectEl.value;
             if (!val) return;
             if (this.selected.find(s => s.uuid === val)) {
                 selectEl.value = '';
-                this.picked = '';
                 return;
             }
             const opt = selectEl.options[selectEl.selectedIndex];
@@ -172,10 +190,13 @@ function instrPicker() {
                 cal:    opt.dataset.cal    || '',
             });
             selectEl.value = '';
-            this.picked = '';
         },
         removeInstr(idx) {
             this.selected.splice(idx, 1);
+        },
+        confirm() {
+            if (this.selected.length === 0) return;
+            this.showModal = false;
         }
     };
 }

@@ -750,11 +750,22 @@ class FunctionalVerificationViewerDialog(QDialog):
                 size_str = self._format_file_size(att.get('file_size', 0))
                 created = att.get('created_at', '')[:19].replace('T', ' ')
                 desc = att.get('description', '')
-                text = f"📄 {att['filename']}  ({size_str})  [{created}]"
+                # Indica se il file è in cache locale o solo sul server
+                fp = att.get('file_path') or ''
+                has_local = bool(fp) and os.path.exists(
+                    os.path.join(__import__('app.config', fromlist=['config']).config.ATTACHMENTS_DIR, fp)
+                )
+                icon = "💾" if has_local else "☁️"
+                text = f"{icon} {att['filename']}  ({size_str})  [{created}]"
                 if desc:
                     text += f"  - {desc}"
                 item = QListWidgetItem(text)
-                item.setData(Qt.UserRole, att['id'])
+                item.setData(Qt.UserRole, {
+                    'id': att['id'],
+                    'uuid': att['uuid'],
+                    'filename': att['filename'],
+                    'has_local': has_local,
+                })
                 self.attachments_list.addItem(item)
         except Exception as e:
             import logging
@@ -816,57 +827,97 @@ class FunctionalVerificationViewerDialog(QDialog):
             QMessageBox.critical(self, "Errore", f"Impossibile allegare il file:\n{e}")
 
     def _view_selected_attachment(self):
-        """Apre/visualizza l'allegato selezionato direttamente dal disco."""
+        """Apre/visualizza l'allegato selezionato: prima cerca in cache locale, poi scarica dal server."""
         import database
+        import tempfile
+        import logging
+        from app import services as svc
+        from PySide6.QtWidgets import QApplication
 
         item = self.attachments_list.currentItem()
         if not item:
             return
 
-        att_id = item.data(Qt.UserRole)
+        data = item.data(Qt.UserRole)
+        att_id   = data['id']
+        att_uuid = data['uuid']
+        filename = data['filename']
+
         try:
+            # Prova prima la cache locale
             file_path = database.get_attachment_file_path(att_id)
-            if not file_path:
-                QMessageBox.warning(self, "Errore", "File allegato non trovato su disco.")
+            if file_path:
+                os.startfile(file_path)
                 return
 
-            # Apri con il programma predefinito del sistema
-            os.startfile(file_path)
+            # File non in cache: scarica dal server on-demand
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                file_bytes = svc.download_attachment_bytes(att_uuid)
+            finally:
+                QApplication.restoreOverrideCursor()
+
+            if not file_bytes:
+                QMessageBox.warning(self, "File non disponibile",
+                    "Il file non è presente in locale e non è stato possibile scaricarlo dal server.\n\n"
+                    "Possibili cause:\n"
+                    "• Connessione di rete assente\n"
+                    "• Server non raggiungibile o non aggiornato\n"
+                    "• File eliminato dal server\n\n"
+                    f"UUID allegato: {att_uuid}")
+                return
+
+            ext = os.path.splitext(filename)[1] or ''
+            tmp_path = os.path.join(tempfile.gettempdir(), f"stm_att_{att_uuid}{ext}")
+            with open(tmp_path, 'wb') as f:
+                f.write(file_bytes)
+            os.startfile(tmp_path)
 
         except Exception as e:
-            import logging
             logging.error(f"Errore visualizzazione allegato: {e}", exc_info=True)
             QMessageBox.critical(self, "Errore", f"Impossibile aprire l'allegato:\n{e}")
 
     def _save_attachment_to_disk(self):
-        """Salva l'allegato selezionato su disco copiando il file."""
+        """Salva l'allegato selezionato su disco: dalla cache locale o scaricandolo dal server."""
         import database
-        import shutil
+        from app import services as svc
 
         item = self.attachments_list.currentItem()
         if not item:
             return
 
-        att_id = item.data(Qt.UserRole)
+        data = item.data(Qt.UserRole)
+        att_id   = data['id']
+        att_uuid = data['uuid']
+        filename = data['filename']
+
         try:
-            # Recupera metadati per il nome file originale
-            attachments = database.get_verification_attachments(self.verification_id, 'functional')
-            att_meta = next((a for a in attachments if a['id'] == att_id), None)
-            original_filename = att_meta['filename'] if att_meta else 'allegato'
-
-            file_path = database.get_attachment_file_path(att_id)
-            if not file_path:
-                QMessageBox.warning(self, "Errore", "File allegato non trovato su disco.")
-                return
-
             save_path, _ = QFileDialog.getSaveFileName(
-                self, "Salva Allegato", original_filename, "Tutti i file (*)"
+                self, "Salva Allegato", filename, "Tutti i file (*)"
             )
             if not save_path:
                 return
 
-            shutil.copy2(file_path, save_path)
+            # Prova prima la cache locale
+            file_path = database.get_attachment_file_path(att_id)
+            if file_path:
+                import shutil
+                shutil.copy2(file_path, save_path)
+                QMessageBox.information(self, "Salvato", f"Allegato salvato in:\n{save_path}")
+                return
+
+            # Scarica dal server on-demand
+            file_bytes = svc.download_attachment_bytes(att_uuid)
+            if not file_bytes:
+                QMessageBox.warning(self, "Errore",
+                    "File non disponibile in locale e non raggiungibile dal server.\n"
+                    "Verificare la connessione di rete.")
+                return
+
+            with open(save_path, 'wb') as f:
+                f.write(file_bytes)
             QMessageBox.information(self, "Salvato", f"Allegato salvato in:\n{save_path}")
+
         except Exception as e:
             import logging
             logging.error(f"Errore salvataggio allegato: {e}", exc_info=True)
@@ -880,7 +931,8 @@ class FunctionalVerificationViewerDialog(QDialog):
         if not item:
             return
 
-        att_id = item.data(Qt.UserRole)
+        data = item.data(Qt.UserRole)
+        att_id = data['id']
         reply = QMessageBox.question(
             self, "Conferma Eliminazione",
             "Vuoi davvero eliminare questo allegato?",
@@ -1246,29 +1298,340 @@ class DateRangeSelectionDialog(QDialog):
         end_date = self.end_calendar.selectedDate().toString("yyyy-MM-dd")
         return start_date, end_date
 
+
+class UnavailabilityReportDialog(QDialog):
+    """
+    Dialog compatto per segnare un dispositivo come 'non messo a disposizione'
+    in un dato periodo di verifica.
+    """
+    def __init__(self, device: dict, destination_id: int, default_start: str = None,
+                 default_end: str = None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("NON MESSO A DISPOSIZIONE")
+        self.setMinimumWidth(420)
+        layout = QVBoxLayout(self)
+
+        desc = str(device.get('description') or 'Dispositivo').upper()
+        serial = str(device.get('serial_number') or '—')
+        info_lbl = QLabel(f"<b>{desc}</b>  ·  S/N: {serial}")
+        info_lbl.setWordWrap(True)
+        layout.addWidget(info_lbl)
+
+        form = QFormLayout()
+        form.setSpacing(8)
+
+        today_qdate = QDate.currentDate()
+        start_qdate = QDate.fromString(default_start, "yyyy-MM-dd") if default_start else today_qdate
+        end_qdate   = QDate.fromString(default_end,   "yyyy-MM-dd") if default_end   else today_qdate
+
+        self.start_edit = QDateEdit(start_qdate)
+        self.start_edit.setCalendarPopup(True)
+        self.start_edit.setDisplayFormat("dd/MM/yyyy")
+        from app.ui.widgets import fix_calendar_popup
+        fix_calendar_popup(self.start_edit)
+        form.addRow("PERIODO DAL:", self.start_edit)
+
+        self.end_edit = QDateEdit(end_qdate)
+        self.end_edit.setCalendarPopup(True)
+        self.end_edit.setDisplayFormat("dd/MM/yyyy")
+        from app.ui.widgets import fix_calendar_popup
+        fix_calendar_popup(self.end_edit)
+        form.addRow("AL:", self.end_edit)
+
+        self.reason_edit = QTextEdit()
+        self.reason_edit.setPlaceholderText("Motivo: in uso, in riparazione, non presente, ...")
+        self.reason_edit.setFixedHeight(70)
+        form.addRow("MOTIVO:", self.reason_edit)
+
+        layout.addLayout(form)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Ok).setText("SALVA")
+        buttons.accepted.connect(self._validate_and_accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _validate_and_accept(self):
+        reason = self.reason_edit.toPlainText().strip()
+        if not reason:
+            QMessageBox.warning(self, "CAMPO OBBLIGATORIO",
+                                "Inserisci il motivo per cui il dispositivo non è stato messo a disposizione.")
+            return
+        if self.start_edit.date() > self.end_edit.date():
+            QMessageBox.warning(self, "DATE NON VALIDE",
+                                "La data di inizio deve essere precedente o uguale alla data di fine.")
+            return
+        self.accept()
+
+    def get_data(self) -> tuple:
+        """Restituisce (period_start, period_end, reason) come stringhe."""
+        return (
+            self.start_edit.date().toString("yyyy-MM-dd"),
+            self.end_edit.date().toString("yyyy-MM-dd"),
+            self.reason_edit.toPlainText().strip(),
+        )
+
+
 class VerificationStatusDialog(QDialog):
-    def __init__(self, verified_devices, unverified_devices, parent=None):
+    """
+    Mostra lo stato di verifica dei dispositivi di una destinazione in un periodo.
+    Se viene passato destination_id + period_start + period_end, permette al tecnico
+    di segnalare i dispositivi non trovati come 'non messi a disposizione'.
+    """
+    def __init__(self, verified_devices, unverified_devices, parent=None,
+                 destination_id=None, period_start=None, period_end=None):
         super().__init__(parent)
         self.setWindowTitle("STATO VERIFICHE DISPOSITIVI")
-        self.setMinimumSize(800, 600)
+        self.setMinimumSize(900, 650)
+
+        self.destination_id = destination_id
+        self.period_start = period_start
+        self.period_end = period_end
+        self._can_mark = bool(destination_id and period_start and period_end)
+
+        # Mappa device_id -> device_dict per i dispositivi non verificati
+        self._unverified_by_id = {d['id']: d for d in unverified_devices}
+        # UUID segnalazioni già salvate: report_uuid -> device_id
+        self._report_uuid_by_device = {}
+
+        # Recupera segnalazioni esistenti se possibile
+        existing_reports: list = []
+        if self._can_mark:
+            try:
+                existing_reports = services.get_unavailability_reports_for_period(
+                    destination_id, period_start, period_end
+                )
+            except Exception:
+                existing_reports = []
+
+        # Separa i non-verificati: alcuni potrebbero già essere segnalati
+        already_marked_ids = {r['device_id'] for r in existing_reports}
+        still_unverified = [d for d in unverified_devices if d['id'] not in already_marked_ids]
+        marked_devices = [d for d in unverified_devices if d['id'] in already_marked_ids]
+
         layout = QVBoxLayout(self)
-        verified_group = QGroupBox(f"DISPOSITIVI VERIFICATI ({len(verified_devices)})")
+
+        # ── PERIODO ───────────────────────────────────────────────────────────
+        if self._can_mark:
+            period_label = QLabel(
+                f"<b>Periodo di riferimento:</b> {period_start} → {period_end}"
+            )
+            period_label.setAlignment(Qt.AlignCenter)
+            layout.addWidget(period_label)
+
+        # ── VERIFICATI ────────────────────────────────────────────────────────
+        verified_group = QGroupBox(f"✅ DISPOSITIVI VERIFICATI ({len(verified_devices)})")
         verified_layout = QVBoxLayout(verified_group)
         self.verified_list = QListWidget()
         for device in verified_devices:
-            self.verified_list.addItem(f"{str(device['description']).upper()} (S/N: {str(device['serial_number']).upper()})")
+            self.verified_list.addItem(
+                f"{str(device['description']).upper()} (S/N: {str(device['serial_number'] or '—').upper()})"
+            )
         verified_layout.addWidget(self.verified_list)
         layout.addWidget(verified_group)
-        unverified_group = QGroupBox(f"DISPOSITIVI DA VERIFICARE ({len(unverified_devices)})")
-        unverified_layout = QVBoxLayout(unverified_group)
-        self.unverified_list = QListWidget()
-        for device in unverified_devices:
-            self.unverified_list.addItem(f"{str(device['description']).upper()} (S/N: {str(device['serial_number']).upper()})")
-        unverified_layout.addWidget(self.unverified_list)
-        layout.addWidget(unverified_group)
+
+        # ── DA VERIFICARE ─────────────────────────────────────────────────────
+        self._unverified_group = QGroupBox(
+            f"⏳ DISPOSITIVI DA VERIFICARE ({len(still_unverified)})"
+        )
+        unverified_layout = QVBoxLayout(self._unverified_group)
+        self.unverified_table = QTableWidget(0, 3 if self._can_mark else 2)
+        headers = ["DESCRIZIONE", "S/N"]
+        if self._can_mark:
+            headers.append("AZIONE")
+        self.unverified_table.setHorizontalHeaderLabels(headers)
+        self.unverified_table.horizontalHeader().setStretchLastSection(False)
+        self.unverified_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.unverified_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        if self._can_mark:
+            self.unverified_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.unverified_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.unverified_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.unverified_table.verticalHeader().setVisible(False)
+        unverified_layout.addWidget(self.unverified_table)
+        layout.addWidget(self._unverified_group)
+
+        for device in still_unverified:
+            self._add_unverified_row(device)
+
+        # ── NON MESSI A DISPOSIZIONE ──────────────────────────────────────────
+        self._unavail_group = QGroupBox(
+            f"🚫 NON MESSI A DISPOSIZIONE ({len(marked_devices)})"
+        )
+        unavail_layout = QVBoxLayout(self._unavail_group)
+        cols = ["DESCRIZIONE", "S/N", "MOTIVO", "TECNICO", "DATA"]
+        if self._can_mark:
+            cols.append("AZIONE")
+        self.unavail_table = QTableWidget(0, len(cols))
+        self.unavail_table.setHorizontalHeaderLabels(cols)
+        self.unavail_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.unavail_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.unavail_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
+        self.unavail_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        self.unavail_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        if self._can_mark:
+            self.unavail_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        self.unavail_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.unavail_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.unavail_table.verticalHeader().setVisible(False)
+        unavail_layout.addWidget(self.unavail_table)
+        layout.addWidget(self._unavail_group)
+
+        for report in existing_reports:
+            device = self._unverified_by_id.get(report['device_id'])
+            if device:
+                self._add_unavail_row(device, report)
+
         close_button = QPushButton("CHIUDI")
         close_button.clicked.connect(self.accept)
         layout.addWidget(close_button)
+
+        self._refresh_group_titles()
+
+    # ── helpers ───────────────────────────────────────────────────────────────
+
+    def _refresh_group_titles(self):
+        uv = self.unverified_table.rowCount()
+        ua = self.unavail_table.rowCount()
+        self._unverified_group.setTitle(f"⏳ DISPOSITIVI DA VERIFICARE ({uv})")
+        self._unavail_group.setTitle(f"🚫 NON MESSI A DISPOSIZIONE ({ua})")
+
+    def _add_unverified_row(self, device: dict):
+        row = self.unverified_table.rowCount()
+        self.unverified_table.insertRow(row)
+        desc_item = QTableWidgetItem(str(device['description']).upper())
+        desc_item.setData(Qt.UserRole, device['id'])
+        self.unverified_table.setItem(row, 0, desc_item)
+        self.unverified_table.setItem(
+            row, 1, QTableWidgetItem(str(device.get('serial_number') or '—').upper())
+        )
+        if self._can_mark:
+            btn = QPushButton("🚫 SEGNA NON DISPONIBILE")
+            btn.setToolTip("Segna questo dispositivo come non messo a disposizione per il periodo selezionato")
+            btn.clicked.connect(lambda checked=False, d=device: self._mark_as_unavailable(d))
+            self.unverified_table.setCellWidget(row, 2, btn)
+
+    def _add_unavail_row(self, device: dict, report: dict):
+        row = self.unavail_table.rowCount()
+        self.unavail_table.insertRow(row)
+        desc_item = QTableWidgetItem(str(device['description']).upper())
+        desc_item.setData(Qt.UserRole, device['id'])
+        self.unavail_table.setItem(row, 0, desc_item)
+        self.unavail_table.setItem(
+            row, 1, QTableWidgetItem(str(device.get('serial_number') or '—').upper())
+        )
+        self.unavail_table.setItem(row, 2, QTableWidgetItem(str(report.get('reason', '')).upper()))
+        tech = str(report.get('technician_name') or report.get('technician_username') or '—')
+        self.unavail_table.setItem(row, 3, QTableWidgetItem(tech.upper()))
+        date_str = str(report.get('report_date', '')).replace('T', ' ')[:10]
+        self.unavail_table.setItem(row, 4, QTableWidgetItem(date_str))
+        if self._can_mark:
+            report_uuid = report.get('uuid', '')
+            self._report_uuid_by_device[device['id']] = report_uuid
+            btn = QPushButton("↩ RIMUOVI SEGNALAZIONE")
+            btn.setToolTip("Rimuovi la segnalazione e rimetti il dispositivo nell'elenco 'da verificare'")
+            btn.clicked.connect(
+                lambda checked=False, d=device, uuid=report_uuid: self._remove_unavailability(d, uuid)
+            )
+            self.unavail_table.setCellWidget(row, 5, btn)
+
+    # ── slot ──────────────────────────────────────────────────────────────────
+
+    def _mark_as_unavailable(self, device: dict):
+        """Apre un dialog per inserire il motivo e salva la segnalazione."""
+        dlg = QDialog(self)
+        dlg.setWindowTitle("SEGNA COME NON MESSO A DISPOSIZIONE")
+        dlg.setMinimumWidth(480)
+        layout = QVBoxLayout(dlg)
+
+        info = QLabel(
+            f"<b>Dispositivo:</b> {str(device['description']).upper()}<br>"
+            f"<b>S/N:</b> {str(device.get('serial_number') or '—').upper()}"
+        )
+        info.setWordWrap(True)
+        layout.addWidget(info)
+
+        layout.addWidget(QLabel("MOTIVO PER CUI NON ERA DISPONIBILE:"))
+        reason_edit = QTextEdit()
+        reason_edit.setPlaceholderText("Es. 'In uso durante la verifica', 'In manutenzione esterna', ...")
+        reason_edit.setFixedHeight(90)
+        layout.addWidget(reason_edit)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.button(QDialogButtonBox.Ok).setText("CONFERMA")
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+
+        if dlg.exec() != QDialog.Accepted:
+            return
+
+        reason = reason_edit.toPlainText().strip()
+        if not reason:
+            QMessageBox.warning(self, "MOTIVO MANCANTE", "Inserisci un motivo per la segnalazione.")
+            return
+
+        try:
+            from app import auth_manager as _am
+            user = _am.get_current_user_info()
+            tech_name = user.get('full_name') if user else None
+            tech_username = user.get('username') if user else None
+            report = services.save_unavailability_report(
+                device_id=device['id'],
+                destination_id=self.destination_id,
+                period_start=self.period_start,
+                period_end=self.period_end,
+                reason=reason,
+                technician_name=tech_name,
+                technician_username=tech_username,
+            )
+
+            # Rimuovi dalla tabella "da verificare"
+            for row in range(self.unverified_table.rowCount()):
+                item = self.unverified_table.item(row, 0)
+                if item and item.data(Qt.UserRole) == device['id']:
+                    self.unverified_table.removeRow(row)
+                    break
+
+            # Aggiungi alla tabella "non disponibili"
+            self._add_unavail_row(device, report)
+            self._refresh_group_titles()
+
+        except Exception as e:
+            import logging
+            logging.error(f"Errore salvataggio segnalazione: {e}", exc_info=True)
+            QMessageBox.critical(self, "ERRORE", f"Impossibile salvare la segnalazione:\n{e}")
+
+    def _remove_unavailability(self, device: dict, report_uuid: str):
+        """Rimuove la segnalazione e rimette il dispositivo nell'elenco 'da verificare'."""
+        reply = QMessageBox.question(
+            self,
+            "RIMUOVI SEGNALAZIONE",
+            f"Vuoi rimuovere la segnalazione per:\n{str(device['description']).upper()}?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            services.delete_unavailability_report(report_uuid)
+
+            # Rimuovi dalla tabella "non disponibili"
+            for row in range(self.unavail_table.rowCount()):
+                item = self.unavail_table.item(row, 0)
+                if item and item.data(Qt.UserRole) == device['id']:
+                    self.unavail_table.removeRow(row)
+                    break
+
+            # Rimetti in "da verificare"
+            self._add_unverified_row(device)
+            self._refresh_group_titles()
+
+        except Exception as e:
+            import logging
+            logging.error(f"Errore rimozione segnalazione: {e}", exc_info=True)
+            QMessageBox.critical(self, "ERRORE", f"Impossibile rimuovere la segnalazione:\n{e}")
 
 class DeviceSearchDialog(QDialog):
     def __init__(self, parent=None):
@@ -1640,6 +2003,8 @@ class EditVerificationDialog(QDialog):
         self.date_edit = QDateEdit()
         self.date_edit.setCalendarPopup(True)
         self.date_edit.setDisplayFormat("yyyy-MM-dd")
+        from app.ui.widgets import fix_calendar_popup
+        fix_calendar_popup(self.date_edit)
         raw_date = self.data.get('verification_date', '')
         try:
             qd = QDate.fromString(raw_date, "yyyy-MM-dd")
@@ -1885,6 +2250,8 @@ class EditVerificationDialog(QDialog):
         self.mti_cal_date_edit = QDateEdit()
         self.mti_cal_date_edit.setCalendarPopup(True)
         self.mti_cal_date_edit.setDisplayFormat("yyyy-MM-dd")
+        from app.ui.widgets import fix_calendar_popup
+        fix_calendar_popup(self.mti_cal_date_edit)
         raw_cal = str(self.data.get('mti_cal_date', '') or '')
         try:
             qd = QDate.fromString(raw_cal, "yyyy-MM-dd")
