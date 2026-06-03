@@ -9,6 +9,7 @@ dist/
 build/
 *.spec
 *.zip
+*.exe
 
 # ===== Virtual Environment =====
 .venv/
