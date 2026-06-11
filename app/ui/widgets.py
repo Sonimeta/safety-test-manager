@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (QApplication, QGroupBox, QHBoxLayout, QLabel,
 from app import config, services
 import database
 from app.data_models import AppliedPart
+from app.verification_logic import evaluate_measure
 from app.functional_models import (
     FunctionalField,
     FunctionalProfile,
@@ -691,10 +692,10 @@ class TestRunnerWidget(QWidget):
                 return False
             else:
                 raise InterruptedError("Lettura dello strumento fallita (valore vuoto).")
-        try:
-            cleaned_value_str = re.sub(r'[^\d.-]', '', value_str)
-            value_float = float(cleaned_value_str)
-        except (ValueError, TypeError):
+        # Parsing e valutazione delegati alla logica pura testabile
+        # (gestisce anche la virgola decimale: "0,5" -> 0.5)
+        result_data = evaluate_measure(test, value_str, applied_part)
+        if result_data is None:
             if self.manual_mode:
                 QMessageBox.warning(self, "Valore Non Valido", "Inserire un valore numerico.")
                 self.value_input.setStyleSheet("border: 1px solid red;")
@@ -702,34 +703,7 @@ class TestRunnerWidget(QWidget):
             else:
                 raise ValueError(f"Risposta non valida dallo strumento: '{value_str}'")
         self.value_input.setStyleSheet("")
-        result_name = f"{test.name} ({test.parameter})" if test.parameter else test.name
-        limit_key = "::ST"
-        polarity = None  # <-- AGGIUNTO
-        
-        if applied_part:
-            result_name = f"{test.name} - {applied_part.name} - {applied_part.part_type}"
-            limit_key = f"::{applied_part.part_type}"
-            # <-- AGGIUNTO: Estrai la polarità dal parametro del test
-            if test.parameter:
-                polarity = test.parameter
-                
-        limit_obj = test.limits.get(limit_key)
-        is_passed = True
-        limit_value = None
-        unit = limit_obj.unit if limit_obj else ""
-        if limit_obj and limit_obj.high_value is not None:
-            is_passed = (value_float <= limit_obj.high_value)
-            limit_value = limit_obj.high_value
-        
-        result_data = {
-            "name": result_name, 
-            "value": value_str, 
-            "limit_value": limit_value, 
-            "unit": unit, 
-            "passed": is_passed,
-            "polarity": polarity  # <-- AGGIUNTO
-        }
-        
+
         self.results.append(result_data)
         self.update_results_table(result_data)
         return True

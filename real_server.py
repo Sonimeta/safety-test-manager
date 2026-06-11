@@ -402,6 +402,23 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        # CSP: blocca il caricamento di script/risorse da origini esterne.
+        # 'unsafe-inline'/'unsafe-eval' sono necessari ad Alpine.js e HTMX
+        # (attributi x-data/hx-* valutati inline), quindi la protezione XSS
+        # principale resta l'escaping nei template; la CSP impedisce comunque
+        # esfiltrazione verso domini terzi e script remoti iniettati.
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "font-src 'self'; "
+            "connect-src 'self'; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'; "
+            "frame-ancestors 'none'"
+        )
         if path.startswith("/mobile/static"):
             # File statici (font, css, js): cacheabili, altrimenti ogni pagina
             # mobile riscarica ~3 MB di asset. Il service worker (/mobile/sw.js)
@@ -3821,6 +3838,31 @@ async def mobile_attachment_delete(att_uuid: str, request: Request,
         ver_type = form.get("ver_type", "functional")
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Autorizzazione: admin/moderator possono eliminare qualunque allegato;
+        # un tecnico solo quelli delle verifiche eseguite da lui
+        if user.role not in ("admin", "moderator"):
+            cur.execute("""
+                SELECT verification_id, verification_type FROM verification_attachments
+                WHERE uuid=%s AND is_deleted=FALSE
+            """, (att_uuid,))
+            att = cur.fetchone()
+            if not att:
+                conn.close()
+                return HTMLResponse("<p class='text-red-500 text-sm px-4'>Allegato non trovato.</p>", status_code=404)
+            parent_table = "functional_verifications" if att["verification_type"] == "functional" else "verifications"
+            cur.execute(
+                f"SELECT technician_username FROM {parent_table} WHERE id=%s",
+                (att["verification_id"],),
+            )
+            ver = cur.fetchone()
+            if not ver or (ver["technician_username"] or "") != user.username:
+                conn.close()
+                return HTMLResponse(
+                    "<p class='text-red-500 text-sm px-4'>Non autorizzato: puoi eliminare solo gli allegati delle tue verifiche.</p>",
+                    status_code=403,
+                )
+
         cur.execute("""
             UPDATE verification_attachments
             SET is_deleted=TRUE, last_modified=%s

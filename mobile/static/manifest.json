@@ -1,10 +1,10 @@
-﻿{
-    "id":  "https://stm.amsapp.it/mobile/",
+{
+    "id":  "/mobile/",
     "name":  "STM Mobile",
     "short_name":  "STM",
     "description":  "Safety Test Manager - Verifiche elettriche e funzionali",
-    "start_url":  "https://stm.amsapp.it/mobile/",
-    "scope":  "https://stm.amsapp.it/mobile/",
+    "start_url":  "/mobile/",
+    "scope":  "/mobile/",
     "display":  "standalone",
     "background_color":  "#1e3a8a",
     "theme_color":  "#1e3a8a",
@@ -15,13 +15,13 @@
                        "utilities"
                    ],
     "icons": [
-        {"src": "https://stm.amsapp.it/mobile/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
-        {"src": "https://stm.amsapp.it/mobile/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
-        {"src": "https://stm.amsapp.it/mobile/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
-        {"src": "https://stm.amsapp.it/mobile/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+        {"src": "/mobile/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+        {"src": "/mobile/static/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+        {"src": "/mobile/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+        {"src": "/mobile/static/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
     ],
     "screenshots": [
-        {"src": "https://stm.amsapp.it/mobile/static/screenshot-mobile.png", "sizes": "390x844", "type": "image/png", "label": "STM Mobile - Dashboard"},
-        {"src": "https://stm.amsapp.it/mobile/static/screenshot-desktop.png", "sizes": "1280x800", "type": "image/png", "form_factor": "wide", "label": "STM Mobile - Vista Desktop"}
+        {"src": "/mobile/static/screenshot-mobile.png", "sizes": "390x844", "type": "image/png", "label": "STM Mobile - Dashboard"},
+        {"src": "/mobile/static/screenshot-desktop.png", "sizes": "1280x800", "type": "image/png", "form_factor": "wide", "label": "STM Mobile - Vista Desktop"}
     ]
 }
