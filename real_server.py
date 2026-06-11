@@ -2407,9 +2407,6 @@ def mobile_dashboard(request: Request, mobile_session: Optional[str] = Cookie(No
     if not user:
         return _mobile_redirect_login()
 
-    today = date.today().isoformat()
-    threshold = (date.today() + timedelta(days=30)).isoformat()
-
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=RealDictCursor)
