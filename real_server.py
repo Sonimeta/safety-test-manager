@@ -25,6 +25,7 @@ from dotenv import load_dotenv
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, InvalidHash
 from jose import JWTError, ExpiredSignatureError, jwt
+from markupsafe import escape as html_escape
 import httpx
 
 # --- CARICAMENTO .env ROBUSTO (compatibile con PyInstaller) ---
@@ -401,9 +402,15 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
+        if path.startswith("/mobile/static"):
+            # File statici (font, css, js): cacheabili, altrimenti ogni pagina
+            # mobile riscarica ~3 MB di asset. Il service worker (/mobile/sw.js)
+            # non rientra in questo ramo e resta no-store per aggiornarsi subito.
+            response.headers["Cache-Control"] = "public, max-age=86400"
+        else:
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
         # Rimuovi completamente l'header Server per non rivelare alcuna tecnologia
         if "server" in response.headers:
             del response.headers["server"]
@@ -639,6 +646,14 @@ ALLOWED_ROLES = {"admin", "moderator", "technician", "seg"}
 MAX_USERNAME_LENGTH = 50
 MIN_PASSWORD_LENGTH = 8
 MAX_SIGNATURE_SIZE = 512 * 1024  # 512 KB
+MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024  # 10 MB per allegato mobile
+# Mime type che possono essere mostrati inline nel browser: tutto il resto
+# viene servito come download per impedire l'esecuzione di HTML/JS caricato
+# come allegato (stored XSS)
+INLINE_ATTACHMENT_MIMES = {
+    "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp",
+    "application/pdf",
+}
 ALLOWED_IMAGE_MIMES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 # Magic bytes per i formati immagine più comuni
 IMAGE_MAGIC_BYTES = {
@@ -2345,7 +2360,9 @@ def _set_mobile_cookie(response: RedirectResponse, token: str):
         httponly=True,
         samesite="lax",
         max_age=int(ACCESS_TOKEN_EXPIRE_MINUTES * 60),
-        secure=False,  # Set True if served over HTTPS
+        # Il cookie viaggia solo su HTTPS; i browser trattano localhost come
+        # origine sicura, quindi i test locali continuano a funzionare
+        secure=True,
     )
 
 
@@ -3113,10 +3130,13 @@ async def mobile_device_create(destination_uuid: str, request: Request, mobile_s
                     "status": device_status,
                     "applied_parts_json": applied_parts,
                 }
+                # I valori vengono escapati singolarmente perché il template
+                # rende questo messaggio con "| safe" (serve per il <strong>)
+                dup_d = dict(dup)
                 dup_warning = (
-                    f"Il numero di serie <strong>{serial.upper()}</strong> è già presente nel database: "
-                    f"{dict(dup).get('description','N/D')} — {dict(dup).get('manufacturer','N/D')} "
-                    f"{dict(dup).get('model','N/D')} ({dict(dup).get('destination_name','N/D')}). "
+                    f"Il numero di serie <strong>{html_escape(serial.upper())}</strong> è già presente nel database: "
+                    f"{html_escape(dup_d.get('description') or 'N/D')} — {html_escape(dup_d.get('manufacturer') or 'N/D')} "
+                    f"{html_escape(dup_d.get('model') or 'N/D')} ({html_escape(dup_d.get('destination_name') or 'N/D')}). "
                     f"Vuoi inserire comunque il nuovo dispositivo?"
                 )
                 return mobile_templates.TemplateResponse("device_form.html", {
@@ -3282,10 +3302,12 @@ async def mobile_device_update(uuid: str, request: Request, mobile_session: Opti
                     "status": upd_status, "applied_parts_json": applied_parts,
                 })
                 dup_d = dict(dup)
+                # I valori vengono escapati singolarmente perché il template
+                # rende questo messaggio con "| safe" (serve per il <strong>)
                 dup_warning = (
-                    f"Il numero di serie <strong>{serial.upper()}</strong> è già presente nel database: "
-                    f"{dup_d.get('description','N/D')} — {dup_d.get('manufacturer','N/D')} "
-                    f"{dup_d.get('model','N/D')} ({dup_d.get('destination_name','N/D')}). "
+                    f"Il numero di serie <strong>{html_escape(serial.upper())}</strong> è già presente nel database: "
+                    f"{html_escape(dup_d.get('description') or 'N/D')} — {html_escape(dup_d.get('manufacturer') or 'N/D')} "
+                    f"{html_escape(dup_d.get('model') or 'N/D')} ({html_escape(dup_d.get('destination_name') or 'N/D')}). "
                     f"Vuoi salvare comunque le modifiche?"
                 )
                 destination = {"uuid": device_prefill.get("destination_uuid"), "name": device_prefill.get("destination_name")}
@@ -3697,7 +3719,14 @@ async def mobile_attachments_upload(ver_uuid: str, request: Request,
         if not file_obj or not hasattr(file_obj, "filename"):
             return HTMLResponse("<p class='text-red-500 text-sm px-4'>Nessun file ricevuto.</p>", status_code=400)
         filename  = file_obj.filename or "allegato"
-        file_data = await file_obj.read()
+        # Legge al massimo MAX_ATTACHMENT_SIZE + 1 byte: se arriva il byte in
+        # più il file è oltre il limite, senza doverlo caricare tutto in RAM
+        file_data = await file_obj.read(MAX_ATTACHMENT_SIZE + 1)
+        if len(file_data) > MAX_ATTACHMENT_SIZE:
+            return HTMLResponse(
+                f"<p class='text-red-500 text-sm px-4'>File troppo grande (max {MAX_ATTACHMENT_SIZE // (1024 * 1024)} MB).</p>",
+                status_code=413,
+            )
         mime_type = file_obj.content_type or "application/octet-stream"
         if not file_data:
             return HTMLResponse("<p class='text-red-500 text-sm px-4'>File vuoto.</p>", status_code=400)
@@ -3757,11 +3786,20 @@ def mobile_attachment_view(att_uuid: str, mobile_session: Optional[str] = Cookie
         raw = row["file_data"]
         if isinstance(raw, memoryview):
             raw = bytes(raw)
+        mime_type = row["mime_type"] or "application/octet-stream"
+        # Solo immagini e PDF vengono mostrati inline: qualunque altro tipo
+        # (es. HTML caricato come allegato) viene forzato come download per
+        # impedirne l'esecuzione nel contesto dell'app (stored XSS)
+        disposition = "inline" if mime_type in INLINE_ATTACHMENT_MIMES else "attachment"
+        # Sanitizza il filename: niente path, virgolette o caratteri di
+        # controllo che permetterebbero di manipolare l'header
+        safe_name = os.path.basename(row["filename"] or "allegato")
+        safe_name = re.sub(r'[\x00-\x1f"\\]', "_", safe_name).strip() or "allegato"
         from fastapi.responses import Response as FastAPIResponse
         return FastAPIResponse(
             content=raw,
-            media_type=row["mime_type"] or "application/octet-stream",
-            headers={"Content-Disposition": f'inline; filename="{row["filename"]}"'},
+            media_type=mime_type,
+            headers={"Content-Disposition": f'{disposition}; filename="{safe_name[:150]}"'},
         )
     except HTTPException:
         raise
