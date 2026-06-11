@@ -6,6 +6,7 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QPushButton, Q
                                QDoubleSpinBox, QComboBox, QLabel, QFormLayout, QListWidgetItem, QWidget, QFileDialog)
 from PySide6.QtCore import Qt
 from app.data_models import VerificationProfile, Test, Limit
+from app.verification_logic import validate_profile_limits
 from app import services, config
 import database
 from app.ui.dialogs.utility_dialogs import TemplateSelectionDialog
@@ -191,7 +192,24 @@ class ProfileDetailDialog(QDialog):
             unit = "uA" if "CORRENTE" in name.upper() else ("Ohm" if "RESISTENZA" in name.upper() else "V")
             limits = {f"::{ap_type}": Limit(unit=unit, high_value=limit_val if limit_val > 0 else None)}
             self.profile.tests.append(Test(name=name, parameter=param, limits=limits, is_applied_part_test=is_ap))
-        
+
+        # Controllo di plausibilità dei limiti rispetto alla CEI 62353:
+        # non blocca, ma chiede conferma esplicita se qualcosa è fuori scala
+        limit_warnings = validate_profile_limits(self.profile)
+        if limit_warnings:
+            warning_text = "\n\n".join(f"• {w}" for w in limit_warnings)
+            reply = QMessageBox.warning(
+                self,
+                "LIMITI FUORI SCALA",
+                "ATTENZIONE: alcuni limiti sembrano incoerenti con la CEI 62353:\n\n"
+                f"{warning_text}\n\n"
+                "Vuoi salvare comunque il profilo?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                return
+
         self.accept()
 
 class ProfileManagerDialog(QDialog):
@@ -381,6 +399,7 @@ class ProfileManagerDialog(QDialog):
         imported = 0
         skipped = 0
         errors = []
+        limit_warnings = []
 
         for profile_key, payload in entries:
             try:
@@ -392,6 +411,10 @@ class ProfileManagerDialog(QDialog):
                 if not profile.name or not profile.tests:
                     skipped += 1
                     continue
+
+                # Plausibilità limiti CEI 62353: importa comunque ma segnala
+                for w in validate_profile_limits(profile):
+                    limit_warnings.append(f"{profile.name} — {w}")
 
                 services.add_profile_with_tests(profile_key, profile.name, profile.tests)
                 imported += 1
@@ -406,8 +429,15 @@ class ProfileManagerDialog(QDialog):
         summary = f"IMPORTATI: {imported}\nSALTATI: {skipped}"
         if errors:
             summary += f"\nERRORI: {len(errors)}"
+        if limit_warnings:
+            summary += f"\nAVVISI SUI LIMITI: {len(limit_warnings)} (vedi dettagli)"
 
         msg = QMessageBox(QMessageBox.Information, "IMPORTAZIONE COMPLETATA", summary, parent=self)
+        details = []
         if errors:
-            msg.setDetailedText("Dettaglio errori:\n" + "\n".join(errors))
+            details.append("Dettaglio errori:\n" + "\n".join(errors))
+        if limit_warnings:
+            details.append("Avvisi limiti CEI 62353:\n" + "\n".join(limit_warnings))
+        if details:
+            msg.setDetailedText("\n\n".join(details))
         msg.exec()
