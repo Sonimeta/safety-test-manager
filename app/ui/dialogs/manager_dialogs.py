@@ -49,7 +49,7 @@ class ColoredItemDelegate(QStyledItemDelegate):
         if color_name:
             try:
                 custom_color = QColor(color_name)
-            except:
+            except Exception:
                 pass
         
         # Fallback: prova dal ForegroundRole

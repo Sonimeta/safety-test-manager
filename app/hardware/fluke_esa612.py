@@ -419,7 +419,7 @@ class FlukeESA612:
                         try:
                             test_ser.write(b'LOCAL\r\n')
                             time.sleep(0.2)
-                        except:
+                        except Exception:
                             pass
                         if test_ser:
                             test_ser.close()
@@ -436,7 +436,7 @@ class FlukeESA612:
                         try:
                             test_ser.write(b'LOCAL\r\n')
                             time.sleep(0.2)
-                        except:
+                        except Exception:
                             pass
                         if test_ser:
                             test_ser.close()
@@ -452,7 +452,7 @@ class FlukeESA612:
                 if test_ser:
                     try:
                         test_ser.close()
-                    except:
+                    except Exception:
                         pass
                 continue
             except Exception as e:
@@ -465,7 +465,7 @@ class FlukeESA612:
                 if test_ser:
                     try:
                         test_ser.close()
-                    except:
+                    except Exception:
                         pass
                 continue
         

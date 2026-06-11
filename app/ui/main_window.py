@@ -5141,7 +5141,7 @@ class MainWindow(QMainWindow):
         current_port = self.settings.value("global_com_port", "COM1")
         try:
             available_ports = FlukeESA612.list_available_ports()
-        except:
+        except Exception:
             available_ports = ["COM1", "COM2", "COM3", "COM4"]
         
         # Prova a rilevare automaticamente la porta COM
@@ -5717,7 +5717,7 @@ class MainWindow(QMainWindow):
             s.connect(("8.8.8.8", 80))
             local_ip = s.getsockname()[0]
             s.close()
-        except:
+        except Exception:
             local_ip = "127.0.0.1"
         
         port = 8766
@@ -5767,7 +5767,7 @@ class MainWindow(QMainWindow):
             try:
                 if self.qr_scanner_server:
                     self.qr_scanner_server.handle_request()
-            except:
+            except Exception:
                 pass
     
     def _stop_qr_scanner_server(self):
@@ -5777,7 +5777,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'qr_scanner_server') and self.qr_scanner_server:
             try:
                 self.qr_scanner_server.socket.close()
-            except:
+            except Exception:
                 pass
             self.qr_scanner_server = None
         

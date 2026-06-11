@@ -393,7 +393,7 @@ class AuditLogDialog(QDialog):
                 from datetime import datetime
                 dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
                 formatted_time = dt.strftime("%d/%m/%Y alle %H:%M:%S")
-            except:
+            except Exception:
                 formatted_time = timestamp_str
             
             time_item = QTableWidgetItem(formatted_time)
@@ -550,7 +550,7 @@ class AuditLogDialog(QDialog):
             
             return summary
             
-        except:
+        except Exception:
             return details_json[:100] + "..." if len(details_json) > 100 else details_json
     
     def _update_stats(self):
@@ -614,7 +614,7 @@ class AuditLogDialog(QDialog):
                     from datetime import datetime
                     dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
                     formatted_time = dt.strftime("%d/%m/%Y %H:%M:%S")
-                except:
+                except Exception:
                     formatted_time = timestamp_str
                 
                 # Formatta dettagli
@@ -623,7 +623,7 @@ class AuditLogDialog(QDialog):
                     try:
                         details_obj = json.loads(details_text)
                         details_text = json.dumps(details_obj, indent=2, ensure_ascii=False)
-                    except:
+                    except Exception:
                         pass
                 
                 export_data.append({
@@ -655,7 +655,7 @@ class AuditLogDialog(QDialog):
                         try:
                             if len(str(cell.value)) > max_length:
                                 max_length = len(str(cell.value))
-                        except:
+                        except Exception:
                             pass
                     adjusted_width = min(max_length + 2, 60)
                     worksheet.column_dimensions[column_letter].width = adjusted_width
