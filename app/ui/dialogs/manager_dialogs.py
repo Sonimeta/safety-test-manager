@@ -171,10 +171,6 @@ class DbManagerDialog(QDialog):
         main_layout.setSpacing(15)
         main_layout.setContentsMargins(20, 20, 20, 20)
 
-        # Header con titolo e informazioni
-        header = self.create_header()
-        main_layout.addWidget(header)
-
         # Barra delle azioni principali
         top_actions_layout = self.create_top_actions()
         main_layout.addLayout(top_actions_layout)
@@ -228,25 +224,6 @@ class DbManagerDialog(QDialog):
         title_layout.addWidget(subtitle)
 
         header_layout.addLayout(title_layout)
-        header_layout.addSpacing(20)
-
-        search_layout = QHBoxLayout()
-        search_layout.setSpacing(8)
-        self.global_device_search_box = QLineEdit()
-        self.global_device_search_box.setPlaceholderText("🔎 Cerca cliente, destinazione o dispositivo...")
-        self.global_device_search_box.setMinimumWidth(320)
-        self.global_device_search_box.setClearButtonEnabled(True)
-        self.global_device_search_box.returnPressed.connect(self.perform_header_device_search)
-
-        search_button = QPushButton("Cerca")
-        search_button.setObjectName("primaryButton")
-        search_button.setMinimumWidth(110)
-        search_button.clicked.connect(self.perform_header_device_search)
-
-        search_layout.addWidget(self.global_device_search_box)
-        search_layout.addWidget(search_button)
-
-        header_layout.addLayout(search_layout)
         header_layout.addStretch()
 
         # Info utente
@@ -672,11 +649,24 @@ class DbManagerDialog(QDialog):
     def create_top_actions(self):
         layout = QHBoxLayout()
         layout.setSpacing(12)
-        
+
+        # Campo ricerca globale
+        self.global_device_search_box = QLineEdit()
+        self.global_device_search_box.setPlaceholderText("🔎 Cerca cliente, destinazione o dispositivo...")
+        self.global_device_search_box.setMinimumWidth(300)
+        self.global_device_search_box.setMaximumWidth(420)
+        self.global_device_search_box.setClearButtonEnabled(True)
+        self.global_device_search_box.returnPressed.connect(self.perform_header_device_search)
+        search_button = QPushButton("Cerca")
+        search_button.setObjectName("primaryButton")
+        search_button.clicked.connect(self.perform_header_device_search)
+        layout.addWidget(self.global_device_search_box)
+        layout.addWidget(search_button)
+
         layout.addWidget(self.create_button("⬆️ Importa Dispositivi", self.import_from_file, "autoButton"))
         layout.addWidget(self.create_button("📥 Importa Archivio", self.import_from_stm, "autoButton"))
         layout.addWidget(self.create_button("💾 Esporta Verifiche", self.export_daily_verifications, "secondaryButton"))
-        
+
         layout.addStretch()
 
         # Pulsante Scanner QR (collegato alla MainWindow)
@@ -1338,7 +1328,19 @@ class DbManagerDialog(QDialog):
         dialog = CustomerDialog(parent=self)
         if dialog.exec():
             try:
-                services.add_customer(**dialog.get_data())
+                data = dialog.get_data()
+                # Controllo duplicati
+                similar = services.find_similar_customers(data['name'])
+                if similar:
+                    names = "\n".join(f"  • {c['name']}" for c in similar[:5])
+                    reply = QMessageBox.warning(
+                        self, "POSSIBILE DUPLICATO",
+                        f"Esistono già clienti con nome simile:\n{names}\n\nVuoi salvare comunque?",
+                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+                    )
+                    if reply != QMessageBox.Yes:
+                        return
+                services.add_customer(**data)
                 self.load_customers_table()
             except ValueError as e:
                 QMessageBox.warning(self, "DATI NON VALIDI", str(e).upper())
@@ -1376,6 +1378,17 @@ class DbManagerDialog(QDialog):
         if dialog.exec():
             try:
                 data = dialog.get_data()
+                # Controllo duplicati
+                similar = services.find_similar_destinations(data['name'], cust_id)
+                if similar:
+                    names = "\n".join(f"  • {d['name']}" for d in similar[:5])
+                    reply = QMessageBox.warning(
+                        self, "POSSIBILE DUPLICATO",
+                        f"Esistono già sedi con nome simile:\n{names}\n\nVuoi salvare comunque?",
+                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+                    )
+                    if reply != QMessageBox.Yes:
+                        return
                 services.add_destination(cust_id, data['name'], data['address'])
                 self.load_destinations_table(cust_id)
             except ValueError as e:

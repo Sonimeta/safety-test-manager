@@ -1497,15 +1497,16 @@ class FunctionalTestRunnerWidget(QWidget):
 
     def _get_suggested_overall_status(self) -> str:
         counters = self._collect_outcome_counters()
+
+        # KO presenti → NON CONFORME indipendentemente da tutto
         if counters["ko_count"] > 0:
             return "FALLITO"
 
-        if counters["na_count"] > 0:
-            return "CONFORME CON ANNOTAZIONE"
-
+        # Note compilate → CONFORME CON ANNOTAZIONE
         if self.notes_edit.toPlainText().strip():
             return "CONFORME CON ANNOTAZIONE"
 
+        # Solo N/A senza KO e senza note → CONFORME (N/A non è un'anomalia)
         return "PASSATO"
 
     def _set_status_combo_value(self, value: str):

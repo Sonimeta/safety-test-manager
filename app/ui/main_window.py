@@ -167,20 +167,50 @@ class MainWindow(QMainWindow):
         self._stacked_widget = QStackedWidget()
         self._stacked_widget.addWidget(main_widget)  # Pagina 0 = vista principale
 
-        # Barra "Indietro" fissa sopra lo stacked widget (mai nella status bar)
+        # Barra navigazione embedded - design professionale
         self._back_bar = QWidget()
-        self._back_bar.setFixedHeight(36)
-        self._back_bar.setStyleSheet("background:#1e293b;")
+        self._back_bar.setFixedHeight(52)
+        self._back_bar.setStyleSheet(
+            "QWidget#backBar {"
+            "  background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            "    stop:0 #0f172a, stop:0.4 #1e293b, stop:1 #0f172a);"
+            "  border-bottom: 2px solid #3b82f6;"
+            "}"
+        )
+        self._back_bar.setObjectName("backBar")
         self._back_bar.setVisible(False)
         back_bar_layout = QHBoxLayout(self._back_bar)
-        back_bar_layout.setContentsMargins(10, 0, 10, 0)
-        back_bar_layout.setSpacing(8)
+        back_bar_layout.setContentsMargins(12, 0, 20, 0)
+        back_bar_layout.setSpacing(0)
         self._back_btn = None  # creato in _show_embedded_dialog
+
+        # Label breadcrumb sinistra ("⌂  Home  ›")
+        utente = auth_manager.get_current_user_info()
+        self._back_bar_breadcrumb = QLabel("")
+        self._back_bar_breadcrumb.setStyleSheet(
+            "color:#64748b; font-size:11px; font-weight:500; letter-spacing:.5px;"
+        )
+        back_bar_layout.addWidget(self._back_bar_breadcrumb)
+
+        back_bar_layout.addStretch(1)
+
+        # Titolo sezione centrato
         self._back_bar_label = QLabel("")
-        self._back_bar_label.setStyleSheet("color:#94a3b8; font-size:12px;")
-        back_bar_layout.addStretch()
+        self._back_bar_label.setStyleSheet(
+            "color:#f1f5f9; font-size:13px; font-weight:700; letter-spacing:1.5px;"
+        )
+        self._back_bar_label.setAlignment(Qt.AlignCenter)
         back_bar_layout.addWidget(self._back_bar_label)
-        back_bar_layout.addStretch()
+
+        back_bar_layout.addStretch(1)
+
+        # Label app name destra
+        ruolo = auth_manager.get_current_role()
+        _app_label = QLabel(f"Safety Test Manager - {ruolo}")
+        _app_label.setStyleSheet(
+            "color:#f1f5f9; font-size:10px; font-weight:700; letter-spacing:.5px;"
+        )
+        back_bar_layout.addWidget(_app_label)
 
         # Container principale: back_bar + stacked
         _central_container = QWidget()
@@ -914,12 +944,6 @@ class MainWindow(QMainWindow):
 
         dialog.done = _embedded_done
 
-        # Pulsante "indietro" nella status bar (affianco alle info utente, non occupa spazio)
-        # Rimuovi eventuale pulsante precedente (chiamata nested/doppia)
-        if hasattr(self, '_back_btn') and self._back_btn:
-            self.statusBar().removeWidget(self._back_btn)
-            self._back_btn.deleteLater()
-            self._back_btn = None
 
         # Pulsante "indietro" nel back_bar fisso (mai nella status bar)
         # Rimuovi eventuale pulsante precedente
@@ -927,18 +951,33 @@ class MainWindow(QMainWindow):
             self._back_btn.deleteLater()
             self._back_btn = None
 
-        self._back_btn = QPushButton(qta.icon('fa5s.arrow-left', color='white', scale_factor=0.8), "  Indietro")
+        self._back_btn = QPushButton(qta.icon('fa5s.arrow-left', color='#93c5fd', scale_factor=0.75), "  Indietro")
         self._back_btn.setCursor(Qt.PointingHandCursor)
-        self._back_btn.setFixedHeight(28)
-        self._back_btn.setToolTip("Torna alla Home")
+        self._back_btn.setFixedHeight(32)
+        self._back_btn.setFixedWidth(110)
+        self._back_btn.setToolTip("Torna alla Home (Esc)")
         self._back_btn.setStyleSheet(
-            "QPushButton { background:#334155; border:none; border-radius:6px; padding:0 14px; color:white; font-weight:bold; font-size:12px; }"
-            "QPushButton:hover { background:#475569; }"
+            "QPushButton {"
+            "  background: rgba(59,130,246,0.15);"
+            "  border: 1px solid rgba(59,130,246,0.4);"
+            "  border-radius: 7px;"
+            "  padding: 0 12px;"
+            "  color: #93c5fd;"
+            "  font-weight: 700;"
+            "  font-size: 12px;"
+            "  letter-spacing: .3px;"
+            "}"
+            "QPushButton:hover {"
+            "  background: rgba(59,130,246,0.30);"
+            "  border-color: #3b82f6;"
+            "  color: #bfdbfe;"
+            "}"
+            "QPushButton:pressed { background: rgba(59,130,246,0.45); }"
         )
         self._back_btn.clicked.connect(lambda: dialog.done(QDialog.Rejected))
         # Inserisci il pulsante all'inizio del layout del back_bar
         self._back_bar.layout().insertWidget(0, self._back_btn)
-        self._back_bar_label.setText(title)
+        self._back_bar_label.setText(f"  {title}  ")
         self._back_bar.setVisible(True)
 
         # Aggiorna titolo finestra per mostrare la sezione corrente
@@ -974,7 +1013,8 @@ class MainWindow(QMainWindow):
         if hasattr(self, '_back_bar'):
             self._back_bar.setVisible(False)
             self._back_bar_label.setText("")
-
+            if hasattr(self, '_back_bar_breadcrumb'):
+                self._back_bar_breadcrumb.setText("")
         # Salva riferimenti prima della pulizia
         on_close = self._embedded_on_close
         self._embedded_on_close = None
@@ -1337,7 +1377,7 @@ class MainWindow(QMainWindow):
             1 for v in verifications if v.get("verification_type") == "NON_DISPONIBILE"
         )
         
-        # Conteggio verifiche conformi e non conformi
+        # Conteggio verifiche conformi e non conformi (totale)
         conformi_count = sum(
             1 for v in verifications
             if _normalize_status(v.get("overall_status")) in ("PASSATO", "CONFORME")
@@ -1350,6 +1390,16 @@ class MainWindow(QMainWindow):
             1 for v in verifications
             if _normalize_status(v.get("overall_status")) in ("FALLITO", "NON CONFORME")
         )
+
+        # Conteggi separati per tipo di verifica (frontespizio)
+        el_verifs  = [v for v in verifications if v.get("verification_type") == "ELETTRICA"]
+        fun_verifs = [v for v in verifications if v.get("verification_type") == "FUNZIONALE"]
+        el_conformi_count  = sum(1 for v in el_verifs if _normalize_status(v.get("overall_status")) in ("PASSATO", "CONFORME"))
+        el_cca_count       = sum(1 for v in el_verifs if _normalize_status(v.get("overall_status")) == "CONFORME CON ANNOTAZIONE")
+        el_nc_count        = sum(1 for v in el_verifs if _normalize_status(v.get("overall_status")) in ("FALLITO", "NON CONFORME"))
+        fun_conformi_count = sum(1 for v in fun_verifs if _normalize_status(v.get("overall_status")) in ("PASSATO", "CONFORME"))
+        fun_cca_count      = sum(1 for v in fun_verifs if _normalize_status(v.get("overall_status")) == "CONFORME CON ANNOTAZIONE")
+        fun_nc_count       = sum(1 for v in fun_verifs if _normalize_status(v.get("overall_status")) in ("FALLITO", "NON CONFORME"))
 
         return {
             "customer_name": customer_name,
@@ -1366,6 +1416,12 @@ class MainWindow(QMainWindow):
             "conformi_con_annotazione_count": conformi_con_annotazione_count,
             "non_conformi_count": non_conformi_count,
             "non_disponibili_count": non_disponibili_count,
+            "el_conformi_count": el_conformi_count,
+            "el_cca_count": el_cca_count,
+            "el_nc_count": el_nc_count,
+            "fun_conformi_count": fun_conformi_count,
+            "fun_cca_count": fun_cca_count,
+            "fun_nc_count": fun_nc_count,
             "logo_path": self.logo_path,
             "created_by": self.current_technician_name or "",
         }

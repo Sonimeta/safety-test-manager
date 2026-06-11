@@ -100,14 +100,18 @@
 
             <div>
                 <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Esito complessivo <span class="text-red-500">*</span></label>
-                <div class="grid grid-cols-2 gap-2">
+                <div class="grid grid-cols-1 gap-2">
                     <label class="flex items-center gap-3 p-3 border-2 border-gray-200 rounded-xl cursor-pointer has-[:checked]:border-green-500 has-[:checked]:bg-green-50">
-                        <input type="radio" name="overall_status" value="PASSATO" class="accent-green-600" required>
-                        <span class="text-sm font-semibold text-green-700">✓ PASSATO</span>
+                        <input type="radio" name="overall_status" value="CONFORME" class="accent-green-600" required>
+                        <span class="text-sm font-semibold text-green-700">✓ CONFORME</span>
+                    </label>
+                    <label class="flex items-center gap-3 p-3 border-2 border-gray-200 rounded-xl cursor-pointer has-[:checked]:border-amber-500 has-[:checked]:bg-amber-50">
+                        <input type="radio" name="overall_status" value="CONFORME CON ANNOTAZIONE" class="accent-amber-500">
+                        <span class="text-sm font-semibold text-amber-700">⚠ CONFORME CON ANNOTAZIONE</span>
                     </label>
                     <label class="flex items-center gap-3 p-3 border-2 border-gray-200 rounded-xl cursor-pointer has-[:checked]:border-red-500 has-[:checked]:bg-red-50">
-                        <input type="radio" name="overall_status" value="NON PASSATO" class="accent-red-600">
-                        <span class="text-sm font-semibold text-red-700">✗ NON PASSATO</span>
+                        <input type="radio" name="overall_status" value="NON CONFORME" class="accent-red-600">
+                        <span class="text-sm font-semibold text-red-700">✗ NON CONFORME</span>
                     </label>
                 </div>
             </div>

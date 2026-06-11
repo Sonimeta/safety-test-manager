@@ -36,10 +36,12 @@
         <p class="text-blue-300 text-sm font-mono mt-1">{{ fv.verification_code }}</p>
         {% endif %}
       </div>
-      {% if fv.overall_status in ('PASSATO', 'PASS', 'OK') %}
-      <span class="bg-green-500 text-white text-sm font-bold px-4 py-2 rounded-xl">✓ PASSATO</span>
+      {% if fv.overall_status == 'CONFORME CON ANNOTAZIONE' %}
+      <span class="bg-amber-400 text-white text-sm font-bold px-4 py-2 rounded-xl">⚠ CONFORME CON ANNOTAZIONE</span>
+      {% elif fv.overall_status in ('CONFORME', 'PASSATO', 'PASS', 'OK') %}
+      <span class="bg-green-500 text-white text-sm font-bold px-4 py-2 rounded-xl">✓ CONFORME</span>
       {% else %}
-      <span class="bg-red-500 text-white text-sm font-bold px-4 py-2 rounded-xl">✗ NON PASSATO</span>
+      <span class="bg-red-500 text-white text-sm font-bold px-4 py-2 rounded-xl">✗ NON CONFORME</span>
       {% endif %}
     </div>
   </div>
@@ -103,9 +105,11 @@
         <tr class="border-b border-gray-50 last:border-0">
           <td class="px-5 py-3 text-gray-600 w-1/2">{{ field_key }}</td>
           <td class="px-5 py-3 font-medium text-right">
-            {% if field_val in ('PASS', 'PASSATO', 'OK', 'Sì', 'Si') %}
+            {% if field_val == 'CONFORME CON ANNOTAZIONE' %}
+            <span class="bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-1 rounded-full">⚠ CONFORME CON ANNOTAZIONE</span>
+            {% elif field_val in ('CONFORME', 'PASS', 'PASSATO', 'OK', 'Sì', 'Si') %}
             <span class="bg-green-100 text-green-800 text-xs font-bold px-2.5 py-1 rounded-full">✓ {{ field_val }}</span>
-            {% elif field_val in ('FAIL', 'NON PASSATO', 'KO', 'No') %}
+            {% elif field_val in ('FAIL', 'NON PASSATO', 'KO', 'No', 'NON CONFORME') %}
             <span class="bg-red-100 text-red-800 text-xs font-bold px-2.5 py-1 rounded-full">✗ {{ field_val }}</span>
             {% elif field_val in ('N/A', 'n/a', '') %}
             <span class="bg-gray-100 text-gray-600 text-xs font-bold px-2.5 py-1 rounded-full">N/A</span>

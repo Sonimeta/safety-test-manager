@@ -1,17 +1,9 @@
-// STM Mobile Service Worker — v1.2
+// STM Mobile Service Worker — v1.4
 // Minimal SW just for PWA installability (always-online app, no caching)
 
-const CACHE_NAME = 'stm-mobile-v2';
-
-// Static assets to cache for offline fallback page only
-const STATIC_ASSETS = [
-  '/mobile/static/manifest.json',
-];
+const CACHE_NAME = 'stm-mobile-v3';
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
-  );
   self.skipWaiting();
 });
 

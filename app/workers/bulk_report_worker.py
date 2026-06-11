@@ -583,9 +583,9 @@ class BulkReportWorker(QObject):
 
             # === BOX RIASSUNTO MODERNO ===
             box_w = 7.5*cm
-            box_h = 12*cm
+            box_h = 13*cm
             box_x = width - box_w - 1.5*cm
-            box_y = height - 20*cm
+            box_y = height - 21*cm
             
             # Sfondo box con gradiente simulato (due rettangoli)
             c.setFillColor(COLOR_PRIMARY)
@@ -609,62 +609,63 @@ class BulkReportWorker(QObject):
             c.setFont("Helvetica", 10)
             c.drawCentredString(box_x + box_w/2, box_y + box_h - 4.2*cm, "apparecchi controllati")
             
-            # Dettagli
-            c.setFont("Helvetica", 9)
-            detail_y = box_y + box_h - 5.5*cm
-            
-            # Verifiche elettriche
-            c.setFillColor(HexColor("#93c5fd"))  # Blu chiaro
-            c.circle(box_x + 1.2*cm, detail_y + 0.15*cm, 0.2*cm, fill=1, stroke=0)
-            c.setFillColor(HexColor("#ffffff"))
-            c.drawString(box_x + 1.8*cm, detail_y, f"{info.get('electrical_count', 0)} verifiche elettriche")
-            
-            # Verifiche funzionali
-            detail_y -= 0.8*cm
-            c.setFillColor(HexColor("#86efac"))  # Verde chiaro
-            c.circle(box_x + 1.2*cm, detail_y + 0.15*cm, 0.2*cm, fill=1, stroke=0)
-            c.setFillColor(HexColor("#ffffff"))
-            c.drawString(box_x + 1.8*cm, detail_y, f"{info.get('functional_count', 0)} verifiche funzionali")
-            
-            # Linea separatrice
-            detail_y -= 0.6*cm
-            c.setStrokeColor(HexColor("#ffffff"))
-            c.setLineWidth(0.5)
-            c.line(box_x + 0.8*cm, detail_y, box_x + box_w - 0.8*cm, detail_y)
-            
-            # Verifiche conformi
-            detail_y -= 0.7*cm
-            c.setFillColor(COLOR_SUCCESS)  # Verde
-            c.circle(box_x + 1.2*cm, detail_y + 0.15*cm, 0.2*cm, fill=1, stroke=0)
-            c.setFillColor(HexColor("#ffffff"))
-            c.drawString(box_x + 1.8*cm, detail_y, f"{info.get('conformi_count', 0)} CONFORMI")
+            # Dettagli separati: Elettriche e Funzionali
+            el_count  = info.get('electrical_count', 0)
+            fun_count = info.get('functional_count', 0)
 
-            # Verifiche conformi con annotazione
-            detail_y -= 0.8*cm
-            c.setFillColor(HexColor("#f59e0b"))  # Arancione
-            c.circle(box_x + 1.2*cm, detail_y + 0.15*cm, 0.2*cm, fill=1, stroke=0)
-            c.setFillColor(HexColor("#ffffff"))
-            c.drawString(
-                box_x + 1.8*cm,
-                detail_y,
-                f"{info.get('conformi_con_annotazione_count', 0)} CONFORMI CON ANNOTAZIONE",
-            )
-            
-            # Verifiche non conformi
-            detail_y -= 0.8*cm
-            c.setFillColor(HexColor("#dc2626"))  # Rosso
-            c.circle(box_x + 1.2*cm, detail_y + 0.15*cm, 0.2*cm, fill=1, stroke=0)
-            c.setFillColor(HexColor("#ffffff"))
-            c.drawString(box_x + 1.8*cm, detail_y, f"{info.get('non_conformi_count', 0)} NON CONFORMI")
+            def _bullet(clr, y, text):
+                c.setFillColor(HexColor(clr))
+                c.circle(box_x + 1.2*cm, y + 0.15*cm, 0.18*cm, fill=1, stroke=0)
+                c.setFillColor(HexColor("#ffffff"))
+                c.setFont("Helvetica", 8)
+                c.drawString(box_x + 1.8*cm, y, text)
 
-            # Dispositivi non messi a disposizione (solo se presenti)
+            def _section_sep(y, clr):
+                c.setStrokeColor(HexColor(clr))
+                c.setLineWidth(0.4)
+                c.line(box_x + 0.8*cm, y, box_x + box_w - 0.8*cm, y)
+
+            def _section_hdr(y, text, clr):
+                c.setFillColor(HexColor(clr))
+                c.setFont("Helvetica-Bold", 8)
+                c.drawString(box_x + 0.8*cm, y, text)
+
+            detail_y = box_y + box_h - 5.0*cm
+
+            # ── VERIFICHE ELETTRICHE ──────────────────────────────────
+            if el_count > 0:
+                _section_sep(detail_y + 0.2*cm, "#93c5fd")
+                detail_y -= 0.1*cm
+                _section_hdr(detail_y, "VERIFICHE ELETTRICHE", "#93c5fd")
+                detail_y -= 0.65*cm
+                _bullet("#93c5fd", detail_y, f"{el_count} verifiche totali")
+                detail_y -= 0.65*cm
+                _bullet("#4ade80", detail_y, f"{info.get('el_conformi_count', 0)} CONFORMI")
+                detail_y -= 0.65*cm
+                _bullet("#f59e0b", detail_y, f"{info.get('el_cca_count', 0)} CONF. CON ANNOTAZIONE")
+                detail_y -= 0.65*cm
+                _bullet("#f87171", detail_y, f"{info.get('el_nc_count', 0)} NON CONFORMI")
+                detail_y -= 0.5*cm
+
+            # ── VERIFICHE FUNZIONALI ──────────────────────────────────
+            if fun_count > 0:
+                _section_sep(detail_y + 0.2*cm, "#86efac")
+                detail_y -= 0.1*cm
+                _section_hdr(detail_y, "VERIFICHE FUNZIONALI", "#86efac")
+                detail_y -= 0.65*cm
+                _bullet("#86efac", detail_y, f"{fun_count} verifiche totali")
+                detail_y -= 0.65*cm
+                _bullet("#4ade80", detail_y, f"{info.get('fun_conformi_count', 0)} CONFORMI")
+                detail_y -= 0.65*cm
+                _bullet("#f59e0b", detail_y, f"{info.get('fun_cca_count', 0)} CONF. CON ANNOTAZIONE")
+                detail_y -= 0.65*cm
+                _bullet("#f87171", detail_y, f"{info.get('fun_nc_count', 0)} NON CONFORMI")
+                detail_y -= 0.5*cm
+
+            # ── NON MESSI A DISPOSIZIONE ──────────────────────────────
             non_disp = info.get('non_disponibili_count', 0)
             if non_disp:
-                detail_y -= 0.8*cm
-                c.setFillColor(HexColor("#7c3aed"))  # Viola
-                c.circle(box_x + 1.2*cm, detail_y + 0.15*cm, 0.2*cm, fill=1, stroke=0)
-                c.setFillColor(HexColor("#ffffff"))
-                c.drawString(box_x + 1.8*cm, detail_y, f"{non_disp} NON MESSI A DISPOSIZIONE")
+                _bullet("#c4b5fd", detail_y, f"{non_disp} NON MESSI A DISPOSIZIONE")
 
             if include_table:
                 c.showPage()

@@ -12,7 +12,31 @@
     </div>
     {% endif %}
 
-    <form method="POST" action="{{ form_action }}" class="space-y-4">
+    {% if duplicate_warning %}
+    <div style="background:#fffbeb;border:2px solid #f59e0b;color:#92400e;border-radius:12px;padding:.875rem 1rem;margin-bottom:1rem;font-size:.875rem;">
+        <div style="display:flex;align-items:center;gap:.5rem;font-weight:700;margin-bottom:.5rem;">
+            <i class="ti ti-alert-triangle" style="font-size:1.1rem;color:#f59e0b;flex-shrink:0;"></i>
+            Possibile duplicato
+        </div>
+        <p style="margin:0 0 .5rem 0;">Esistono già clienti con nome simile:</p>
+        <ul style="margin:0 0 .75rem 1.25rem;padding:0;">
+            {% for n in duplicate_warning %}<li style="font-weight:600;">{{ n }}</li>{% endfor %}
+        </ul>
+        <p style="margin:0 0 .75rem 0;font-size:.8rem;">Vuoi salvarlo comunque?</p>
+        <div style="display:flex;gap:.625rem;">
+            <button type="submit" form="main-form" name="confirm_duplicate" value="1"
+                style="background:#f59e0b;color:white;border:none;border-radius:8px;padding:.5rem 1.25rem;font-weight:700;font-size:.875rem;cursor:pointer;">
+                <i class="ti ti-check" style="margin-right:.25rem;"></i>Salva comunque
+            </button>
+            <a href="{{ back_url }}"
+                style="background:white;color:#92400e;border:1.5px solid #f59e0b;border-radius:8px;padding:.5rem 1.25rem;font-weight:700;font-size:.875rem;text-decoration:none;display:inline-flex;align-items:center;">
+                Annulla
+            </a>
+        </div>
+    </div>
+    {% endif %}
+
+    <form id="main-form" method="POST" action="{{ form_action }}" class="space-y-4">
         <div class="card p-4 space-y-4">
 
             <div>

@@ -197,10 +197,12 @@
                     <p class="text-xs text-gray-400 truncate">{{ v.profile_name }} · {{ v.verification_date }}</p>
                 </div>
                 <div class="ml-3 flex-shrink-0">
-                    {% if v.overall_status in ('PASSATO', 'PASS', 'OK') %}
-                    <span class="badge-pass">✓ OK</span>
-                    {% elif v.overall_status in ('NON PASSATO', 'FAIL', 'FALLITO') %}
-                    <span class="badge-fail">✗ NO</span>
+                    {% if v.overall_status == 'CONFORME CON ANNOTAZIONE' %}
+                    <span class="badge-warn">⚠ C.C.A.</span>
+                    {% elif v.overall_status in ('CONFORME', 'PASSATO', 'PASS', 'OK') %}
+                    <span class="badge-pass">✓ CONF.</span>
+                    {% elif v.overall_status in ('NON PASSATO', 'FAIL', 'FALLITO', 'NON CONFORME') %}
+                    <span class="badge-fail">✗ N.CONF.</span>
                     {% else %}
                     <span class="badge-gray">{{ v.overall_status[:4] }}</span>
                     {% endif %}
@@ -226,10 +228,12 @@
                     <p class="text-xs text-gray-400 truncate">{{ fv.profile_key }} · {{ fv.verification_date }}</p>
                 </div>
                 <div class="ml-3 flex-shrink-0">
-                    {% if fv.overall_status in ('PASSATO', 'PASS', 'OK') %}
-                    <span class="badge-pass">✓ OK</span>
-                    {% elif fv.overall_status in ('NON PASSATO', 'FAIL', 'FALLITO') %}
-                    <span class="badge-fail">✗ NO</span>
+                    {% if fv.overall_status == 'CONFORME CON ANNOTAZIONE' %}
+                    <span class="badge-warn">⚠ C.C.A.</span>
+                    {% elif fv.overall_status in ('CONFORME', 'PASSATO', 'PASS', 'OK') %}
+                    <span class="badge-pass">✓ CONF.</span>
+                    {% elif fv.overall_status in ('NON CONFORME', 'NON PASSATO', 'FAIL', 'FALLITO') %}
+                    <span class="badge-fail">✗ N.CONF.</span>
                     {% else %}
                     <span class="badge-gray">{{ fv.overall_status[:4] }}</span>
                     {% endif %}

@@ -1,4 +1,5 @@
 # app/updater.py
+import hashlib
 import logging
 import os
 import subprocess
@@ -11,6 +12,15 @@ import re
 
 from PySide6.QtCore import QThread, Signal
 from app import config
+
+
+def _sha256_of_file(path: str) -> str:
+    """Calcola lo SHA256 di un file leggendolo a blocchi."""
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b''):
+            h.update(chunk)
+    return h.hexdigest()
 
 
 class UpdateCheckWorker(QThread):
@@ -135,6 +145,32 @@ class UpdateChecker:
                     
                     if downloaded_size < 1024*1024:
                         raise IOError(f"Download fallito: il file scaricato è troppo piccolo ({downloaded_size} bytes).")
+
+                    # Verifica integrità: confronta lo SHA256 del file scaricato con
+                    # quello dichiarato nel file di versione (campo 'sha256').
+                    # Senza questa verifica un download corrotto o manomesso
+                    # verrebbe eseguito senza alcun controllo.
+                    expected_sha256 = ""
+                    if isinstance(self.update_info, dict):
+                        expected_sha256 = str(self.update_info.get('sha256') or '').strip().lower()
+                    if expected_sha256:
+                        actual_sha256 = _sha256_of_file(file_path)
+                        if actual_sha256 != expected_sha256:
+                            try:
+                                os.remove(file_path)
+                            except OSError:
+                                pass
+                            raise IOError(
+                                "Verifica integrità fallita: lo SHA256 del file scaricato "
+                                f"({actual_sha256[:16]}...) non corrisponde a quello atteso "
+                                f"({expected_sha256[:16]}...). Aggiornamento annullato."
+                            )
+                        logging.info("✓ Verifica SHA256 dell'aggiornamento superata.")
+                    else:
+                        logging.warning(
+                            "Il file di versione non contiene il campo 'sha256': "
+                            "impossibile verificare l'integrità dell'aggiornamento scaricato."
+                        )
 
                     progress_callback(100)
                     logging.info(f"Aggiornamento scaricato in: {file_path} (Dimensione: {downloaded_size / 1024 / 1024:.2f} MB)")

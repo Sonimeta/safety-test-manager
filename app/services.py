@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 # app/services.py (Versione completa per la sincronizzazione)
+import difflib
 import logging
 import json
 from datetime import datetime, timezone
@@ -23,6 +24,45 @@ from app import config
 # ==============================================================================
 # SERVIZI PER CLIENTI
 # ==============================================================================
+
+def find_similar_customers(name: str, threshold: float = 0.75) -> list:
+    """
+    Cerca clienti esistenti con nome simile (fuzzy match).
+    Restituisce lista di dict con i clienti simili trovati.
+    """
+    name_norm = name.strip().lower()
+    if not name_norm:
+        return []
+    all_customers = database.get_all_customers()
+    similar = []
+    for c in all_customers:
+        c = dict(c)
+        existing = (c.get('name') or '').strip().lower()
+        if not existing:
+            continue
+        ratio = difflib.SequenceMatcher(None, name_norm, existing).ratio()
+        if ratio >= threshold or name_norm in existing or existing in name_norm:
+            similar.append(c)
+    return similar
+
+def find_similar_destinations(name: str, customer_id: int, threshold: float = 0.75) -> list:
+    """
+    Cerca destinazioni con nome simile per il cliente dato (fuzzy match).
+    """
+    name_norm = name.strip().lower()
+    if not name_norm:
+        return []
+    all_dests = database.get_destinations_for_customer(customer_id)
+    similar = []
+    for d in all_dests:
+        d = dict(d)
+        existing = (d.get('name') or '').strip().lower()
+        if not existing:
+            continue
+        ratio = difflib.SequenceMatcher(None, name_norm, existing).ratio()
+        if ratio >= threshold or name_norm in existing or existing in name_norm:
+            similar.append(d)
+    return similar
 
 def add_destination(customer_id, name, address):
     if not name: raise ValueError("Il nome della destinazione non può essere vuoto.")
@@ -703,11 +743,19 @@ def finalizza_e_salva_verifica(device_id, profile_name, results,
                                device_info=None) -> tuple[str, int]:
     if isinstance(results, list):
         passed_flags = [bool(r.get('passed')) for r in results if isinstance(r, dict) and 'passed' in r]
-        overall_status = 'PASSATO' if all(passed_flags) else 'FALLITO'
+        overall_status = 'CONFORME' if all(passed_flags) else 'NON CONFORME'
     elif isinstance(results, dict) and results.get('overall_status'):
         overall_status = results.get('overall_status')
     else:
-        overall_status = 'PASSATO'
+        overall_status = 'CONFORME'
+
+    # Normalize legacy values to CONFORME/NON CONFORME
+    _PASS_NORM = {'PASS', 'PASSATO', 'OK', 'CONFORME'}
+    _FAIL_NORM = {'FAIL', 'FALLITO', 'NON PASSATO', 'NON CONFORME'}
+    if overall_status.upper() in _PASS_NORM:
+        overall_status = 'CONFORME'
+    elif overall_status.upper() in _FAIL_NORM:
+        overall_status = 'NON CONFORME'
 
     # Regola business: se la verifica elettrica ha note e non è fallita,
     # l'esito deve essere "CONFORME CON ANNOTAZIONE".
@@ -727,7 +775,7 @@ def finalizza_e_salva_verifica(device_id, profile_name, results,
 
     # Priorità assoluta: KO in ispezione visiva => NON CONFORME
     if visual_has_ko:
-        overall_status = 'FALLITO'
+        overall_status = 'NON CONFORME'
 
     # "CONFORME CON ANNOTAZIONE" solo per note presenti e nessun KO
     if notes_text and overall_status in {'PASSATO', 'CONFORME'}:

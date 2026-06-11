@@ -2251,12 +2251,7 @@ def _get_pending_assignments_count(username: str, role: str) -> int:
     except Exception:
         return 0
 
-if os.path.isdir(_MOBILE_STATIC):
-    app.mount("/mobile/static", StaticFiles(directory=_MOBILE_STATIC), name="mobile_static")
-
-# ─── manifest.json con Content-Type corretto (bypassa CF Access via /mobile/static) ─
-# La route /mobile/static è già esclusa dalla protezione CF Access.
-# Serviamo manifest.json con application/manifest+json per il browser.
+# ─── manifest.json con Content-Type corretto — DEVE stare PRIMA del mount StaticFiles ─
 @app.get("/mobile/static/manifest.json", response_class=FastAPIResponse, include_in_schema=False)
 def mobile_manifest_json():
     manifest_path = os.path.join(_MOBILE_STATIC, "manifest.json")
@@ -2268,11 +2263,14 @@ def mobile_manifest_json():
         content=content,
         media_type="application/manifest+json",
         headers={
-            "Cache-Control": "public, max-age=3600",
+            "Cache-Control": "no-cache",
             "Access-Control-Allow-Origin": "*",
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+if os.path.isdir(_MOBILE_STATIC):
+    app.mount("/mobile/static", StaticFiles(directory=_MOBILE_STATIC), name="mobile_static")
 
 # ─── Explicit manifest.json endpoint (bypasses Cloudflare Access auth check) ─
 # Cloudflare Access intercepts /mobile/static/manifest.json with a redirect
@@ -2585,6 +2583,33 @@ async def mobile_customer_create(request: Request, mobile_session: Optional[str]
             "error": "Il nome del cliente è obbligatorio.",
         })
 
+    # Controlla duplicati (solo se non è già confermato dall'utente)
+    confirm = form.get("confirm_duplicate", "") == "1"
+    if not confirm:
+        import difflib as _difflib
+        try:
+            conn_ck = get_db_connection()
+            cur_ck = conn_ck.cursor(cursor_factory=RealDictCursor)
+            cur_ck.execute("SELECT name FROM customers WHERE is_deleted = FALSE ORDER BY name")
+            all_names = [r["name"] for r in cur_ck.fetchall()]
+            conn_ck.close()
+        except Exception:
+            all_names = []
+        name_low = name.lower().strip()
+        similar = [
+            n for n in all_names
+            if _difflib.SequenceMatcher(None, name_low, n.lower().strip()).ratio() >= 0.75
+            or name_low in n.lower() or n.lower() in name_low
+        ]
+        if similar:
+            return mobile_templates.TemplateResponse("customer_form.html", {
+                "request": request, "user": user, "active_nav": "customers",
+                "mode": "create",
+                "customer": {"name": name, "address": address, "phone": phone, "email": email},
+                "form_action": "/mobile/customers/new", "back_url": "/mobile/customers",
+                "duplicate_warning": similar,
+            })
+
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -2814,6 +2839,39 @@ async def mobile_destination_create(customer_uuid: str, request: Request, mobile
             "error": "Il nome della sede è obbligatorio.",
         })
 
+    # Controlla duplicati (solo se non è già confermato dall'utente)
+    confirm = form.get("confirm_duplicate", "") == "1"
+    if not confirm:
+        import difflib as _difflib
+        try:
+            conn_ck = get_db_connection()
+            cur_ck = conn_ck.cursor(cursor_factory=RealDictCursor)
+            cur_ck.execute(
+                "SELECT d.name FROM destinations d JOIN customers c ON c.id = d.customer_id "
+                "WHERE c.uuid = %s AND d.is_deleted = FALSE ORDER BY d.name",
+                (customer_uuid,)
+            )
+            all_names = [r["name"] for r in cur_ck.fetchall()]
+            conn_ck.close()
+        except Exception:
+            all_names = []
+        name_low = name.lower().strip()
+        similar = [
+            n for n in all_names
+            if _difflib.SequenceMatcher(None, name_low, n.lower().strip()).ratio() >= 0.75
+            or name_low in n.lower() or n.lower() in name_low
+        ]
+        if similar:
+            return mobile_templates.TemplateResponse("destination_form.html", {
+                "request": request, "user": user, "active_nav": "customers",
+                "mode": "create",
+                "customer": {"uuid": customer_uuid},
+                "destination": {"name": name, "address": address},
+                "form_action": f"/mobile/customers/{customer_uuid}/destinations/new",
+                "back_url": f"/mobile/customers/{customer_uuid}",
+                "duplicate_warning": similar,
+            })
+
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -3036,21 +3094,18 @@ async def mobile_device_create(destination_uuid: str, request: Request, mobile_s
                 (normalized,),
             )
             dup = cur2.fetchone()
-            conn.close()
             if dup:
+                conn.close()
                 # Ricarica dati form per rimostrare il template con avviso
-                cur3 = get_db_connection().cursor(cursor_factory=RealDictCursor)
-                cur3.execute("SELECT id FROM destinations WHERE uuid = %s AND is_deleted = FALSE", (destination_uuid,))
-                dest_row2 = cur3.fetchone()
+                conn2 = get_db_connection()
+                cur3 = conn2.cursor(cursor_factory=RealDictCursor)
+                cur3.execute("SELECT * FROM destinations WHERE uuid = %s", (destination_uuid,))
+                destination = cur3.fetchone()
                 cur3.execute("SELECT profile_key, name FROM profiles WHERE is_deleted = FALSE ORDER BY name")
                 profiles = cur3.fetchall()
                 cur3.execute("SELECT profile_key, name FROM functional_profiles WHERE is_deleted = FALSE ORDER BY name")
                 functional_profiles = cur3.fetchall()
-                cur3.connection.close()
-                dest_row3 = get_db_connection().cursor(cursor_factory=RealDictCursor)
-                dest_row3.execute("SELECT * FROM destinations WHERE uuid = %s", (destination_uuid,))
-                destination = dest_row3.fetchone()
-                dest_row3.connection.close()
+                conn2.close()
                 device_prefill = {
                     "serial_number": serial, "description": description,
                     "manufacturer": manufacturer, "model": model,
@@ -4699,7 +4754,16 @@ async def mobile_save_verification(device_uuid: str, request: Request,
 
     verification_date = form.get("verification_date") or date.today().isoformat()
     profile_key       = form.get("profile_key", "").strip()
-    overall_status    = form.get("overall_status", "PASSATO")
+    overall_status    = form.get("overall_status", "CONFORME")
+    # Normalize to consistent values used by desktop app
+    _PASS_NORM = {"PASS", "PASSATO", "OK", "CONFORME"}
+    _ANNOT_NORM = {"CONFORME CON ANNOTAZIONE"}
+    if overall_status.upper() in _ANNOT_NORM or overall_status == "CONFORME CON ANNOTAZIONE":
+        overall_status = "CONFORME CON ANNOTAZIONE"
+    elif overall_status.upper() in _PASS_NORM:
+        overall_status = "CONFORME"
+    else:
+        overall_status = "NON CONFORME"
     instrument_uuid   = form.get("instrument_uuid", "").strip()
     notes             = form.get("notes", "").strip() or None
     test_count        = int(form.get("test_count", 0) or 0)
@@ -4933,7 +4997,16 @@ async def mobile_save_func_verification(device_uuid: str, request: Request,
     form = await request.form()
     verification_date = form.get("verification_date") or date.today().isoformat()
     profile_key       = form.get("profile_key", "").strip()
-    overall_status    = form.get("overall_status", "PASSATO")
+    overall_status    = form.get("overall_status", "CONFORME")
+    # Normalize to consistent values used by desktop app
+    _PASS_NORM = {"PASS", "PASSATO", "OK", "CONFORME"}
+    _ANNOT_NORM = {"CONFORME CON ANNOTAZIONE"}
+    if overall_status.upper() in _ANNOT_NORM or overall_status == "CONFORME CON ANNOTAZIONE":
+        overall_status = "CONFORME CON ANNOTAZIONE"
+    elif overall_status.upper() in _PASS_NORM:
+        overall_status = "CONFORME"
+    else:
+        overall_status = "NON CONFORME"
     notes             = form.get("notes", "").strip() or None
     results: Dict[str, Any] = {}
     for key, value in form.items():

@@ -24,10 +24,12 @@
                 <p class="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-0.5">Profilo</p>
                 <p class="text-base font-bold text-gray-900">{{ verification.profile_name }}</p>
             </div>
-            {% if verification.overall_status in ('PASSATO', 'PASS', 'OK') %}
-            <span class="badge-pass" style="font-size:.875rem;padding:.25rem .75rem;"><i class="ti ti-circle-check"></i> PASSATO</span>
-            {% elif verification.overall_status in ('NON PASSATO', 'FAIL', 'FALLITO') %}
-            <span class="badge-fail" style="font-size:.875rem;padding:.25rem .75rem;"><i class="ti ti-circle-x"></i> NON PASSATO</span>
+            {% if verification.overall_status == 'CONFORME CON ANNOTAZIONE' %}
+            <span class="badge-warn" style="font-size:.875rem;padding:.25rem .75rem;"><i class="ti ti-alert-circle"></i> CONFORME CON ANNOTAZIONE</span>
+            {% elif verification.overall_status in ('CONFORME', 'PASSATO', 'PASS', 'OK') %}
+            <span class="badge-pass" style="font-size:.875rem;padding:.25rem .75rem;"><i class="ti ti-circle-check"></i> CONFORME</span>
+            {% elif verification.overall_status in ('NON PASSATO', 'FAIL', 'FALLITO', 'NON CONFORME') %}
+            <span class="badge-fail" style="font-size:.875rem;padding:.25rem .75rem;"><i class="ti ti-circle-x"></i> NON CONFORME</span>
             {% else %}
             <span class="badge-gray" style="font-size:.875rem;padding:.25rem .75rem;">{{ verification.overall_status }}</span>
             {% endif %}
