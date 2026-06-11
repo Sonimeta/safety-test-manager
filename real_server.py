@@ -25,13 +25,6 @@ from dotenv import load_dotenv
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, InvalidHash
 from jose import JWTError, ExpiredSignatureError, jwt
-from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.backends import default_backend
-from cryptography.x509 import load_pem_x509_certificate
-import base64 as _base64
-from cryptography.hazmat.primitives.asymmetric import padding as _padding
-from cryptography.hazmat.primitives import hashes as _hashes
 import httpx
 
 # --- CARICAMENTO .env ROBUSTO (compatibile con PyInstaller) ---

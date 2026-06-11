@@ -13,7 +13,7 @@ import html
 
 from reportlab.platypus import (
     BaseDocTemplate, Frame, Image, PageBreak, PageTemplate,
-    Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle, NextPageTemplate,
+    Paragraph, Spacer, Table, TableStyle,
 )
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle

@@ -112,7 +112,7 @@ class AdvancedReportDialog(QDialog):
         self.start_date = None
         self.end_date = None
 
-        from PySide6.QtWidgets import QGridLayout, QSizePolicy as QSP
+        from PySide6.QtWidgets import QGridLayout
         root = QVBoxLayout(self)
         root.setContentsMargins(12, 10, 12, 10)
         root.setSpacing(8)

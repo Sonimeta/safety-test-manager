@@ -1192,7 +1192,7 @@ def print_pdf_report(verification_id, device_id, report_settings, parent_widget=
         try:
             if os.path.exists(temp_filename):
                 os.unlink(temp_filename)
-        except:
+        except Exception:
             pass
         raise e
     finally:
@@ -1201,13 +1201,12 @@ def print_pdf_report(verification_id, device_id, report_settings, parent_widget=
             try:
                 if os.path.exists(temp_filename):
                     os.unlink(temp_filename)
-            except:
+            except Exception:
                 pass
-        
-        timer = QTimer()
-        timer.setSingleShot(True)
-        timer.timeout.connect(cleanup)
-        timer.start(10000)  # Pulisci dopo 10 secondi
+
+        # QTimer.singleShot è statico: sopravvive all'uscita della funzione
+        # (un QTimer locale verrebbe distrutto dal GC prima di scattare)
+        QTimer.singleShot(10000, cleanup)  # Pulisci dopo 10 secondi
 
 
 def print_functional_pdf_report(verification_id, device_id, report_settings, parent_widget=None):
@@ -1232,7 +1231,7 @@ def print_functional_pdf_report(verification_id, device_id, report_settings, par
         try:
             if os.path.exists(temp_filename):
                 os.unlink(temp_filename)
-        except:
+        except Exception:
             pass
         raise e
     finally:
@@ -1241,13 +1240,12 @@ def print_functional_pdf_report(verification_id, device_id, report_settings, par
             try:
                 if os.path.exists(temp_filename):
                     os.unlink(temp_filename)
-            except:
+            except Exception:
                 pass
-        
-        timer = QTimer()
-        timer.setSingleShot(True)
-        timer.timeout.connect(cleanup)
-        timer.start(10000)  # Pulisci dopo 10 secondi
+
+        # QTimer.singleShot è statico: sopravvive all'uscita della funzione
+        # (un QTimer locale verrebbe distrutto dal GC prima di scattare)
+        QTimer.singleShot(10000, cleanup)  # Pulisci dopo 10 secondi
 
 def get_data_for_daily_export(target_date: str) -> dict:
     return database.get_full_verification_data_for_date(target_date)

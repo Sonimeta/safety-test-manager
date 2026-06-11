@@ -15,9 +15,9 @@ from PySide6.QtWidgets import (
     QComboBox, QLineEdit, QTextEdit, QDateEdit, QMessageBox,
     QFormLayout, QFrame, QSplitter, QScrollArea,
     QSizePolicy, QCheckBox, QProgressBar, QApplication,
-    QMenu, QListWidget, QListWidgetItem, QButtonGroup, QRadioButton,
+    QMenu, QListWidget, QListWidgetItem, QButtonGroup,
 )
-from PySide6.QtCore import Qt, QDate, QTimer, QSortFilterProxyModel, QStringListModel
+from PySide6.QtCore import Qt, QDate, QTimer
 from PySide6.QtGui import QColor, QBrush, QFont, QCursor
 
 import database

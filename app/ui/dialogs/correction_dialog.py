@@ -1,9 +1,8 @@
 from PySide6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLineEdit,
+    QDialog, QVBoxLayout, QHBoxLayout, QLineEdit,
     QPushButton, QDialogButtonBox, QMessageBox,
     QLabel, QTableWidget, QTableWidgetItem, QAbstractItemView,
-    QHeaderView, QSplitter, QWidget, QComboBox, QGroupBox,
-    QListWidget, QListWidgetItem
+    QHeaderView, QSplitter, QWidget, QComboBox
 )
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor, QBrush

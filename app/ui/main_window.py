@@ -12,7 +12,7 @@ import platform
 import ctypes
 from urllib.parse import urlparse
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-    QPushButton, QLabel, QComboBox, QGroupBox, QFormLayout, QMessageBox, QFileDialog, 
+    QPushButton, QLabel, QComboBox, QGroupBox, QMessageBox, QFileDialog,
     QStatusBar, QGridLayout, QListWidget, QListWidgetItem, QLineEdit, QDialog, QMenu, QInputDialog,
     QScrollArea, QFrame, QProgressDialog, QDialogButtonBox,
     QStackedWidget, QStackedLayout, QSizePolicy)
