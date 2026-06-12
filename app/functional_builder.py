@@ -1,29 +1,35 @@
 # app/functional_builder.py
 """Costruzione guidata dei profili funzionali (logica pura, testabile).
 
-La modalità guidata copre la struttura più comune dei profili funzionali:
+La modalità guidata rappresenta il profilo come una lista ordinata di BLOCCHI:
 
-    [Riferimenti normativi]  +  N checklist  +  [Note aggiuntive]
+- CHECKLIST: scritta come testo, una voce per riga; ogni voce genera una
+  riga con esito OK/KO/N.A. obbligatorio. Il suffisso "[unità]" aggiunge
+  anche un campo numerico "Valore (unità)".
 
-Ogni checklist è scritta come testo semplice, una voce per riga:
+- MODULO CAMPI: una riga compatta per campo (etichetta, tipo, dettaglio,
+  obbligatorio). Supporta TUTTI i tipi di campo del programma; il campo
+  "dettaglio" cambia significato in base al tipo:
+      scelta multipla  -> opzioni separate da virgola
+      numero/percent.  -> unità di misura
+      testo/multilinea -> valore predefinito
+      calcolato        -> formula (solo aritmetica: vale anche su mobile)
+      valutazione      -> valore massimo (es. 5)
 
-    Integrità involucro
-    Lettura saturazione dal simulatore [%]
-    Lettura frequenza cardiaca [bpm]
+Le sezioni con tabelle a righe multiple (es. livelli di scarica del
+defibrillatore) non rientrano nello schema: parse_profile_sections ritorna
+None e l'editor usa la modalità completa.
 
-Una voce genera una riga con campo esito OK/KO/N.A. obbligatorio; il
-suffisso "[unità]" aggiunge anche un campo numerico "Valore (unità)".
-
-Le sezioni con tabelle, formule o campi particolari non rientrano nello
-schema: parse_profile_sections ritorna None e l'editor usa la modalità
-completa. Le chiavi di sezioni e righe esistenti vengono preservate nel
-round-trip per non disallineare i dati delle verifiche.
+Il round-trip preserva chiavi, descrizioni e le proprietà avanzate dei
+campi esistenti (help_text, min/max, step, ...) tramite il campo `source`,
+per non disallineare i dati delle verifiche passate.
 """
 from __future__ import annotations
 
+import copy
 import re
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Union
 
 from app.functional_models import (
     FunctionalField,
@@ -34,8 +40,13 @@ from app.functional_models import (
 )
 
 ESITO_OPTIONS = ["OK", "KO", "N.A."]
-NORMATIVE_SECTION_KEY = "normative_references"
-NOTES_SECTION_KEY = "notes"
+
+# Tipi per cui il campo "dettaglio" ha un significato
+DETAIL_OPTIONS_TYPES = {"choice"}
+DETAIL_UNIT_TYPES = {"number", "integer", "percentage"}
+DETAIL_DEFAULT_TYPES = {"text", "multiline"}
+DETAIL_FORMULA_TYPES = {"calculated"}
+DETAIL_RATING_TYPES = {"rating"}
 
 # "Etichetta voce [unità]" — l'unità è opzionale
 _ITEM_LINE_RE = re.compile(r"^(?P<label>.*?)(?:\s*\[(?P<unit>[^\[\]]+)\])?\s*$")
@@ -52,19 +63,40 @@ class SimpleChecklistItem:
 class SimpleChecklist:
     title: str
     items: List[SimpleChecklistItem] = field(default_factory=list)
-    key: Optional[str] = None    # chiave sezione originale da preservare
+    key: Optional[str] = None
+    description: Optional[str] = None
+    show_in_summary: bool = False
+
+
+@dataclass
+class SimpleFieldSpec:
+    """Un campo di un modulo, nella forma compatta della guidata."""
+    label: str
+    field_type: str = "text"
+    required: bool = False
+    detail: str = ""               # significato dipendente dal tipo (v. modulo)
+    key: Optional[str] = None
+    source: Optional[FunctionalField] = None  # campo originale da preservare
+
+
+@dataclass
+class SimpleFormSection:
+    title: str
+    fields: List[SimpleFieldSpec] = field(default_factory=list)
+    key: Optional[str] = None
+    description: Optional[str] = None
+    show_in_summary: bool = False
+
+
+SimpleBlock = Union[SimpleChecklist, SimpleFormSection]
 
 
 @dataclass
 class SimpleFunctionalOptions:
-    include_normative: bool = True
-    normative_default: str = ""
-    checklists: List[SimpleChecklist] = field(default_factory=list)
-    include_notes: bool = True
-    # Chiavi originali da preservare nel round-trip (None = usa le canoniche)
-    normative_key: Optional[str] = None
-    notes_key: Optional[str] = None
+    blocks: List[SimpleBlock] = field(default_factory=list)
 
+
+# ─── Checklist: grammatica del testo ────────────────────────────────────────
 
 def parse_item_line(line: str) -> Optional[SimpleChecklistItem]:
     """Interpreta una riga di testo della checklist. Ritorna None se vuota."""
@@ -105,8 +137,81 @@ def checklist_from_text(title: str, text: str,
         title=title.strip(),
         items=items,
         key=source.key if source else None,
+        description=source.description if source else None,
+        show_in_summary=source.show_in_summary if source else False,
     )
 
+
+# ─── Dettaglio dei campi modulo ─────────────────────────────────────────────
+
+def detail_for_field(f: FunctionalField) -> str:
+    """Estrae dal campo il valore mostrato nella colonna 'dettaglio'."""
+    ft = f.field_type
+    if ft in DETAIL_OPTIONS_TYPES:
+        return ", ".join(f.options or [])
+    if ft in DETAIL_UNIT_TYPES:
+        return f.unit or ""
+    if ft in DETAIL_DEFAULT_TYPES:
+        return "" if f.default is None else str(f.default)
+    if ft in DETAIL_FORMULA_TYPES:
+        return f.formula or ""
+    if ft in DETAIL_RATING_TYPES:
+        return "" if f.rating_max is None else str(f.rating_max)
+    return ""
+
+
+def detail_placeholder(field_type: str) -> str:
+    """Suggerimento per la colonna 'dettaglio' nella UI."""
+    if field_type in DETAIL_OPTIONS_TYPES:
+        return "Opzioni: OK, KO, N.A."
+    if field_type in DETAIL_UNIT_TYPES:
+        return "Unità (es. mmHg)"
+    if field_type in DETAIL_DEFAULT_TYPES:
+        return "Valore predefinito (opzionale)"
+    if field_type in DETAIL_FORMULA_TYPES:
+        return "Formula (es. misurato - impostato)"
+    if field_type in DETAIL_RATING_TYPES:
+        return "Massimo (es. 5)"
+    return "—"
+
+
+def _apply_detail(f: FunctionalField, detail: str) -> None:
+    ft = f.field_type
+    detail = detail.strip()
+    if ft in DETAIL_OPTIONS_TYPES:
+        f.options = [opt.strip() for opt in detail.split(",") if opt.strip()]
+    elif ft in DETAIL_UNIT_TYPES:
+        f.unit = detail or None
+    elif ft in DETAIL_DEFAULT_TYPES:
+        f.default = detail or None
+    elif ft in DETAIL_FORMULA_TYPES:
+        f.formula = detail or None
+        f.read_only = True
+    elif ft in DETAIL_RATING_TYPES:
+        try:
+            f.rating_max = int(detail) if detail else None
+        except ValueError:
+            f.rating_max = None
+
+
+def build_field(spec: SimpleFieldSpec, key: str) -> FunctionalField:
+    """Costruisce il FunctionalField da una spec, preservando le proprietà
+    avanzate del campo originale quando il tipo non è cambiato."""
+    if spec.source is not None and spec.source.field_type == spec.field_type:
+        f = copy.deepcopy(spec.source)
+        f.key = key
+        f.label = spec.label
+        f.required = spec.required
+    else:
+        f = FunctionalField(
+            key=key, label=spec.label,
+            field_type=spec.field_type, required=spec.required,
+        )
+    _apply_detail(f, spec.detail)
+    return f
+
+
+# ─── Costruzione delle sezioni ──────────────────────────────────────────────
 
 def _unique_key(base: str, used: set) -> str:
     key = base or "voce"
@@ -122,62 +227,64 @@ def _unique_key(base: str, used: set) -> str:
 
 
 def build_sections(opts: SimpleFunctionalOptions) -> List[FunctionalSection]:
-    """Genera le sezioni del profilo dalle opzioni della modalità guidata."""
+    """Genera le sezioni del profilo dai blocchi della modalità guidata."""
     sections: List[FunctionalSection] = []
+    used_section_keys: set = set()
 
-    normative_key = opts.normative_key or NORMATIVE_SECTION_KEY
-    notes_key = opts.notes_key or NOTES_SECTION_KEY
+    for block in opts.blocks:
+        if isinstance(block, SimpleChecklist):
+            if not block.items:
+                continue
+            section_key = block.key or sanitize_profile_key(block.title) or "checklist"
+            section_key = _unique_key(section_key, used_section_keys)
 
-    if opts.include_normative:
-        sections.append(FunctionalSection(
-            key=normative_key,
-            title="Riferimenti Normativi-Procedure",
-            section_type="fields",
-            fields=[FunctionalField(
-                key="norme_procedure",
-                label="Norme/Procedure",
-                field_type="text",
-                default=opts.normative_default.strip() or None,
-            )],
-        ))
+            used_row_keys: set = set()
+            rows: List[FunctionalRowDefinition] = []
+            for item in block.items:
+                row_key = item.key or sanitize_profile_key(item.label) or "voce"
+                row_key = _unique_key(row_key, used_row_keys)
+                fields = [FunctionalField(
+                    key="esito", label="Esito", field_type="choice",
+                    options=list(ESITO_OPTIONS), required=True,
+                )]
+                if item.unit:
+                    fields.append(FunctionalField(
+                        key="valore", label=f"Valore ({item.unit})",
+                        field_type="number", unit=item.unit,
+                    ))
+                rows.append(FunctionalRowDefinition(
+                    key=row_key, label=item.label, fields=fields))
 
-    used_section_keys = {normative_key, notes_key}
-    for checklist in opts.checklists:
-        if not checklist.items:
-            continue
-        section_key = checklist.key or sanitize_profile_key(checklist.title) or "checklist"
-        section_key = _unique_key(section_key, used_section_keys)
+            sections.append(FunctionalSection(
+                key=section_key,
+                title=block.title or "Checklist",
+                section_type="checklist",
+                description=block.description or "",
+                rows=rows,
+                show_in_summary=block.show_in_summary,
+            ))
 
-        used_row_keys: set = set()
-        rows: List[FunctionalRowDefinition] = []
-        for item in checklist.items:
-            row_key = item.key or sanitize_profile_key(item.label) or "voce"
-            row_key = _unique_key(row_key, used_row_keys)
-            fields = [FunctionalField(
-                key="esito", label="Esito", field_type="choice",
-                options=list(ESITO_OPTIONS), required=True,
-            )]
-            if item.unit:
-                fields.append(FunctionalField(
-                    key="valore", label=f"Valore ({item.unit})",
-                    field_type="number", unit=item.unit,
-                ))
-            rows.append(FunctionalRowDefinition(key=row_key, label=item.label, fields=fields))
+        else:  # SimpleFormSection
+            if not block.fields:
+                continue
+            section_key = block.key or sanitize_profile_key(block.title) or "sezione"
+            section_key = _unique_key(section_key, used_section_keys)
 
-        sections.append(FunctionalSection(
-            key=section_key,
-            title=checklist.title or "Checklist",
-            section_type="checklist",
-            rows=rows,
-        ))
+            used_field_keys: set = set()
+            fields: List[FunctionalField] = []
+            for spec in block.fields:
+                base_key = spec.key or sanitize_profile_key(spec.label) or "campo"
+                field_key = _unique_key(base_key, used_field_keys)
+                fields.append(build_field(spec, field_key))
 
-    if opts.include_notes:
-        sections.append(FunctionalSection(
-            key=notes_key,
-            title="Note aggiuntive",
-            section_type="fields",
-            fields=[FunctionalField(key="note", label="Note", field_type="multiline")],
-        ))
+            sections.append(FunctionalSection(
+                key=section_key,
+                title=block.title or "Sezione",
+                section_type="fields",
+                description=block.description or "",
+                fields=fields,
+                show_in_summary=block.show_in_summary,
+            ))
 
     return sections
 
@@ -207,63 +314,86 @@ def _parse_checklist_row(row: FunctionalRowDefinition) -> Optional[SimpleCheckli
     return SimpleChecklistItem(label=label, unit=unit, key=row.key or None)
 
 
-def _is_single_text_section(section: FunctionalSection, field_type: str) -> bool:
-    return (
-        section.section_type in {"fields", "form"}
-        and len(section.fields or []) == 1
-        and not section.rows
-        and section.fields[0].field_type == field_type
-        and not section.fields[0].formula
-    )
-
-
 def parse_profile_sections(profile: FunctionalProfile) -> Optional[SimpleFunctionalOptions]:
-    """Riconduce le sezioni di un profilo alle opzioni della modalità guidata.
+    """Riconduce le sezioni di un profilo ai blocchi della modalità guidata.
 
-    Ritorna None se la struttura non rientra nello schema canonico
-    ([normative] + checklists + [note]): in quel caso serve l'editor completo.
+    Ritorna None se una sezione non è rappresentabile (tabelle a righe
+    multiple non-checklist, righe checklist con campi non standard):
+    in quel caso serve l'editor completo.
     """
-    opts = SimpleFunctionalOptions(
-        include_normative=False, normative_default="",
-        checklists=[], include_notes=False,
-    )
+    opts = SimpleFunctionalOptions(blocks=[])
 
-    sections = list(profile.sections or [])
-    if not sections:
-        return opts  # profilo vuoto: guidata con tutto da costruire
-
-    idx = 0
-    # Eventuale sezione normativa: solo come PRIMA sezione
-    first = sections[0]
-    if _is_single_text_section(first, "text"):
-        opts.include_normative = True
-        opts.normative_default = str(first.fields[0].default or "")
-        opts.normative_key = first.key or None
-        idx = 1
-
-    # Eventuale sezione note: solo come ULTIMA sezione
-    last_idx = len(sections)
-    if last_idx > idx and _is_single_text_section(sections[last_idx - 1], "multiline"):
-        opts.include_notes = True
-        opts.notes_key = sections[last_idx - 1].key or None
-        last_idx -= 1
-
-    # In mezzo: solo checklist riconoscibili
-    for section in sections[idx:last_idx]:
-        if section.section_type != "checklist" or section.fields:
-            return None
-        items: List[SimpleChecklistItem] = []
-        for row in section.rows or []:
-            item = _parse_checklist_row(row)
-            if item is None:
+    for section in profile.sections or []:
+        if section.section_type == "checklist" and not section.fields:
+            items: List[SimpleChecklistItem] = []
+            ok = True
+            for row in section.rows or []:
+                item = _parse_checklist_row(row)
+                if item is None:
+                    ok = False
+                    break
+                items.append(item)
+            if not ok or not items:
                 return None
-            items.append(item)
-        if not items:
-            return None
-        opts.checklists.append(SimpleChecklist(
-            title=section.title or section.key,
-            items=items,
-            key=section.key or None,
-        ))
+            opts.blocks.append(SimpleChecklist(
+                title=section.title or section.key,
+                items=items,
+                key=section.key or None,
+                description=section.description or None,
+                show_in_summary=bool(section.show_in_summary),
+            ))
+
+        elif section.section_type in {"fields", "form"} and not section.rows:
+            if not section.fields:
+                return None
+            specs = [
+                SimpleFieldSpec(
+                    label=f.label or f.key,
+                    field_type=f.field_type,
+                    required=bool(f.required),
+                    detail=detail_for_field(f),
+                    key=f.key or None,
+                    source=f,
+                )
+                for f in section.fields
+            ]
+            opts.blocks.append(SimpleFormSection(
+                title=section.title or section.key,
+                fields=specs,
+                key=section.key or None,
+                description=section.description or None,
+                show_in_summary=bool(section.show_in_summary),
+            ))
+
+        else:
+            return None  # tabella o struttura particolare: editor completo
 
     return opts
+
+
+def default_new_profile_blocks() -> List[SimpleBlock]:
+    """Blocchi proposti per un profilo nuovo: punto di partenza tipico."""
+    return [
+        SimpleFormSection(
+            title="Riferimenti Normativi-Procedure",
+            key="normative_references",
+            fields=[SimpleFieldSpec(label="Norme/Procedure", field_type="text",
+                                    key="norme_procedure")],
+        ),
+        SimpleChecklist(
+            title="Controllo Visivo/Funzionale",
+            items=[
+                SimpleChecklistItem(label="Integrità generale apparecchiatura"),
+                SimpleChecklistItem(label="Leggibilità delle serigrafie/etichette"),
+                SimpleChecklistItem(label="Integrità cavo di alimentazione"),
+                SimpleChecklistItem(label="Integrità involucro"),
+                SimpleChecklistItem(label="Integrità accessori"),
+                SimpleChecklistItem(label="Manuale d'uso disponibile"),
+            ],
+        ),
+        SimpleFormSection(
+            title="Note aggiuntive",
+            key="notes",
+            fields=[SimpleFieldSpec(label="Note", field_type="multiline", key="note")],
+        ),
+    ]
