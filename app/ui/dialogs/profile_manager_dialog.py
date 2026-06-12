@@ -129,26 +129,38 @@ class ProfileDetailDialog(QDialog):
         # Inizializza con un widget temporaneo, verrà sostituito da _update_parameter_widget
         self.tests_table.setCellWidget(row, 1, QLineEdit(test_data.parameter if test_data else ""))
         
-        limit_spinbox = QDoubleSpinBox(); limit_spinbox.setDecimals(3); limit_spinbox.setRange(0, 99999.999)
+        # Mappa tipo P.A. -> valore limite: un test può avere limiti per più
+        # tipi di parte (es. BF 5000 e CF 50); il dialog ne mostra uno alla
+        # volta ma li conserva tutti, altrimenti il salvataggio cancellerebbe
+        # silenziosamente i limiti dei tipi non visualizzati
+        limits_by_type = {}
         if test_data and test_data.limits:
-            first_limit_key = next(iter(test_data.limits), None)
-            if first_limit_key:
-                limit_value = test_data.limits[first_limit_key].high_value or 0.0
-                limit_spinbox.setValue(limit_value)
+            for lim_key, lim in test_data.limits.items():
+                limits_by_type[lim_key.strip(": ").upper()] = lim.high_value or 0.0
+        first_type = next(iter(limits_by_type), "ST")
+
+        limit_spinbox = QDoubleSpinBox(); limit_spinbox.setDecimals(3); limit_spinbox.setRange(0, 99999.999)
+        limit_spinbox.setValue(limits_by_type.get(first_type, 0.0))
         self.tests_table.setCellWidget(row, 2, limit_spinbox)
-        
+
         checkbox_container = QWidget(); checkbox_layout = QHBoxLayout(checkbox_container)
         is_ap_checkbox = QCheckBox(); is_ap_checkbox.setChecked(test_data.is_applied_part_test if test_data else False)
         checkbox_layout.addWidget(is_ap_checkbox); checkbox_layout.setAlignment(Qt.AlignCenter); checkbox_layout.setContentsMargins(0,0,0,0)
         self.tests_table.setCellWidget(row, 3, checkbox_container)
-        
+
         ap_type_combo = QComboBox(); ap_type_combo.addItems(["ST", "B", "BF", "CF"])
-        if test_data and test_data.limits:
-            first_limit_key = next(iter(test_data.limits), None)
-            if first_limit_key:
-                ap_type_str = first_limit_key.strip(": ")
-                ap_type_combo.setCurrentText(ap_type_str)
+        ap_type_combo.setCurrentText(first_type)
+        ap_type_combo._limits_by_type = limits_by_type
+        ap_type_combo._current_type = ap_type_combo.currentText()
         self.tests_table.setCellWidget(row, 4, ap_type_combo)
+
+        def _on_ap_type_changed(_idx, combo=ap_type_combo, spin=limit_spinbox):
+            # Salva il valore del tipo che si sta lasciando e carica quello
+            # del tipo selezionato, così ogni tipo conserva il proprio limite
+            combo._limits_by_type[combo._current_type] = spin.value()
+            combo._current_type = combo.currentText()
+            spin.setValue(combo._limits_by_type.get(combo._current_type, 0.0))
+        ap_type_combo.currentIndexChanged.connect(_on_ap_type_changed)
 
         # Connetti il segnale e aggiorna subito il widget del parametro
         name_combo.currentIndexChanged.connect(lambda: self._update_parameter_widget(row))
@@ -188,9 +200,21 @@ class ProfileDetailDialog(QDialog):
             checkbox_container = self.tests_table.cellWidget(row, 3)
             is_ap_checkbox = checkbox_container.findChild(QCheckBox)
             is_ap = is_ap_checkbox.isChecked() if is_ap_checkbox else False
-            ap_type = self.tests_table.cellWidget(row, 4).currentText()
+            ap_combo = self.tests_table.cellWidget(row, 4)
+            ap_type = ap_combo.currentText()
             unit = "uA" if "CORRENTE" in name.upper() else ("Ohm" if "RESISTENZA" in name.upper() else "V")
-            limits = {f"::{ap_type}": Limit(unit=unit, high_value=limit_val if limit_val > 0 else None)}
+            # Per i test su parti applicate ricostruisce TUTTI i limiti con
+            # valore impostato (un test può coprire B, BF e CF insieme);
+            # per i test standard vale solo il tipo attualmente selezionato
+            limits_by_type = {}
+            if is_ap:
+                stored = getattr(ap_combo, "_limits_by_type", {})
+                limits_by_type = {t: v for t, v in stored.items() if t and v > 0}
+            limits_by_type[ap_type] = limit_val
+            limits = {
+                f"::{lim_type}": Limit(unit=unit, high_value=lim_val if lim_val > 0 else None)
+                for lim_type, lim_val in limits_by_type.items()
+            }
             self.profile.tests.append(Test(name=name, parameter=param, limits=limits, is_applied_part_test=is_ap))
 
         # Controllo di plausibilità dei limiti rispetto alla CEI 62353:

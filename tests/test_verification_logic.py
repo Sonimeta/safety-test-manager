@@ -214,17 +214,19 @@ class TestValidateProfileLimits:
         # 5000 µA su una parte CF: la norma prevede 50 µA
         p = make_profile(
             ProfileTest(name="Corrente dispersione diretta P.A.", parameter="Normale",
-                        limits={"::CF": Limit(unit="uA", high_value=5000.0)},
+                        limits={"::BF": Limit(unit="uA", high_value=5000.0),
+                                "::CF": Limit(unit="uA", high_value=5000.0)},
                         is_applied_part_test=True),
         )
         warnings = validate_profile_limits(p)
         assert len(warnings) == 1
-        assert "50" in warnings[0]
+        assert "[CF]" in warnings[0] and "SUPERIORE" in warnings[0]
 
     def test_parte_bf_5000_ok(self):
         p = make_profile(
             ProfileTest(name="Corrente dispersione diretta P.A.", parameter="Normale",
-                        limits={"::BF": Limit(unit="uA", high_value=5000.0)},
+                        limits={"::BF": Limit(unit="uA", high_value=5000.0),
+                                "::CF": Limit(unit="uA", high_value=50.0)},
                         is_applied_part_test=True),
         )
         assert validate_profile_limits(p) == []
@@ -263,10 +265,80 @@ class TestValidateProfileLimits:
             ProfileTest(name="Resistenza conduttore di terra", parameter="",
                         limits={"::ST": Limit(unit="Ohm", high_value=3.0)}),
             ProfileTest(name="Corrente dispersione diretta P.A.", parameter="Normale",
-                        limits={"::CF": Limit(unit="uA", high_value=5000.0)},
+                        limits={"::BF": Limit(unit="uA", high_value=5000.0),
+                                "::CF": Limit(unit="uA", high_value=5000.0)},
                         is_applied_part_test=True),
         )
         assert len(validate_profile_limits(p)) == 2
+
+
+class TestCoperturaPartiApplicate:
+    """Il piano di verifica esegue un test P.A. su una parte solo se il test
+    ha un limite per quel tipo: la copertura incompleta va segnalata."""
+
+    def test_polarita_senza_cf_segnalata(self):
+        p = make_profile(
+            ProfileTest(name="Corrente dispersione diretta P.A.", parameter="Normale",
+                        limits={"::BF": Limit(unit="uA", high_value=5000.0)},
+                        is_applied_part_test=True),
+        )
+        warnings = validate_profile_limits(p)
+        assert len(warnings) == 1
+        assert "CF" in warnings[0] and "NON verrebbero testate" in warnings[0]
+
+    def test_polarita_senza_bf_segnalata(self):
+        p = make_profile(
+            ProfileTest(name="Corrente dispersione diretta P.A.", parameter="Inversa",
+                        limits={"::CF": Limit(unit="uA", high_value=50.0)},
+                        is_applied_part_test=True),
+        )
+        warnings = validate_profile_limits(p)
+        assert len(warnings) == 1
+        assert "BF" in warnings[0]
+
+    def test_copertura_su_piu_righe_stessa_polarita(self):
+        # Profili costruiti dal dialog: una riga per tipo, stessa polarità.
+        # L'unione copre BF e CF, quindi nessun avviso.
+        p = make_profile(
+            ProfileTest(name="Corrente dispersione diretta P.A.", parameter="Normale",
+                        limits={"::BF": Limit(unit="uA", high_value=5000.0)},
+                        is_applied_part_test=True),
+            ProfileTest(name="Corrente dispersione diretta P.A.", parameter="Normale",
+                        limits={"::CF": Limit(unit="uA", high_value=50.0)},
+                        is_applied_part_test=True),
+        )
+        assert validate_profile_limits(p) == []
+
+    def test_profilo_senza_parti_applicate_nessun_avviso(self):
+        p = make_profile(
+            ProfileTest(name="Resistenza conduttore di terra", parameter="",
+                        limits={"::ST": Limit(unit="Ohm", high_value=0.3)}),
+        )
+        assert validate_profile_limits(p) == []
+
+
+class TestTemplateIntegrati:
+    """Test 'golden': i template predefiniti del programma devono essere
+    conformi alla CEI 62353. Se qualcuno li modifica per errore, questo
+    test diventa rosso."""
+
+    def test_tutti_i_template_conformi(self):
+        from app.profile_templates import PROFILE_TEMPLATES
+        for nome, tests in PROFILE_TEMPLATES.items():
+            p = VerificationProfile(name=nome, tests=list(tests))
+            warnings = validate_profile_limits(p)
+            assert warnings == [], f"Template '{nome}' non conforme: {warnings}"
+
+    def test_template_pa_copre_entrambe_le_polarita(self):
+        from app.profile_templates import PROFILE_TEMPLATES
+        tests = PROFILE_TEMPLATES["Verifica con Parti Applicate (BF/CF)"]
+        pa_tests = [t for t in tests if t.is_applied_part_test]
+        polarita = {t.parameter for t in pa_tests}
+        assert polarita == {"Normale", "Inversa"}
+        # Ogni polarità deve coprire BF e CF con i limiti di norma
+        for t in pa_tests:
+            assert t.limits["::BF"].high_value == 5000.0
+            assert t.limits["::CF"].high_value == 50.0
 
 
 if __name__ == "__main__":

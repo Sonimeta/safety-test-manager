@@ -155,4 +155,25 @@ def validate_profile_limits(profile) -> List[str]:
                     f"possibile refuso — dispositivi sani risulterebbero FALLITI ({ref})."
                 )
 
+    # Copertura delle parti applicate: il piano di verifica esegue un test
+    # P.A. su una parte SOLO se il test ha un limite per quel tipo di parte
+    # (vedi _build_test_plan in app/ui/widgets.py). Se per una polarità manca
+    # il limite BF o CF, le parti di quel tipo non verrebbero mai provate,
+    # senza alcun errore visibile nel report.
+    pa_coverage = {}
+    for test in profile.tests:
+        if not getattr(test, "is_applied_part_test", False):
+            continue
+        polarity = (test.parameter or "").strip().upper() or "(SENZA POLARITÀ)"
+        covered = {k.strip(": ").upper() for k in (test.limits or {})}
+        pa_coverage.setdefault(polarity, set()).update(covered)
+
+    for polarity, covered in pa_coverage.items():
+        missing = {"BF", "CF"} - covered
+        if covered and missing:
+            warnings.append(
+                f"Test parti applicate '{polarity}': nessun limite per i tipi "
+                f"{', '.join(sorted(missing))} — le parti di quel tipo NON verrebbero testate in questa prova."
+            )
+
     return warnings

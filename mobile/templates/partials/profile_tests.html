@@ -22,7 +22,9 @@
 
     {% else %}
     {% set limit_key = test.limit_key if test.limit_key else "::ST" %}
-    {% set lval = test.limits[limit_key] if test.limits and limit_key in test.limits else (test.limits.values()|list|first if test.limits else none) %}
+    {# Solo la chiave esatta: il limite di un altro tipo di parte non è un
+       riferimento valido e finirebbe registrato nel report #}
+    {% set lval = test.limits[limit_key] if test.limits and limit_key in test.limits else none %}
     {% set unit = lval.unit if lval else '' %}
 
     <div class="border border-gray-100 rounded-xl p-3 space-y-2 test-row" data-idx="{{ idx }}" data-limit-key="{{ limit_key }}">
@@ -110,7 +112,12 @@
             return;
         }
 
-        var val = parseFloat(valStr);
+        // Virgola decimale: parseFloat('0,5') darebbe 0 (tronca alla virgola)
+        var normStr = valStr;
+        if (normStr.indexOf(',') !== -1 && normStr.indexOf('.') === -1) {
+            normStr = normStr.replace(/,/g, '.');
+        }
+        var val = parseFloat(normStr);
         if (isNaN(val)) {
             badge.innerHTML = '<span class="bg-gray-100 text-gray-600 text-xs font-bold px-2 py-1 rounded-full">?</span>';
             return;
@@ -119,9 +126,10 @@
         var limits = {};
         try { limits = JSON.parse(limitsEl ? limitsEl.value : '{}'); } catch(e) {}
 
-        // Use the specific limit_key for this test (correct for AP tests: ::BF, ::CF, etc.)
+        // Solo la chiave esatta di questo test (::ST, ::BF, ::CF...):
+        // il limite di un altro tipo di parte non e' un riferimento valido
         var limitKey = limitKeyEl ? limitKeyEl.value : '::ST';
-        var limitObj = limits[limitKey] || limits['::ST'] || Object.values(limits)[0] || null;
+        var limitObj = limits[limitKey] || null;
         var highValue = limitObj ? limitObj.high_value : null;
 
         var passed = true;
