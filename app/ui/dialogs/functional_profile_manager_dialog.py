@@ -1914,31 +1914,11 @@ class FunctionalProfileWizard(QWizard):
         
         self.create_method_combo = QComboBox()
         self.create_method_combo.addItem("Vuoto - Crea da zero", "empty")
-        self.create_method_combo.addItem("Da Template Predefinito", "template")
         self.create_method_combo.addItem("Copia da Profilo Esistente", "copy")
         page1_layout.addWidget(QLabel("Come vuoi creare il profilo?"))
         page1_layout.addWidget(self.create_method_combo)
         page1_layout.addStretch()
-        
-        # Pagina 2: Template
-        self.page2 = QWizardPage()
-        self.page2.setTitle("Selezione Template")
-        self.page2.setSubTitle("Scegli un template predefinito")
-        page2_layout = QVBoxLayout(self.page2)
-        
-        # Lista costruita dai template reali (unica fonte: functional_templates.py)
-        from app.functional_templates import FUNCTIONAL_PROFILE_TEMPLATES
-        self.template_list = QListWidget()
-        for template_key, template_profile in FUNCTIONAL_PROFILE_TEMPLATES.items():
-            n_sections = len(template_profile.sections)
-            item = QListWidgetItem(f"{template_profile.name}  ({n_sections} sezioni)")
-            item.setData(Qt.UserRole, template_key)
-            self.template_list.addItem(item)
-        if self.template_list.count():
-            self.template_list.setCurrentRow(0)
-        page2_layout.addWidget(self.template_list)
-        page2_layout.addWidget(QLabel("💡 I template includono le sezioni complete per il tipo di dispositivo selezionato"))
-        
+
         # Pagina 3: Copia da profilo
         self.page3 = QWizardPage()
         self.page3.setTitle("Copia da Profilo Esistente")
@@ -1966,7 +1946,6 @@ class FunctionalProfileWizard(QWizard):
         self.wizard_name_edit.textChanged.connect(self._on_name_changed)
         
         self.addPage(self.page1)
-        self.addPage(self.page2)
         self.addPage(self.page3)
         self.addPage(self.page4)
         
@@ -1980,18 +1959,12 @@ class FunctionalProfileWizard(QWizard):
     def _on_method_changed(self, index):
         """Mostra/nascondi pagine in base al metodo selezionato."""
         method = self.create_method_combo.currentData()
-        if method == "template":
-            self.setPage(1, self.page2)
-            self.setPage(2, self.page4)
-            self.removePage(3)
-        elif method == "copy":
+        if method == "copy":
             self.setPage(1, self.page3)
             self.setPage(2, self.page4)
-            self.removePage(3)
         else:  # empty
             self.setPage(1, self.page4)
             self.removePage(2)
-            self.removePage(3)
     
     def _on_name_changed(self, text):
         """Genera automaticamente la chiave dal nome."""
@@ -2021,12 +1994,7 @@ class FunctionalProfileWizard(QWizard):
         if not name:
             return None
         
-        if method == "template":
-            # Crea profilo da template
-            item = self.template_list.currentItem()
-            template_key = item.data(Qt.UserRole) if item else None
-            profile = self._create_from_template(template_key, name, key, device_type)
-        elif method == "copy":
+        if method == "copy":
             # Copia da profilo esistente
             item = self.copy_profile_list.currentItem()
             if not item:
@@ -2050,21 +2018,6 @@ class FunctionalProfileWizard(QWizard):
                 sections=[],
             )
         
-        return profile
-    
-    def _create_from_template(self, template_key: Optional[str], name: str, key: str, device_type: Optional[str]) -> FunctionalProfile:
-        """Crea un profilo da un template predefinito (functional_templates.py)."""
-        from app.functional_templates import (
-            FUNCTIONAL_PROFILE_TEMPLATES, build_generic_functional_profile,
-        )
-        template = FUNCTIONAL_PROFILE_TEMPLATES.get(template_key or "")
-        if template is None:
-            template = build_generic_functional_profile()
-
-        profile = copy.deepcopy(template)
-        profile.profile_key = key
-        profile.name = name
-        profile.device_type = device_type or template.device_type
         return profile
 
 
