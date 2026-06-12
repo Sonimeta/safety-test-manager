@@ -1945,26 +1945,33 @@ class FunctionalProfileWizard(QWizard):
         
         self.wizard_name_edit.textChanged.connect(self._on_name_changed)
         
-        self.addPage(self.page1)
-        self.addPage(self.page3)
-        self.addPage(self.page4)
-        
+        # Id espliciti: il percorso tra le pagine è deciso da nextId()
+        self.PAGE_METHOD = 0
+        self.PAGE_COPY = 1
+        self.PAGE_INFO = 2
+        self.setPage(self.PAGE_METHOD, self.page1)
+        self.setPage(self.PAGE_COPY, self.page3)
+        self.setPage(self.PAGE_INFO, self.page4)
+        self.setStartId(self.PAGE_METHOD)
+
         # Carica profili esistenti per la copia
         self._load_existing_profiles()
-        
-        # Connessioni
-        self.create_method_combo.currentIndexChanged.connect(self._on_method_changed)
-        self._on_method_changed(0)
-    
-    def _on_method_changed(self, index):
-        """Mostra/nascondi pagine in base al metodo selezionato."""
-        method = self.create_method_combo.currentData()
-        if method == "copy":
-            self.setPage(1, self.page3)
-            self.setPage(2, self.page4)
-        else:  # empty
-            self.setPage(1, self.page4)
-            self.removePage(2)
+
+    def nextId(self):
+        """Percorso pagine: la pagina di copia compare solo per il metodo 'copia'.
+
+        Nota: spostare le pagine con setPage/removePage non funziona in Qt
+        (una pagina già registrata non può essere ri-aggiunta e la chiamata
+        fallisce in silenzio): il salto va deciso qui.
+        """
+        current = self.currentId()
+        if current == self.PAGE_METHOD:
+            if self.create_method_combo.currentData() == "copy":
+                return self.PAGE_COPY
+            return self.PAGE_INFO
+        if current == self.PAGE_COPY:
+            return self.PAGE_INFO
+        return -1
     
     def _on_name_changed(self, text):
         """Genera automaticamente la chiave dal nome."""
