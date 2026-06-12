@@ -4881,6 +4881,7 @@ async def mobile_save_verification(device_uuid: str, request: Request,
     # Build results list from form fields (list preserves duplicates/order)
     _PASS_VALUES = {"PASS", "PASSATO", "OK", "CONFORME"}
     results_list = []
+    missing_values = []
     for i in range(test_count):
         test_name   = form.get(f"test_name_{i}", "").strip()
         test_status = form.get(f"test_status_{i}", "PASS")
@@ -4889,6 +4890,10 @@ async def mobile_save_verification(device_uuid: str, request: Request,
         test_unit   = form.get(f"test_unit_{i}", "").strip()
         test_ap     = form.get(f"test_ap_name_{i}", "").strip()
         if test_name:
+            # Tutti i valori di misura sono obbligatori: un test senza valore
+            # non può essere registrato (le pause non hanno valore)
+            if "PAUSA" not in test_name.upper() and not test_value:
+                missing_values.append(test_ap and f"{test_name} ({test_ap})" or test_name)
             results_list.append({
                 "name":        test_name,
                 "passed":      test_status.upper() in _PASS_VALUES,
@@ -4898,6 +4903,18 @@ async def mobile_save_verification(device_uuid: str, request: Request,
                 "status":      test_status,
                 "ap_name":     test_ap or None,
             })
+
+    if missing_values:
+        elenco = ", ".join(missing_values[:3]) + ("…" if len(missing_values) > 3 else "")
+        conn = get_db_connection()
+        device, profiles, instruments = _load_form_data(conn)
+        return mobile_templates.TemplateResponse("new_verification.html", {
+            "request": request, "user": user,
+            "device": device, "profiles": profiles, "instruments": instruments,
+            "today": verification_date, "selected_profile": profile_key,
+            "error": f"Inserire il valore misurato per TUTTI i test. Mancanti: {len(missing_values)} ({elenco}).",
+            "back_url": f"/mobile/devices/{device_uuid}",
+        })
 
     # Build visual inspection JSON
     VI_ITEMS = [

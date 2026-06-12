@@ -74,6 +74,7 @@
                    name="test_value_{{ idx }}"
                    class="form-input flex-1 text-sm"
                    placeholder="Valore misurato{% if unit %} ({{ unit }}){% endif %}"
+                   required
                    oninput="evaluateTest({{ idx }})">
             {% if unit %}<span class="text-xs text-gray-500 font-semibold whitespace-nowrap">{{ unit }}</span>{% endif %}
         </div>
@@ -107,7 +108,10 @@
         if (valStr === '') {
             badge.innerHTML = '';
             valInput.classList.remove('border-green-400', 'border-red-400');
-            statusInput.value = 'PASS';
+            // Campo vuoto = test non eseguito: NON deve risultare PASS.
+            // Il campo e' required, quindi il browser blocca l'invio;
+            // lo status vuoto e' la rete di sicurezza lato server.
+            statusInput.value = '';
             updateSummary();
             return;
         }
