@@ -1692,14 +1692,18 @@ class FunctionalProfileWizard(QWizard):
         self.page2.setSubTitle("Scegli un template predefinito")
         page2_layout = QVBoxLayout(self.page2)
         
+        # Lista costruita dai template reali (unica fonte: functional_templates.py)
+        from app.functional_templates import FUNCTIONAL_PROFILE_TEMPLATES
         self.template_list = QListWidget()
-        self.template_list.addItem("ECG - Monitor ECG")
-        self.template_list.addItem("SpO2 - Monitor SpO2")
-        self.template_list.addItem("Defibrillatore")
-        self.template_list.addItem("Ventilatore")
-        self.template_list.addItem("Pompa Infusione")
+        for template_key, template_profile in FUNCTIONAL_PROFILE_TEMPLATES.items():
+            n_sections = len(template_profile.sections)
+            item = QListWidgetItem(f"{template_profile.name}  ({n_sections} sezioni)")
+            item.setData(Qt.UserRole, template_key)
+            self.template_list.addItem(item)
+        if self.template_list.count():
+            self.template_list.setCurrentRow(0)
         page2_layout.addWidget(self.template_list)
-        page2_layout.addWidget(QLabel("💡 I template includono sezioni comuni per il tipo di dispositivo selezionato"))
+        page2_layout.addWidget(QLabel("💡 I template includono le sezioni complete per il tipo di dispositivo selezionato"))
         
         # Pagina 3: Copia da profilo
         self.page3 = QWizardPage()
@@ -1785,8 +1789,9 @@ class FunctionalProfileWizard(QWizard):
         
         if method == "template":
             # Crea profilo da template
-            template_name = self.template_list.currentItem().text() if self.template_list.currentItem() else ""
-            profile = self._create_from_template(template_name, name, key, device_type)
+            item = self.template_list.currentItem()
+            template_key = item.data(Qt.UserRole) if item else None
+            profile = self._create_from_template(template_key, name, key, device_type)
         elif method == "copy":
             # Copia da profilo esistente
             item = self.copy_profile_list.currentItem()
@@ -1813,118 +1818,20 @@ class FunctionalProfileWizard(QWizard):
         
         return profile
     
-    def _create_from_template(self, template_name: str, name: str, key: str, device_type: Optional[str]) -> FunctionalProfile:
-        """Crea un profilo da un template predefinito."""
-        # Template base con sezioni comuni
-        sections = []
-        
-        if "ECG" in template_name:
-            sections = [
-                FunctionalSection(
-                    key="normative_references",
-                    title="Riferimenti Normativi-Procedure",
-                    section_type="fields",
-                    description="",
-                    fields=[
-                        FunctionalField(
-                            key="norme_procedure",
-                            label="Norme/Procedure",
-                            field_type="text",
-                            required=False,
-                            default="CEI 62-26/AMS-MOD-PROVECG1",
-                        )
-                    ],
-                    rows=[],
-                ),
-                FunctionalSection(
-                    key="visual_functional_control",
-                    title="Controllo Visivo/Funzionale",
-                    section_type="checklist",
-                    description="",
-                    fields=[],
-                    rows=[
-                        FunctionalRowDefinition(
-                            key="serigrafie_etichette",
-                            label="Leggibilità delle serigrafie/etichette",
-                            fields=[
-                                FunctionalField(
-                                    key="esito",
-                                    label="Esito",
-                                    field_type="choice",
-                                    required=True,
-                                    options=["OK", "KO", "N.A."],
-                                )
-                            ],
-                        ),
-                    ],
-                ),
-            ]
-        elif "SpO2" in template_name:
-            sections = [
-                FunctionalSection(
-                    key="normative_references",
-                    title="Riferimenti Normativi-Procedure",
-                    section_type="fields",
-                    description="",
-                    fields=[
-                        FunctionalField(
-                            key="norme_procedure",
-                            label="Norme/Procedure",
-                            field_type="text",
-                            required=False,
-                        )
-                    ],
-                    rows=[],
-                ),
-                FunctionalSection(
-                    key="visual_functional_control",
-                    title="Controllo Visivo/Funzionale",
-                    section_type="checklist",
-                    description="",
-                    fields=[],
-                    rows=[
-                        FunctionalRowDefinition(
-                            key="serigrafie_etichette",
-                            label="Leggibilità delle serigrafie/etichette",
-                            fields=[
-                                FunctionalField(
-                                    key="esito",
-                                    label="Esito",
-                                    field_type="choice",
-                                    required=True,
-                                    options=["OK", "KO", "N.A."],
-                                )
-                            ],
-                        ),
-                    ],
-                ),
-            ]
-        else:
-            # Template generico
-            sections = [
-                FunctionalSection(
-                    key="general_info",
-                    title="Informazioni Generali",
-                    section_type="fields",
-                    description="",
-                    fields=[
-                        FunctionalField(
-                            key="note",
-                            label="Note",
-                            field_type="multiline",
-                            required=False,
-                        )
-                    ],
-                    rows=[],
-                ),
-            ]
-        
-        return FunctionalProfile(
-            profile_key=key,
-            name=name,
-            device_type=device_type,
-            sections=sections,
+    def _create_from_template(self, template_key: Optional[str], name: str, key: str, device_type: Optional[str]) -> FunctionalProfile:
+        """Crea un profilo da un template predefinito (functional_templates.py)."""
+        from app.functional_templates import (
+            FUNCTIONAL_PROFILE_TEMPLATES, build_generic_functional_profile,
         )
+        template = FUNCTIONAL_PROFILE_TEMPLATES.get(template_key or "")
+        if template is None:
+            template = build_generic_functional_profile()
+
+        profile = copy.deepcopy(template)
+        profile.profile_key = key
+        profile.name = name
+        profile.device_type = device_type or template.device_type
+        return profile
 
 
 class FunctionalProfileManagerDialog(QDialog):
