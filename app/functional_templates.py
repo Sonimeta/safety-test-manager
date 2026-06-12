@@ -341,10 +341,10 @@ def build_ecg_functional_profile() -> FunctionalProfile:
                     _checklist_row("traccia", "Visualizzazione corretta della traccia ECG"),
                     _checklist_row("frequenza", "Lettura frequenza cardiaca dal simulatore",
                                    extra_fields=[FunctionalField(
-                                       key="valore", label="Valore letto (bpm)",
+                                       key="valore", label="Valore (bpm)",
                                        field_type="number", unit="bpm")]),
                     _checklist_row("allarmi", "Funzionamento allarmi"),
-                    _checklist_row("stampa", "Stampa/registrazione traccia", required=False),
+                    _checklist_row("stampa", "Stampa/registrazione traccia"),
                 ],
             ),
             build_notes_section(),
@@ -367,11 +367,11 @@ def build_spo2_functional_profile() -> FunctionalProfile:
                 rows=[
                     _checklist_row("lettura_sat", "Lettura saturazione dal simulatore",
                                    extra_fields=[FunctionalField(
-                                       key="valore", label="Valore letto (%)",
+                                       key="valore", label="Valore (%)",
                                        field_type="number", unit="%")]),
                     _checklist_row("lettura_fc", "Lettura frequenza cardiaca dal simulatore",
                                    extra_fields=[FunctionalField(
-                                       key="valore", label="Valore letto (bpm)",
+                                       key="valore", label="Valore (bpm)",
                                        field_type="number", unit="bpm")]),
                     _checklist_row("allarmi", "Funzionamento allarmi"),
                     _checklist_row("sensore", "Integrità sensore e cavo"),

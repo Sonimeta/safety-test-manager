@@ -34,9 +34,18 @@ from PySide6.QtWidgets import (
     QWizard,
     QWizardPage,
     QTextEdit,
+    QPlainTextEdit,
 )
 
 from app import config, services
+from app.functional_builder import (
+    SimpleChecklist,
+    SimpleFunctionalOptions,
+    build_sections,
+    checklist_from_text,
+    format_item_line,
+    parse_profile_sections,
+)
 from app.functional_models import (
     FunctionalField,
     FunctionalProfile,
@@ -1274,8 +1283,22 @@ class FunctionalProfileEditorDialog(QDialog):
             btn_row.addWidget(btn)
         btn_row.addStretch()
         sections_layout.addLayout(btn_row)
-        left_layout.addWidget(sections_group, 1)
-        
+        # Selettore modalità sezioni: guidata (testo semplice) / editor completo
+        mode_row = QHBoxLayout()
+        self.sections_mode_label = QLabel("")
+        self.sections_mode_label.setStyleSheet("font-weight: bold;")
+        self.sections_mode_btn = QPushButton("")
+        self.sections_mode_btn.clicked.connect(self._toggle_sections_mode)
+        mode_row.addWidget(self.sections_mode_label)
+        mode_row.addStretch()
+        mode_row.addWidget(self.sections_mode_btn)
+        left_layout.addLayout(mode_row)
+
+        self.sections_stack = QStackedWidget()
+        self.sections_stack.addWidget(self._build_simple_sections_page())  # 0 = guidata
+        self.sections_stack.addWidget(sections_group)                      # 1 = completo
+        left_layout.addWidget(self.sections_stack, 1)
+
         content_layout.addWidget(left_widget, 2)
         
         # Colonna destra: Anteprima
@@ -1305,7 +1328,213 @@ class FunctionalProfileEditorDialog(QDialog):
         self.sections_list.currentRowChanged.connect(self._update_preview)
 
         self._refresh_sections()
+
+        # Modalità iniziale: guidata se la struttura del profilo è riconoscibile
+        parsed = parse_profile_sections(self.profile)
+        if parsed is not None:
+            if not self.profile.sections and not parsed.checklists:
+                # Nuovo profilo: normativa e note attive, checklist visiva
+                # standard precompilata come punto di partenza
+                parsed.include_normative = True
+                parsed.include_notes = True
+                parsed.checklists = [SimpleChecklist(
+                    title="Controllo Visivo/Funzionale",
+                    items=[],
+                )]
+                self._default_checklist_text = (
+                    "Integrità generale apparecchiatura\n"
+                    "Leggibilità delle serigrafie/etichette\n"
+                    "Integrità cavo di alimentazione\n"
+                    "Integrità involucro\n"
+                    "Integrità accessori\n"
+                    "Manuale d'uso disponibile"
+                )
+            self._load_simple_options(parsed)
+            self._set_sections_mode(simple=True)
+        else:
+            self._set_sections_mode(simple=False)
         self._update_preview()
+
+    # ─── Modalità guidata (sezioni come testo semplice) ──────────────────
+
+    def _build_simple_sections_page(self) -> QWidget:
+        page = QWidget()
+        v = QVBoxLayout(page)
+        v.setContentsMargins(0, 0, 0, 0)
+
+        norm_row = QHBoxLayout()
+        self.simple_chk_normative = QCheckBox("Riferimenti normativi:")
+        self.simple_chk_normative.setChecked(True)
+        self.simple_normative_edit = QLineEdit()
+        self.simple_normative_edit.setPlaceholderText("es. CEI 62353 / AMS-MOD-…")
+        norm_row.addWidget(self.simple_chk_normative)
+        norm_row.addWidget(self.simple_normative_edit, 1)
+        v.addLayout(norm_row)
+
+        self._simple_checklist_boxes = []
+        self._simple_normative_key = None
+        self._simple_notes_key = None
+        self._default_checklist_text = ""
+        self.simple_checklists_layout = QVBoxLayout()
+        self.simple_checklists_layout.setSpacing(8)
+        container = QWidget()
+        cv = QVBoxLayout(container)
+        cv.setContentsMargins(0, 0, 0, 0)
+        cv.addLayout(self.simple_checklists_layout)
+        cv.addStretch()
+        scroll = QScrollArea()
+        scroll.setWidget(container)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        v.addWidget(scroll, 1)
+
+        bottom_row = QHBoxLayout()
+        add_cl_btn = QPushButton(qta.icon('fa5s.plus'), " Aggiungi checklist")
+        add_cl_btn.clicked.connect(lambda: self._add_simple_checklist())
+        self.simple_chk_notes = QCheckBox("Sezione note aggiuntive")
+        self.simple_chk_notes.setChecked(True)
+        bottom_row.addWidget(add_cl_btn)
+        bottom_row.addStretch()
+        bottom_row.addWidget(self.simple_chk_notes)
+        v.addLayout(bottom_row)
+
+        hint = QLabel("💡 Una verifica per riga. Aggiungi “[unità]” per registrare anche "
+                      "un valore misurato, es: Lettura SpO2 [%]")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #64748b; font-size: 11px;")
+        v.addWidget(hint)
+
+        self.simple_chk_normative.toggled.connect(self._on_simple_changed)
+        self.simple_normative_edit.textChanged.connect(self._on_simple_changed)
+        self.simple_chk_notes.toggled.connect(self._on_simple_changed)
+        return page
+
+    def _add_simple_checklist(self, checklist: Optional[SimpleChecklist] = None,
+                              prefill_text: str = ""):
+        box = QGroupBox()
+        bl = QVBoxLayout(box)
+        head = QHBoxLayout()
+        title_edit = QLineEdit(checklist.title if checklist else "")
+        title_edit.setPlaceholderText("Titolo sezione (es. Controllo Visivo/Funzionale)")
+        remove_btn = QPushButton(qta.icon('fa5s.trash'), "")
+        remove_btn.setToolTip("Rimuovi questa checklist")
+        head.addWidget(QLabel("Checklist:"))
+        head.addWidget(title_edit, 1)
+        head.addWidget(remove_btn)
+        bl.addLayout(head)
+
+        items_edit = QPlainTextEdit()
+        items_edit.setPlaceholderText("Una verifica per riga…\n"
+                                      "Integrità involucro\n"
+                                      "Lettura SpO2 [%]")
+        items_edit.setMinimumHeight(90)
+        if checklist and checklist.items:
+            items_edit.setPlainText("\n".join(format_item_line(i) for i in checklist.items))
+        elif prefill_text:
+            items_edit.setPlainText(prefill_text)
+        bl.addWidget(items_edit)
+
+        box._title_edit = title_edit
+        box._items_edit = items_edit
+        box._source = checklist
+        title_edit.textChanged.connect(self._on_simple_changed)
+        items_edit.textChanged.connect(self._on_simple_changed)
+        remove_btn.clicked.connect(lambda _=False, b=box: self._remove_simple_checklist(b))
+
+        self._simple_checklist_boxes.append(box)
+        self.simple_checklists_layout.addWidget(box)
+        self._on_simple_changed()
+
+    def _remove_simple_checklist(self, box):
+        if box in self._simple_checklist_boxes:
+            self._simple_checklist_boxes.remove(box)
+            self.simple_checklists_layout.removeWidget(box)
+            box.deleteLater()
+            self._on_simple_changed()
+
+    def _collect_simple_options(self) -> SimpleFunctionalOptions:
+        checklists = [
+            checklist_from_text(
+                box._title_edit.text().strip() or "Checklist",
+                box._items_edit.toPlainText(),
+                source=box._source,
+            )
+            for box in self._simple_checklist_boxes
+        ]
+        return SimpleFunctionalOptions(
+            include_normative=self.simple_chk_normative.isChecked(),
+            normative_default=self.simple_normative_edit.text(),
+            checklists=checklists,
+            include_notes=self.simple_chk_notes.isChecked(),
+            normative_key=self._simple_normative_key,
+            notes_key=self._simple_notes_key,
+        )
+
+    def _load_simple_options(self, opts: SimpleFunctionalOptions):
+        self._simple_normative_key = opts.normative_key
+        self._simple_notes_key = opts.notes_key
+
+        for w in (self.simple_chk_normative, self.simple_normative_edit, self.simple_chk_notes):
+            w.blockSignals(True)
+        self.simple_chk_normative.setChecked(opts.include_normative)
+        self.simple_normative_edit.setText(opts.normative_default)
+        self.simple_chk_notes.setChecked(opts.include_notes)
+        for w in (self.simple_chk_normative, self.simple_normative_edit, self.simple_chk_notes):
+            w.blockSignals(False)
+
+        for box in list(self._simple_checklist_boxes):
+            self._remove_simple_checklist(box)
+        for checklist in opts.checklists:
+            self._add_simple_checklist(checklist,
+                                       prefill_text=self._default_checklist_text)
+        self._default_checklist_text = ""
+        self._on_simple_changed()
+
+    def _on_simple_changed(self, *args):
+        if hasattr(self, "preview_text"):
+            self._update_preview()
+
+    def _current_sections(self):
+        """Sezioni correnti: costruite dalla guidata oppure quelle del profilo."""
+        if getattr(self, "_sections_simple_mode", False):
+            try:
+                return build_sections(self._collect_simple_options())
+            except Exception:
+                return self.profile.sections
+        return self.profile.sections
+
+    def _set_sections_mode(self, simple: bool):
+        self._sections_simple_mode = simple
+        self.sections_stack.setCurrentIndex(0 if simple else 1)
+        if simple:
+            self.sections_mode_label.setText("✦ MODALITÀ GUIDATA — checklist come testo semplice")
+            self.sections_mode_btn.setText("EDITOR COMPLETO…")
+        else:
+            self.sections_mode_label.setText("🛠 EDITOR COMPLETO — sezioni, tabelle e formule")
+            self.sections_mode_btn.setText("TORNA ALLA GUIDATA…")
+        if hasattr(self, "preview_text"):
+            self._update_preview()
+
+    def _toggle_sections_mode(self):
+        if self._sections_simple_mode:
+            # Guidata → completo: travasa le sezioni costruite
+            self.profile.sections = build_sections(self._collect_simple_options())
+            self._refresh_sections()
+            self._set_sections_mode(simple=False)
+        else:
+            temp = FunctionalProfile(profile_key="x", name="x",
+                                     sections=self.profile.sections)
+            parsed = parse_profile_sections(temp)
+            if parsed is None:
+                QMessageBox.information(
+                    self, "Modalità guidata non disponibile",
+                    "Il profilo contiene tabelle, formule o campi particolari\n"
+                    "che la modalità guidata non può rappresentare.\n\n"
+                    "Continua nell'editor completo.",
+                )
+                return
+            self._load_simple_options(parsed)
+            self._set_sections_mode(simple=True)
 
     def _refresh_sections(self):
         """Aggiorna la lista delle sezioni con icone e colori."""
@@ -1333,18 +1562,19 @@ class FunctionalProfileEditorDialog(QDialog):
         self._update_preview()
     
     def _update_preview(self):
-        """Aggiorna l'anteprima del profilo."""
+        """Aggiorna l'anteprima del profilo (dalla guidata o dal profilo)."""
         name = self.name_edit.text().strip() or "Nome Profilo"
         device_type = self.device_type_edit.text().strip()
-        
+        sections = self._current_sections()
+
         preview_html = f"<h3>{name}</h3>"
         if device_type:
             preview_html += f"<p><b>Tipo:</b> {device_type}</p>"
-        
-        preview_html += f"<p><b>Sezioni:</b> {len(self.profile.sections)}</p>"
+
+        preview_html += f"<p><b>Sezioni:</b> {len(sections)}</p>"
         preview_html += "<hr>"
-        
-        for idx, section in enumerate(self.profile.sections):
+
+        for idx, section in enumerate(sections):
             preview_html += f"<h4>{idx + 1}. {section.title}</h4>"
             preview_html += f"<p style='color: #64748b;'><i>Tipo: {section.section_type}</i></p>"
             
@@ -1611,6 +1841,10 @@ class FunctionalProfileEditorDialog(QDialog):
         if not name:
             QMessageBox.warning(self, "Nome mancante", "Il nome del profilo è obbligatorio.")
             return
+
+        # In modalità guidata le sezioni vengono costruite dalle checklist
+        if getattr(self, "_sections_simple_mode", False):
+            self.profile.sections = build_sections(self._collect_simple_options())
 
         if self.is_new:
             key = sanitize_profile_key(self.key_edit.text() or name)
