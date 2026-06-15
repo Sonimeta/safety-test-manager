@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QStackedWidget,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -1121,6 +1122,7 @@ class FunctionalProfileEditorDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Editor Profilo Funzionale")
         self.setMinimumSize(1000, 700)
+        self.resize(1180, 780)
         # Applica il tema corrente
         self.setStyleSheet(config.get_current_stylesheet())
         self.is_new = is_new
@@ -1142,11 +1144,16 @@ class FunctionalProfileEditorDialog(QDialog):
 
         # Layout orizzontale: form a sinistra, anteprima a destra
         content_layout = QHBoxLayout()
-        
-        # Colonna sinistra: Form
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-        
+
+        # Colonna sinistra a SCHEDE: separa il lavoro sul contenuto dalle
+        # informazioni/strumenti, così ogni parte ha tutto lo spazio in altezza
+        # (prima erano impilati e l'area di editing restava schiacciata in fondo)
+        self.editor_tabs = QTabWidget()
+
+        # Scheda "Informazioni e strumenti"
+        info_tab = QWidget()
+        left_layout = QVBoxLayout(info_tab)
+
         form_widget = QGroupBox("Informazioni Base")
         form = QFormLayout(form_widget)
         self.name_edit = QLineEdit(self.profile.name)
@@ -1254,7 +1261,7 @@ class FunctionalProfileEditorDialog(QDialog):
         self.instruments_sort_combo.currentIndexChanged.connect(self._refresh_instruments_list)
         self.instruments_list.itemSelectionChanged.connect(self._capture_instrument_selection)
         instruments_layout.addWidget(self.instruments_list)
-        left_layout.addWidget(instruments_group)
+        left_layout.addWidget(instruments_group, 1)
 
         # Sezioni
         sections_group = QGroupBox("Sezioni del Profilo")
@@ -1287,7 +1294,11 @@ class FunctionalProfileEditorDialog(QDialog):
             btn_row.addWidget(btn)
         btn_row.addStretch()
         sections_layout.addLayout(btn_row)
-        # Selettore modalità sezioni: guidata (testo semplice) / editor completo
+        # Scheda "Contenuto del profilo": selettore modalità + sezioni,
+        # a tutta altezza — è qui che si lavora di più
+        content_tab = QWidget()
+        content_tab_layout = QVBoxLayout(content_tab)
+
         mode_row = QHBoxLayout()
         self.sections_mode_label = QLabel("")
         self.sections_mode_label.setStyleSheet("font-weight: bold;")
@@ -1296,24 +1307,27 @@ class FunctionalProfileEditorDialog(QDialog):
         mode_row.addWidget(self.sections_mode_label)
         mode_row.addStretch()
         mode_row.addWidget(self.sections_mode_btn)
-        left_layout.addLayout(mode_row)
+        content_tab_layout.addLayout(mode_row)
 
         self.sections_stack = QStackedWidget()
         self.sections_stack.addWidget(self._build_simple_sections_page())  # 0 = guidata
         self.sections_stack.addWidget(sections_group)                      # 1 = completo
-        left_layout.addWidget(self.sections_stack, 1)
+        content_tab_layout.addWidget(self.sections_stack, 1)
 
-        content_layout.addWidget(left_widget, 2)
-        
-        # Colonna destra: Anteprima
+        # Contenuto come prima scheda (attiva di default), info come seconda
+        self.editor_tabs.addTab(content_tab, qta.icon('fa5s.list-ul'), "  Contenuto del profilo")
+        self.editor_tabs.addTab(info_tab, qta.icon('fa5s.info-circle'), "  Informazioni e strumenti")
+        content_layout.addWidget(self.editor_tabs, 2)
+
+        # Colonna destra: Anteprima (sempre visibile, accanto alle schede)
         preview_group = QGroupBox("Anteprima Profilo")
         preview_layout = QVBoxLayout(preview_group)
         self.preview_text = QTextEdit()
         self.preview_text.setReadOnly(True)
-        self.preview_text.setMaximumWidth(350)
+        self.preview_text.setMinimumWidth(300)
         preview_layout.addWidget(self.preview_text)
         content_layout.addWidget(preview_group, 1)
-        
+
         main_layout.addLayout(content_layout)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -1387,22 +1401,32 @@ class FunctionalProfileEditorDialog(QDialog):
         v.addWidget(hint)
         return page
 
+    def _compact_icon_button(self, icon_name: str, tooltip: str, color: str = "#475569") -> QPushButton:
+        """Pulsante con sola icona, compatto: annulla min-width/padding del QSS globale."""
+        btn = QPushButton(qta.icon(icon_name, color=color), "")
+        btn.setToolTip(tooltip)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setFixedSize(32, 28)
+        btn.setStyleSheet(
+            "QPushButton { min-width: 0; padding: 2px; border: 1px solid #cbd5e1;"
+            " border-radius: 6px; background: #f8fafc; }"
+            " QPushButton:hover { background: #e2e8f0; }"
+        )
+        return btn
+
     def _make_block_head(self, box, kind_label: str, title_text: str,
                          title_placeholder: str) -> QLineEdit:
         """Riga di testa comune ai blocchi: tipo, titolo, sposta, rimuovi."""
         head = QHBoxLayout()
         kind = QLabel(kind_label)
         kind.setStyleSheet("font-weight: bold; color: #475569;")
+        kind.setFixedWidth(72)
         title_edit = QLineEdit(title_text)
         title_edit.setPlaceholderText(title_placeholder)
-        up_btn = QPushButton(qta.icon('fa5s.arrow-up'), "")
-        up_btn.setToolTip("Sposta su")
-        down_btn = QPushButton(qta.icon('fa5s.arrow-down'), "")
-        down_btn.setToolTip("Sposta giù")
-        remove_btn = QPushButton(qta.icon('fa5s.trash'), "")
-        remove_btn.setToolTip("Rimuovi questa sezione")
-        for b in (up_btn, down_btn, remove_btn):
-            b.setFixedWidth(34)
+        title_edit.setMinimumWidth(220)
+        up_btn = self._compact_icon_button('fa5s.arrow-up', "Sposta su")
+        down_btn = self._compact_icon_button('fa5s.arrow-down', "Sposta giù")
+        remove_btn = self._compact_icon_button('fa5s.trash', "Rimuovi questa sezione", color="#dc2626")
         head.addWidget(kind)
         head.addWidget(title_edit, 1)
         head.addWidget(up_btn)
@@ -1479,8 +1503,10 @@ class FunctionalProfileEditorDialog(QDialog):
 
         label_edit = QLineEdit(spec.label if spec else "")
         label_edit.setPlaceholderText("Etichetta (es. Pressione misurata)")
+        label_edit.setMinimumWidth(150)
 
         type_combo = QComboBox()
+        type_combo.setMinimumWidth(140)
         for ft in FIELD_TYPES:
             info = FIELD_TYPE_INFO.get(ft, {})
             type_combo.addItem(
@@ -1494,12 +1520,11 @@ class FunctionalProfileEditorDialog(QDialog):
                 type_combo.setCurrentIndex(idx)
 
         detail_edit = QLineEdit(spec.detail if spec else "")
+        detail_edit.setMinimumWidth(130)
         req_chk = QCheckBox("Obbl.")
         req_chk.setToolTip("Campo obbligatorio in verifica")
         req_chk.setChecked(spec.required if spec else False)
-        remove_btn = QPushButton(qta.icon('fa5s.times'), "")
-        remove_btn.setToolTip("Rimuovi campo")
-        remove_btn.setFixedWidth(28)
+        remove_btn = self._compact_icon_button('fa5s.times', "Rimuovi campo", color="#dc2626")
 
         rl.addWidget(label_edit, 3)
         rl.addWidget(type_combo, 2)
