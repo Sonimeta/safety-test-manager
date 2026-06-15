@@ -3,6 +3,7 @@
 import pytest
 
 from app.functional_builder import (
+    OutlineView,
     SimpleChecklist,
     SimpleChecklistItem,
     SimpleFieldSpec,
@@ -13,7 +14,11 @@ from app.functional_builder import (
     default_new_profile_blocks,
     detail_for_field,
     format_item_line,
+    options_from_outline_view,
+    outline_from_checklists,
+    outline_view_from_options,
     parse_item_line,
+    parse_outline,
     parse_profile_sections,
 )
 from app.functional_models import (
@@ -260,6 +265,102 @@ class TestDefaultNewProfile:
         assert detail_for_field(f) == "A, B"
         f2 = FunctionalField(key="y", label="Y", field_type="rating", rating_max=7)
         assert detail_for_field(f2) == "7"
+
+
+class TestOutline:
+    def test_parse_sezioni_e_voci(self):
+        text = ("# Controllo Visivo\n"
+                "Integrità involucro\n"
+                "Lettura SpO2 [%]\n"
+                "\n"
+                "# Controllo Funzionale\n"
+                "- Allarmi acustici\n")
+        cls = parse_outline(text)
+        assert [c.title for c in cls] == ["Controllo Visivo", "Controllo Funzionale"]
+        assert [i.label for i in cls[0].items] == ["Integrità involucro", "Lettura SpO2"]
+        assert cls[0].items[1].unit == "%"
+        assert cls[1].items[0].label == "Allarmi acustici"  # trattino rimosso
+
+    def test_righe_senza_sezione_iniziale(self):
+        cls = parse_outline("Prima verifica\nSeconda verifica")
+        assert len(cls) == 1 and cls[0].title == "Verifiche"
+        assert len(cls[0].items) == 2
+
+    def test_outline_round_trip_testo(self):
+        text = "# A\nVoce 1\nVoce 2 [V]\n\n# B\nVoce 3"
+        assert outline_from_checklists(parse_outline(text)) == text
+
+    def test_titoli_diversi_marcatori_hash(self):
+        cls = parse_outline("## Doppio cancelletto\nVoce")
+        assert cls[0].title == "Doppio cancelletto"
+
+
+class TestOutlineView:
+    def test_da_opzioni_a_vista(self):
+        opts = SimpleFunctionalOptions(blocks=[
+            SimpleFormSection(title="Riferimenti Normativi-Procedure",
+                              key="normative_references",
+                              fields=[SimpleFieldSpec(label="Norme/Procedure",
+                                                      field_type="text", detail="CEI 62353",
+                                                      key="norme_procedure")]),
+            SimpleChecklist(title="Visivi", items=[SimpleChecklistItem(label="Involucro")]),
+            SimpleFormSection(title="Note aggiuntive", key="notes",
+                              fields=[SimpleFieldSpec(label="Note", field_type="multiline",
+                                                      key="note")]),
+        ])
+        view = outline_view_from_options(opts)
+        assert view is not None
+        assert view.normative == "CEI 62353"
+        assert view.has_notes is True
+        assert "# Visivi" in view.outline and "Involucro" in view.outline
+
+    def test_modulo_campi_in_mezzo_non_rappresentabile(self):
+        opts = SimpleFunctionalOptions(blocks=[
+            SimpleFormSection(title="Dati", fields=[
+                SimpleFieldSpec(label="Pressione", field_type="number", detail="mmHg")]),
+            SimpleChecklist(title="Visivi", items=[SimpleChecklistItem(label="X")]),
+        ])
+        # un modulo numerico in mezzo non è normativa/note: serve l'avanzato
+        assert outline_view_from_options(opts) is None
+
+    def test_round_trip_vista_opzioni(self):
+        view = OutlineView(
+            normative="CEI 62353",
+            outline="# Visivi\nInvolucro\nLettura FC [bpm]\n\n# Funzionali\nAllarmi",
+            has_notes=True,
+        )
+        opts = options_from_outline_view(view)
+        sections = build_sections(opts)
+        assert [s.section_type for s in sections] == ["fields", "checklist", "checklist", "fields"]
+        assert sections[0].fields[0].default == "CEI 62353"
+        assert sections[1].rows[1].fields[1].unit == "bpm"
+
+    def test_preserva_chiavi_checklist_esistenti(self):
+        # Una checklist di origine con chiavi storiche: vanno conservate
+        source = SimpleChecklist(title="Visivi", key="sec_storica", items=[
+            SimpleChecklistItem(label="Involucro", key="riga_storica"),
+        ])
+        view = OutlineView(normative=None, outline="# Visivi\nInvolucro\nNuova voce",
+                           has_notes=False, sources=[source])
+        opts = options_from_outline_view(view)
+        cl = opts.blocks[0]
+        assert cl.key == "sec_storica"
+        assert cl.items[0].key == "riga_storica"  # match per etichetta
+        assert cl.items[1].key is None            # nuova voce
+
+    @pytest.mark.parametrize("template_key", ["ecg_fun", "spo2_fun", "generico_fun"])
+    def test_template_round_trip_via_documento(self, template_key):
+        template = FUNCTIONAL_PROFILE_TEMPLATES[template_key]
+        opts = parse_profile_sections(template)
+        view = outline_view_from_options(opts)
+        assert view is not None, f"{template_key} non rappresentabile come documento"
+        rebuilt = build_sections(options_from_outline_view(view))
+        assert rebuilt == template.sections
+
+    def test_defibrillatore_non_rappresentabile(self):
+        defib = FUNCTIONAL_PROFILE_TEMPLATES["defibrillatore_fun"]
+        opts = parse_profile_sections(defib)
+        assert opts is None or outline_view_from_options(opts) is None
 
 
 if __name__ == "__main__":

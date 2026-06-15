@@ -142,6 +142,157 @@ def checklist_from_text(title: str, text: str,
     )
 
 
+# ─── Editor a documento: outline testuale ───────────────────────────────────
+#
+# Grammatica:
+#   # Titolo sezione      → apre una checklist
+#   testo                 → una verifica (esito OK/KO/N.A.)
+#   testo [unità]         → verifica + campo valore numerico
+#   - testo               → il trattino iniziale è opzionale
+# Righe vuote ignorate. È il formato della modalità "documento" dell'editor.
+
+def parse_outline(text: str) -> List[SimpleChecklist]:
+    """Trasforma il testo dell'outline in una lista di checklist."""
+    checklists: List[SimpleChecklist] = []
+    current: Optional[SimpleChecklist] = None
+    for raw in text.splitlines():
+        stripped = raw.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("#"):
+            title = stripped.lstrip("#").strip()
+            current = SimpleChecklist(title=title or "Checklist", items=[])
+            checklists.append(current)
+            continue
+        if stripped.startswith("- "):
+            stripped = stripped[2:].strip()
+        item = parse_item_line(stripped)
+        if item is None:
+            continue
+        if current is None:
+            current = SimpleChecklist(title="Verifiche", items=[])
+            checklists.append(current)
+        current.items.append(item)
+    return checklists
+
+
+def outline_from_checklists(checklists: List[SimpleChecklist]) -> str:
+    """Serializza le checklist nel testo dell'outline."""
+    lines: List[str] = []
+    for i, checklist in enumerate(checklists):
+        if i > 0:
+            lines.append("")
+        lines.append(f"# {checklist.title}")
+        for item in checklist.items:
+            lines.append(format_item_line(item))
+    return "\n".join(lines)
+
+
+@dataclass
+class OutlineView:
+    """Vista 'documento' di un profilo: riferimenti normativi (opzionali),
+    le checklist come testo, e l'eventuale sezione note finale.
+
+    Le checklist di origine (`sources`) servono a preservare le chiavi di
+    sezioni e righe quando si modifica un profilo esistente: senza, i dati
+    delle verifiche passate si disallineerebbero.
+    """
+    normative: Optional[str]          # None = sezione assente; "" = presente, vuota
+    outline: str
+    has_notes: bool
+    sources: List[SimpleChecklist] = field(default_factory=list)
+    normative_key: Optional[str] = None
+    normative_field_key: Optional[str] = None
+    notes_key: Optional[str] = None
+    notes_field_key: Optional[str] = None
+
+
+def _is_single_field_form(block, field_type: str) -> bool:
+    return (isinstance(block, SimpleFormSection) and len(block.fields) == 1
+            and block.fields[0].field_type == field_type)
+
+
+def outline_view_from_options(opts: SimpleFunctionalOptions) -> Optional[OutlineView]:
+    """Riconduce le opzioni a una vista documento. Ritorna None se la struttura
+    non è rappresentabile come documento (moduli campi diversi da
+    normativa/note in mezzo alle checklist): in quel caso serve l'avanzato."""
+    blocks = list(opts.blocks)
+    normative = None
+    normative_key = normative_field_key = None
+    notes_key = notes_field_key = None
+    has_notes = False
+    i, end = 0, len(blocks)
+
+    if blocks and _is_single_field_form(blocks[0], "text"):
+        normative = str(blocks[0].fields[0].detail or "")
+        normative_key = blocks[0].key
+        normative_field_key = blocks[0].fields[0].key
+        i = 1
+
+    if end > i and _is_single_field_form(blocks[end - 1], "multiline"):
+        has_notes = True
+        notes_key = blocks[end - 1].key
+        notes_field_key = blocks[end - 1].fields[0].key
+        end -= 1
+
+    middle = blocks[i:end]
+    if any(not isinstance(b, SimpleChecklist) for b in middle):
+        return None
+
+    return OutlineView(
+        normative=normative,
+        outline=outline_from_checklists(middle),
+        has_notes=has_notes,
+        sources=list(middle),
+        normative_key=normative_key,
+        normative_field_key=normative_field_key,
+        notes_key=notes_key,
+        notes_field_key=notes_field_key,
+    )
+
+
+def options_from_outline_view(view: OutlineView) -> SimpleFunctionalOptions:
+    """Ricostruisce le opzioni (blocchi) dalla vista documento, preservando le
+    chiavi delle checklist di origine tramite il match per titolo/etichetta."""
+    src_by_title = {}
+    for s in view.sources:
+        src_by_title.setdefault(s.title, s)
+
+    blocks: List[SimpleBlock] = []
+
+    if view.normative is not None:
+        blocks.append(SimpleFormSection(
+            title="Riferimenti Normativi-Procedure",
+            key=view.normative_key or "normative_references",
+            fields=[SimpleFieldSpec(
+                label="Norme/Procedure", field_type="text",
+                detail=view.normative,
+                key=view.normative_field_key or "norme_procedure")],
+        ))
+
+    for checklist in parse_outline(view.outline):
+        source = src_by_title.get(checklist.title)
+        if source is not None:
+            by_label = {it.label: it.key for it in source.items if it.key}
+            checklist.key = source.key
+            checklist.description = source.description
+            checklist.show_in_summary = source.show_in_summary
+            for item in checklist.items:
+                item.key = by_label.get(item.label)
+        blocks.append(checklist)
+
+    if view.has_notes:
+        blocks.append(SimpleFormSection(
+            title="Note aggiuntive",
+            key=view.notes_key or "notes",
+            fields=[SimpleFieldSpec(
+                label="Note", field_type="multiline",
+                key=view.notes_field_key or "note")],
+        ))
+
+    return SimpleFunctionalOptions(blocks=blocks)
+
+
 # ─── Dettaglio dei campi modulo ─────────────────────────────────────────────
 
 def detail_for_field(f: FunctionalField) -> str:

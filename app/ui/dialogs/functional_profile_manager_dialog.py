@@ -32,23 +32,18 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
     QSpinBox,
-    QWizard,
-    QWizardPage,
     QTextEdit,
     QPlainTextEdit,
 )
 
 from app import config, services
 from app.functional_builder import (
-    SimpleChecklist,
-    SimpleFieldSpec,
-    SimpleFormSection,
+    OutlineView,
     SimpleFunctionalOptions,
     build_sections,
-    checklist_from_text,
     default_new_profile_blocks,
-    detail_placeholder,
-    format_item_line,
+    options_from_outline_view,
+    outline_view_from_options,
     parse_profile_sections,
 )
 from app.functional_models import (
@@ -1134,13 +1129,22 @@ class FunctionalProfileEditorDialog(QDialog):
         )
 
         main_layout = QVBoxLayout(self)
-        
-        # Header
-        header_layout = QHBoxLayout()
-        title_label = QLabel(f"<h2>{'Nuovo' if is_new else 'Modifica'} Profilo Funzionale</h2>")
-        header_layout.addWidget(title_label)
-        header_layout.addStretch()
-        main_layout.addLayout(header_layout)
+
+        # Barra in alto sempre visibile: nome e tipo apparecchio, i dati che
+        # servono subito (prima erano in un wizard separato / nascosti in scheda)
+        header_box = QGroupBox(f"{'Nuovo' if is_new else 'Modifica'} Profilo Funzionale")
+        header_layout = QHBoxLayout(header_box)
+        header_layout.addWidget(QLabel("Nome *:"))
+        self.name_edit = QLineEdit(self.profile.name)
+        self.name_edit.setPlaceholderText("es. Monitor multiparametrico")
+        self.name_edit.textChanged.connect(self._update_preview)
+        header_layout.addWidget(self.name_edit, 3)
+        header_layout.addWidget(QLabel("Tipo apparecchio:"))
+        self.device_type_edit = QLineEdit(self.profile.device_type or "")
+        self.device_type_edit.setPlaceholderText("es. MONITOR")
+        self.device_type_edit.textChanged.connect(self._update_preview)
+        header_layout.addWidget(self.device_type_edit, 2)
+        main_layout.addWidget(header_box)
 
         # Layout orizzontale: form a sinistra, anteprima a destra
         content_layout = QHBoxLayout()
@@ -1156,18 +1160,12 @@ class FunctionalProfileEditorDialog(QDialog):
 
         form_widget = QGroupBox("Informazioni Base")
         form = QFormLayout(form_widget)
-        self.name_edit = QLineEdit(self.profile.name)
-        self.name_edit.textChanged.connect(self._update_preview)
-        form.addRow("Nome Profilo *:", self.name_edit)
 
         self.key_edit = QLineEdit(self.profile.profile_key)
+        self.key_edit.setPlaceholderText("Generata automaticamente dal nome")
         if not self.is_new:
             self.key_edit.setDisabled(True)
         form.addRow("Chiave Profilo:", self.key_edit)
-
-        self.device_type_edit = QLineEdit(self.profile.device_type or "")
-        self.device_type_edit.textChanged.connect(self._update_preview)
-        form.addRow("Tipo Apparecchio:", self.device_type_edit)
 
         # Regole strumenti per il profilo
         self.min_instruments_spin = QSpinBox()
@@ -1349,283 +1347,99 @@ class FunctionalProfileEditorDialog(QDialog):
 
         # Modalità iniziale: guidata se la struttura del profilo è riconoscibile
         parsed = parse_profile_sections(self.profile)
+        view = None
         if parsed is not None:
             if not self.profile.sections and not parsed.blocks:
                 # Nuovo profilo: punto di partenza tipico (normativa +
                 # checklist visiva standard + note)
-                parsed.blocks = default_new_profile_blocks()
-            self._load_simple_options(parsed)
+                parsed = SimpleFunctionalOptions(blocks=default_new_profile_blocks())
+            view = outline_view_from_options(parsed)
+        if view is not None:
+            self._load_outline_view(view)
             self._set_sections_mode(simple=True)
         else:
             self._set_sections_mode(simple=False)
         self._update_preview()
 
-    # ─── Modalità guidata (sezioni come testo semplice) ──────────────────
+    # ─── Modalità documento: profilo scritto come testo ──────────────────
 
     def _build_simple_sections_page(self) -> QWidget:
         page = QWidget()
         v = QVBoxLayout(page)
         v.setContentsMargins(0, 0, 0, 0)
 
-        self._simple_block_widgets = []
-        self.simple_blocks_layout = QVBoxLayout()
-        self.simple_blocks_layout.setSpacing(8)
-        container = QWidget()
-        cv = QVBoxLayout(container)
-        cv.setContentsMargins(0, 0, 0, 0)
-        cv.addLayout(self.simple_blocks_layout)
-        cv.addStretch()
-        scroll = QScrollArea()
-        scroll.setWidget(container)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QScrollArea.NoFrame)
-        v.addWidget(scroll, 1)
+        # Riferimenti normativi: riga singola opzionale
+        norm_row = QHBoxLayout()
+        self.doc_normative_chk = QCheckBox("Riferimenti normativi:")
+        self.doc_normative_chk.setChecked(True)
+        self.doc_normative_edit = QLineEdit()
+        self.doc_normative_edit.setPlaceholderText("es. CEI 62353 / AMS-MOD-…")
+        norm_row.addWidget(self.doc_normative_chk)
+        norm_row.addWidget(self.doc_normative_edit, 1)
+        v.addLayout(norm_row)
 
-        bottom_row = QHBoxLayout()
-        add_cl_btn = QPushButton(qta.icon('fa5s.check-square'), " Aggiungi checklist")
-        add_cl_btn.setToolTip("Elenco di verifiche con esito OK/KO/N.A.\nSi scrive come testo, una voce per riga")
-        add_cl_btn.clicked.connect(lambda: self._add_simple_checklist())
-        add_form_btn = QPushButton(qta.icon('fa5s.list'), " Aggiungi modulo campi")
-        add_form_btn.setToolTip("Sezione con campi liberi: testo, numeri, date,\nscelte, valutazioni, formule…")
-        add_form_btn.clicked.connect(lambda: self._add_simple_form())
-        bottom_row.addWidget(add_cl_btn)
-        bottom_row.addWidget(add_form_btn)
-        bottom_row.addStretch()
-        v.addLayout(bottom_row)
+        v.addWidget(QLabel("Verifiche del profilo:"))
+        self.doc_text = QPlainTextEdit()
+        self.doc_text.setStyleSheet("font-family: Consolas, 'Courier New', monospace; font-size: 13px;")
+        self.doc_text.setPlaceholderText(
+            "# Controllo Visivo/Funzionale\n"
+            "Integrità involucro\n"
+            "Leggibilità etichette\n"
+            "Lettura SpO2 [%]\n"
+            "\n"
+            "# Controllo Funzionale\n"
+            "Allarmi acustici e visivi"
+        )
+        v.addWidget(self.doc_text, 1)
 
-        hint = QLabel("💡 Checklist: una verifica per riga; aggiungi “[unità]” per registrare "
-                      "anche un valore, es: Lettura SpO2 [%].  "
-                      "Modulo campi: il dettaglio dipende dal tipo (opzioni, unità, formula…).")
+        self.doc_notes_chk = QCheckBox("Aggiungi spazio note a fine verifica")
+        self.doc_notes_chk.setChecked(True)
+        v.addWidget(self.doc_notes_chk)
+
+        hint = QLabel("💡  «#» apre una sezione · una verifica per riga (esito OK/KO/N.A. "
+                      "automatico) · «[unità]» per registrare anche un valore, es: Lettura SpO2 [%]")
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #64748b; font-size: 11px;")
         v.addWidget(hint)
+
+        self.doc_normative_chk.toggled.connect(self.doc_normative_edit.setEnabled)
+        self.doc_normative_chk.toggled.connect(self._on_simple_changed)
+        self.doc_normative_edit.textChanged.connect(self._on_simple_changed)
+        self.doc_text.textChanged.connect(self._on_simple_changed)
+        self.doc_notes_chk.toggled.connect(self._on_simple_changed)
+
+        # OutlineView caricata: conserva sorgenti e chiavi da preservare
+        self._doc_view = None
         return page
 
-    def _compact_icon_button(self, icon_name: str, tooltip: str, color: str = "#475569") -> QPushButton:
-        """Pulsante con sola icona, compatto: annulla min-width/padding del QSS globale."""
-        btn = QPushButton(qta.icon(icon_name, color=color), "")
-        btn.setToolTip(tooltip)
-        btn.setCursor(Qt.PointingHandCursor)
-        btn.setFixedSize(32, 28)
-        btn.setStyleSheet(
-            "QPushButton { min-width: 0; padding: 2px; border: 1px solid #cbd5e1;"
-            " border-radius: 6px; background: #f8fafc; }"
-            " QPushButton:hover { background: #e2e8f0; }"
-        )
-        return btn
-
-    def _make_block_head(self, box, kind_label: str, title_text: str,
-                         title_placeholder: str) -> QLineEdit:
-        """Riga di testa comune ai blocchi: tipo, titolo, sposta, rimuovi."""
-        head = QHBoxLayout()
-        kind = QLabel(kind_label)
-        kind.setStyleSheet("font-weight: bold; color: #475569;")
-        kind.setFixedWidth(72)
-        title_edit = QLineEdit(title_text)
-        title_edit.setPlaceholderText(title_placeholder)
-        title_edit.setMinimumWidth(220)
-        up_btn = self._compact_icon_button('fa5s.arrow-up', "Sposta su")
-        down_btn = self._compact_icon_button('fa5s.arrow-down', "Sposta giù")
-        remove_btn = self._compact_icon_button('fa5s.trash', "Rimuovi questa sezione", color="#dc2626")
-        head.addWidget(kind)
-        head.addWidget(title_edit, 1)
-        head.addWidget(up_btn)
-        head.addWidget(down_btn)
-        head.addWidget(remove_btn)
-        box.layout().addLayout(head)
-
-        title_edit.textChanged.connect(self._on_simple_changed)
-        up_btn.clicked.connect(lambda _=False, b=box: self._move_simple_block(b, -1))
-        down_btn.clicked.connect(lambda _=False, b=box: self._move_simple_block(b, +1))
-        remove_btn.clicked.connect(lambda _=False, b=box: self._remove_simple_block(b))
-        return title_edit
-
-    def _add_simple_checklist(self, checklist: Optional[SimpleChecklist] = None):
-        box = QGroupBox()
-        QVBoxLayout(box)
-        title_edit = self._make_block_head(
-            box, "Checklist", checklist.title if checklist else "",
-            "Titolo sezione (es. Controllo Visivo/Funzionale)",
-        )
-
-        items_edit = QPlainTextEdit()
-        items_edit.setPlaceholderText("Una verifica per riga…\n"
-                                      "Integrità involucro\n"
-                                      "Lettura SpO2 [%]")
-        items_edit.setMinimumHeight(90)
-        if checklist and checklist.items:
-            items_edit.setPlainText("\n".join(format_item_line(i) for i in checklist.items))
-        box.layout().addWidget(items_edit)
-
-        box._kind = "checklist"
-        box._title_edit = title_edit
-        box._items_edit = items_edit
-        box._source = checklist
-        items_edit.textChanged.connect(self._on_simple_changed)
-
-        self._simple_block_widgets.append(box)
-        self.simple_blocks_layout.addWidget(box)
-        self._on_simple_changed()
-
-    def _add_simple_form(self, form: Optional[SimpleFormSection] = None):
-        box = QGroupBox()
-        QVBoxLayout(box)
-        title_edit = self._make_block_head(
-            box, "Modulo", form.title if form else "",
-            "Titolo sezione (es. Dati di misura)",
-        )
-
-        fields_layout = QVBoxLayout()
-        fields_layout.setSpacing(4)
-        box.layout().addLayout(fields_layout)
-
-        add_field_btn = QPushButton(qta.icon('fa5s.plus'), " Aggiungi campo")
-        add_field_btn.clicked.connect(lambda _=False, b=box: self._add_simple_form_field(b))
-        box.layout().addWidget(add_field_btn)
-
-        box._kind = "form"
-        box._title_edit = title_edit
-        box._fields_layout = fields_layout
-        box._field_rows = []
-        box._source = form
-
-        self._simple_block_widgets.append(box)
-        self.simple_blocks_layout.addWidget(box)
-
-        for spec in (form.fields if form else []):
-            self._add_simple_form_field(box, spec)
-        self._on_simple_changed()
-
-    def _add_simple_form_field(self, box, spec: Optional[SimpleFieldSpec] = None):
-        row = QWidget()
-        rl = QHBoxLayout(row)
-        rl.setContentsMargins(0, 0, 0, 0)
-
-        label_edit = QLineEdit(spec.label if spec else "")
-        label_edit.setPlaceholderText("Etichetta (es. Pressione misurata)")
-        label_edit.setMinimumWidth(150)
-
-        type_combo = QComboBox()
-        type_combo.setMinimumWidth(140)
-        for ft in FIELD_TYPES:
-            info = FIELD_TYPE_INFO.get(ft, {})
-            type_combo.addItem(
-                qta.icon(info.get("icon", "fa5s.font"), color=info.get("color", "#64748b")),
-                info.get("label", ft), ft,
-            )
-            type_combo.setItemData(type_combo.count() - 1, info.get("desc", ""), Qt.ToolTipRole)
-        if spec:
-            idx = type_combo.findData(spec.field_type)
-            if idx >= 0:
-                type_combo.setCurrentIndex(idx)
-
-        detail_edit = QLineEdit(spec.detail if spec else "")
-        detail_edit.setMinimumWidth(130)
-        req_chk = QCheckBox("Obbl.")
-        req_chk.setToolTip("Campo obbligatorio in verifica")
-        req_chk.setChecked(spec.required if spec else False)
-        remove_btn = self._compact_icon_button('fa5s.times', "Rimuovi campo", color="#dc2626")
-
-        rl.addWidget(label_edit, 3)
-        rl.addWidget(type_combo, 2)
-        rl.addWidget(detail_edit, 2)
-        rl.addWidget(req_chk)
-        rl.addWidget(remove_btn)
-
-        row._label_edit = label_edit
-        row._type_combo = type_combo
-        row._detail_edit = detail_edit
-        row._req_chk = req_chk
-        row._spec_key = spec.key if spec else None
-        row._spec_source = spec.source if spec else None
-
-        def _sync_detail(autofill=False, r=row):
-            ft = r._type_combo.currentData()
-            placeholder = detail_placeholder(ft)
-            r._detail_edit.setPlaceholderText(placeholder)
-            r._detail_edit.setEnabled(placeholder != "—")
-            # Quando l'utente sceglie "scelta multipla" e il dettaglio è vuoto,
-            # propone le opzioni esito più comuni: un click in meno nel caso tipico
-            if autofill and ft == "choice" and not r._detail_edit.text().strip():
-                r._detail_edit.setText("OK, KO, N.A.")
-            self._on_simple_changed()
-        _sync_detail()
-
-        label_edit.textChanged.connect(self._on_simple_changed)
-        type_combo.currentIndexChanged.connect(lambda _idx, r=row: _sync_detail(autofill=True, r=r))
-        detail_edit.textChanged.connect(self._on_simple_changed)
-        req_chk.toggled.connect(self._on_simple_changed)
-
-        def _remove(_=False, b=box, r=row):
-            if r in b._field_rows:
-                b._field_rows.remove(r)
-                b._fields_layout.removeWidget(r)
-                r.deleteLater()
-                self._on_simple_changed()
-        remove_btn.clicked.connect(_remove)
-
-        box._field_rows.append(row)
-        box._fields_layout.addWidget(row)
-        self._on_simple_changed()
-
-    def _move_simple_block(self, box, delta: int):
-        idx = self._simple_block_widgets.index(box)
-        new_idx = idx + delta
-        if not (0 <= new_idx < len(self._simple_block_widgets)):
-            return
-        self._simple_block_widgets.pop(idx)
-        self._simple_block_widgets.insert(new_idx, box)
-        self.simple_blocks_layout.removeWidget(box)
-        self.simple_blocks_layout.insertWidget(new_idx, box)
-        self._on_simple_changed()
-
-    def _remove_simple_block(self, box):
-        if box in self._simple_block_widgets:
-            self._simple_block_widgets.remove(box)
-            self.simple_blocks_layout.removeWidget(box)
-            box.deleteLater()
-            self._on_simple_changed()
-
     def _collect_simple_options(self) -> SimpleFunctionalOptions:
-        blocks = []
-        for box in self._simple_block_widgets:
-            title = box._title_edit.text().strip()
-            if box._kind == "checklist":
-                blocks.append(checklist_from_text(
-                    title or "Checklist",
-                    box._items_edit.toPlainText(),
-                    source=box._source,
-                ))
-            else:
-                source_form = box._source
-                specs = [
-                    SimpleFieldSpec(
-                        label=r._label_edit.text().strip() or "Campo",
-                        field_type=r._type_combo.currentData(),
-                        required=r._req_chk.isChecked(),
-                        detail=r._detail_edit.text(),
-                        key=r._spec_key,
-                        source=r._spec_source,
-                    )
-                    for r in box._field_rows
-                ]
-                blocks.append(SimpleFormSection(
-                    title=title or "Sezione",
-                    fields=specs,
-                    key=source_form.key if source_form else None,
-                    description=source_form.description if source_form else None,
-                    show_in_summary=source_form.show_in_summary if source_form else False,
-                ))
-        return SimpleFunctionalOptions(blocks=blocks)
+        meta = getattr(self, "_doc_view", None)
+        normative = self.doc_normative_edit.text() if self.doc_normative_chk.isChecked() else None
+        view = OutlineView(
+            normative=normative,
+            outline=self.doc_text.toPlainText(),
+            has_notes=self.doc_notes_chk.isChecked(),
+            sources=meta.sources if meta else [],
+            normative_key=meta.normative_key if meta else None,
+            normative_field_key=meta.normative_field_key if meta else None,
+            notes_key=meta.notes_key if meta else None,
+            notes_field_key=meta.notes_field_key if meta else None,
+        )
+        return options_from_outline_view(view)
 
-    def _load_simple_options(self, opts: SimpleFunctionalOptions):
-        for box in list(self._simple_block_widgets):
-            self._remove_simple_block(box)
-        for block in opts.blocks:
-            if isinstance(block, SimpleChecklist):
-                self._add_simple_checklist(block)
-            else:
-                self._add_simple_form(block)
+    def _load_outline_view(self, view: OutlineView):
+        self._doc_view = view
+        widgets = (self.doc_normative_chk, self.doc_normative_edit,
+                   self.doc_text, self.doc_notes_chk)
+        for w in widgets:
+            w.blockSignals(True)
+        self.doc_normative_chk.setChecked(view.normative is not None)
+        self.doc_normative_edit.setText(view.normative or "")
+        self.doc_normative_edit.setEnabled(view.normative is not None)
+        self.doc_text.setPlainText(view.outline)
+        self.doc_notes_chk.setChecked(view.has_notes)
+        for w in widgets:
+            w.blockSignals(False)
         self._on_simple_changed()
 
     def _on_simple_changed(self, *args):
@@ -1645,11 +1459,11 @@ class FunctionalProfileEditorDialog(QDialog):
         self._sections_simple_mode = simple
         self.sections_stack.setCurrentIndex(0 if simple else 1)
         if simple:
-            self.sections_mode_label.setText("✦ MODALITÀ GUIDATA — checklist come testo semplice")
-            self.sections_mode_btn.setText("EDITOR COMPLETO…")
+            self.sections_mode_label.setText("✦ MODALITÀ DOCUMENTO — scrivi il profilo come testo")
+            self.sections_mode_btn.setText("EDITOR AVANZATO…")
         else:
-            self.sections_mode_label.setText("🛠 EDITOR COMPLETO — sezioni, tabelle e formule")
-            self.sections_mode_btn.setText("TORNA ALLA GUIDATA…")
+            self.sections_mode_label.setText("🛠 EDITOR AVANZATO — sezioni, tabelle e formule")
+            self.sections_mode_btn.setText("TORNA AL DOCUMENTO…")
         if hasattr(self, "preview_text"):
             self._update_preview()
 
@@ -1663,15 +1477,16 @@ class FunctionalProfileEditorDialog(QDialog):
             temp = FunctionalProfile(profile_key="x", name="x",
                                      sections=self.profile.sections)
             parsed = parse_profile_sections(temp)
-            if parsed is None:
+            view = outline_view_from_options(parsed) if parsed is not None else None
+            if view is None:
                 QMessageBox.information(
-                    self, "Modalità guidata non disponibile",
-                    "Il profilo contiene tabelle, formule o campi particolari\n"
-                    "che la modalità guidata non può rappresentare.\n\n"
-                    "Continua nell'editor completo.",
+                    self, "Modalità documento non disponibile",
+                    "Il profilo contiene tabelle, formule o moduli di campi\n"
+                    "che la modalità documento non può rappresentare.\n\n"
+                    "Continua nell'editor avanzato.",
                 )
                 return
-            self._load_simple_options(parsed)
+            self._load_outline_view(view)
             self._set_sections_mode(simple=True)
 
     def _refresh_sections(self):
@@ -2078,137 +1893,6 @@ class FunctionalProfileEditorDialog(QDialog):
         super().accept()
 
 
-class FunctionalProfileWizard(QWizard):
-    """Wizard guidato per creare un nuovo profilo funzionale."""
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Wizard Creazione Profilo Funzionale")
-        self.setMinimumSize(700, 500)
-        # Applica il tema corrente
-        self.setStyleSheet(config.get_current_stylesheet())
-        
-        # Pagina 1: Scelta metodo di creazione
-        self.page1 = QWizardPage()
-        self.page1.setTitle("Metodo di Creazione")
-        self.page1.setSubTitle("Scegli come vuoi creare il nuovo profilo")
-        page1_layout = QVBoxLayout(self.page1)
-        
-        self.create_method_combo = QComboBox()
-        self.create_method_combo.addItem("Vuoto - Crea da zero", "empty")
-        self.create_method_combo.addItem("Copia da Profilo Esistente", "copy")
-        page1_layout.addWidget(QLabel("Come vuoi creare il profilo?"))
-        page1_layout.addWidget(self.create_method_combo)
-        page1_layout.addStretch()
-
-        # Pagina 3: Copia da profilo
-        self.page3 = QWizardPage()
-        self.page3.setTitle("Copia da Profilo Esistente")
-        self.page3.setSubTitle("Seleziona il profilo da copiare")
-        page3_layout = QVBoxLayout(self.page3)
-        
-        self.copy_profile_list = QListWidget()
-        page3_layout.addWidget(self.copy_profile_list)
-        
-        # Pagina 4: Informazioni base
-        self.page4 = QWizardPage()
-        self.page4.setTitle("Informazioni Base")
-        self.page4.setSubTitle("Inserisci le informazioni principali del profilo")
-        page4_layout = QFormLayout(self.page4)
-        
-        self.wizard_name_edit = QLineEdit()
-        self.wizard_key_edit = QLineEdit()
-        self.wizard_device_type_edit = QLineEdit()
-        self.wizard_key_edit.setPlaceholderText("Generato automaticamente dal nome")
-        
-        page4_layout.addRow("Nome Profilo *:", self.wizard_name_edit)
-        page4_layout.addRow("Chiave Profilo:", self.wizard_key_edit)
-        page4_layout.addRow("Tipo Apparecchio:", self.wizard_device_type_edit)
-        
-        self.wizard_name_edit.textChanged.connect(self._on_name_changed)
-        
-        # Id espliciti: il percorso tra le pagine è deciso da nextId()
-        self.PAGE_METHOD = 0
-        self.PAGE_COPY = 1
-        self.PAGE_INFO = 2
-        self.setPage(self.PAGE_METHOD, self.page1)
-        self.setPage(self.PAGE_COPY, self.page3)
-        self.setPage(self.PAGE_INFO, self.page4)
-        self.setStartId(self.PAGE_METHOD)
-
-        # Carica profili esistenti per la copia
-        self._load_existing_profiles()
-
-    def nextId(self):
-        """Percorso pagine: la pagina di copia compare solo per il metodo 'copia'.
-
-        Nota: spostare le pagine con setPage/removePage non funziona in Qt
-        (una pagina già registrata non può essere ri-aggiunta e la chiamata
-        fallisce in silenzio): il salto va deciso qui.
-        """
-        current = self.currentId()
-        if current == self.PAGE_METHOD:
-            if self.create_method_combo.currentData() == "copy":
-                return self.PAGE_COPY
-            return self.PAGE_INFO
-        if current == self.PAGE_COPY:
-            return self.PAGE_INFO
-        return -1
-    
-    def _on_name_changed(self, text):
-        """Genera automaticamente la chiave dal nome."""
-        if text and not self.wizard_key_edit.isModified():
-            key = sanitize_profile_key(text)
-            self.wizard_key_edit.setText(key)
-    
-    def _load_existing_profiles(self):
-        """Carica i profili esistenti per la copia."""
-        self.copy_profile_list.clear()
-        with database.DatabaseConnection() as conn:
-            rows = conn.execute(
-                "SELECT id, profile_key, name FROM functional_profiles WHERE is_deleted = 0 ORDER BY name"
-            ).fetchall()
-        for row in rows:
-            item = QListWidgetItem(row["name"])
-            item.setData(Qt.UserRole, {"id": row["id"], "key": row["profile_key"]})
-            self.copy_profile_list.addItem(item)
-    
-    def get_profile(self) -> Optional[FunctionalProfile]:
-        """Restituisce il profilo creato dal wizard."""
-        method = self.create_method_combo.currentData()
-        name = self.wizard_name_edit.text().strip()
-        key = self.wizard_key_edit.text().strip() or sanitize_profile_key(name)
-        device_type = self.wizard_device_type_edit.text().strip() or None
-        
-        if not name:
-            return None
-        
-        if method == "copy":
-            # Copia da profilo esistente
-            item = self.copy_profile_list.currentItem()
-            if not item:
-                return None
-            data = item.data(Qt.UserRole)
-            profile_key = data["key"]
-            source_profile = config.FUNCTIONAL_PROFILES.get(profile_key)
-            if source_profile:
-                profile = copy.deepcopy(source_profile)
-                profile.name = name
-                profile.profile_key = key
-                profile.device_type = device_type or profile.device_type
-            else:
-                return None
-        else:  # empty
-            # Profilo vuoto
-            profile = FunctionalProfile(
-                profile_key=key,
-                name=name,
-                device_type=device_type,
-                sections=[],
-            )
-        
-        return profile
-
-
 class FunctionalProfileManagerDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -2312,40 +1996,32 @@ class FunctionalProfileManagerDialog(QDialog):
         return item, item.data(Qt.UserRole) if item else (None, None)
 
     def add_profile(self):
-        """Apre il wizard per creare un nuovo profilo."""
-        wizard = FunctionalProfileWizard(parent=self)
-        if wizard.exec() == QDialog.Accepted:
-            profile = wizard.get_profile()
-            if not profile:
-                QMessageBox.warning(self, "Dati mancanti", "Inserire almeno il nome del profilo.")
-                return
-            
-            if profile.profile_key in config.FUNCTIONAL_PROFILES:
-                QMessageBox.warning(
-                    self,
-                    "Chiave duplicata",
-                    f"Esiste già un profilo con la chiave '{profile.profile_key}'.",
-                )
-                return
-            
-            try:
-                services.add_functional_profile(profile.profile_key, profile)
-                self.profiles_changed = True
-                config.load_functional_profiles()
-                self.load_profiles_from_db()
-                
-                # Apri l'editor per completare la configurazione
-                reply = QMessageBox.question(
-                    self,
-                    "Profilo Creato",
-                    f"Il profilo '{profile.name}' è stato creato.\n\nVuoi modificarlo ora per aggiungere sezioni e campi?",
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.Yes,
-                )
-                if reply == QMessageBox.Yes:
-                    self.edit_profile_by_key(profile.profile_key)
-            except Exception as e:
-                QMessageBox.critical(self, "Errore", f"Impossibile creare il profilo:\n{e}")
+        """Crea un nuovo profilo aprendo direttamente l'editor a documento.
+
+        Niente più wizard: nome, tipo e contenuto si impostano tutti
+        nell'unica schermata dell'editor.
+        """
+        editor = FunctionalProfileEditorDialog(profile=None, is_new=True, parent=self)
+        if editor.exec() != QDialog.Accepted:
+            return
+
+        profile = editor.profile
+        # Chiave univoca: se quella generata dal nome esiste già, aggiunge un
+        # suffisso invece di buttare via il lavoro appena fatto
+        base = profile.profile_key
+        if base in config.FUNCTIONAL_PROFILES:
+            n = 2
+            while f"{base}_{n}" in config.FUNCTIONAL_PROFILES:
+                n += 1
+            profile.profile_key = f"{base}_{n}"
+
+        try:
+            services.add_functional_profile(profile.profile_key, profile)
+            self.profiles_changed = True
+            config.load_functional_profiles()
+            self.load_profiles_from_db()
+        except Exception as e:
+            QMessageBox.critical(self, "Errore", f"Impossibile creare il profilo:\n{e}")
     
     def copy_profile(self):
         """Crea una copia del profilo selezionato."""
