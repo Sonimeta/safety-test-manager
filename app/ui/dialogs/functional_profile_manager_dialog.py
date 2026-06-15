@@ -759,6 +759,12 @@ class SectionEditorDialog(QDialog):
         fields_layout = QVBoxLayout(fields_widget)
         fields_label = QLabel("<b>Campi della Sezione</b>")
         fields_layout.addWidget(fields_label)
+        # Aggiunta rapida inline: scrivi l'etichetta e premi Invio (campo testo;
+        # tipo e dettagli si cambiano poi col doppio clic / Modifica)
+        self.field_quick_edit = QLineEdit()
+        self.field_quick_edit.setPlaceholderText("➕  Scrivi un campo e premi Invio per aggiungerlo…")
+        self.field_quick_edit.returnPressed.connect(self._inline_add_field)
+        fields_layout.addWidget(self.field_quick_edit)
         fields_layout.addWidget(self.fields_table)
         fields_btn_layout = QHBoxLayout()
         self.field_add_btn = QPushButton(qta.icon('fa5s.plus'), " Aggiungi")
@@ -786,8 +792,15 @@ class SectionEditorDialog(QDialog):
         # Pannello per le righe (checklist/table)
         rows_widget = QWidget()
         rows_layout = QVBoxLayout(rows_widget)
-        rows_label = QLabel("<b>Righe della Sezione</b>")
+        rows_label = QLabel("<b>Verifiche della Sezione</b>  <span style='color:#64748b;'>(doppio clic per rinominare)</span>")
+        rows_label.setTextFormat(Qt.RichText)
         rows_layout.addWidget(rows_label)
+        # Aggiunta rapida inline: scrivi la verifica e premi Invio (esito OK/KO/N.A.
+        # automatico). Niente più finestre annidate per il caso comune
+        self.row_quick_edit = QLineEdit()
+        self.row_quick_edit.setPlaceholderText("➕  Scrivi una verifica e premi Invio per aggiungerla…")
+        self.row_quick_edit.returnPressed.connect(self._inline_add_row)
+        rows_layout.addWidget(self.row_quick_edit)
         self.rows_list = QListWidget()
         self.rows_list.setAlternatingRowColors(True)
         rows_layout.addWidget(self.rows_list)
@@ -830,8 +843,11 @@ class SectionEditorDialog(QDialog):
         self.field_up_btn.clicked.connect(self.move_field_up)
         self.field_down_btn.clicked.connect(self.move_field_down)
         self.row_add_btn.clicked.connect(self.add_row)
-        self.row_quick_add_btn.clicked.connect(self.quick_add_row)
+        self.row_quick_add_btn.clicked.connect(lambda: self.row_quick_edit.setFocus())
         self.row_edit_btn.clicked.connect(self.edit_row)
+        # Rinomina inline delle verifiche e dei campi (doppio clic sull'elemento)
+        self.rows_list.itemChanged.connect(self._on_row_label_edited)
+        self.fields_table.itemChanged.connect(self._on_field_cell_changed)
         self.row_dup_btn.clicked.connect(self.duplicate_row)
         self.row_remove_btn.clicked.connect(self.remove_row)
         self.row_up_btn.clicked.connect(self.move_row_up)
@@ -881,24 +897,106 @@ class SectionEditorDialog(QDialog):
         self._key_user_edited = True
 
     def _refresh_fields(self):
+        self.fields_table.blockSignals(True)
         self.fields_table.setRowCount(0)
         for field in self.section.fields:
             row_idx = self.fields_table.rowCount()
             self.fields_table.insertRow(row_idx)
-            self.fields_table.setItem(row_idx, 0, QTableWidgetItem(field.key))
-            self.fields_table.setItem(row_idx, 1, QTableWidgetItem(field.label))
-            self.fields_table.setItem(row_idx, 2, QTableWidgetItem(field.field_type))
-            self.fields_table.setItem(row_idx, 3, QTableWidgetItem("Sì" if field.required else "No"))
-            self.fields_table.setItem(row_idx, 4, QTableWidgetItem("Sì" if field.read_only else "No"))
-            self.fields_table.setItem(row_idx, 5, QTableWidgetItem(field.formula or ""))
+            type_label = FIELD_TYPE_INFO.get(field.field_type, {}).get("label", field.field_type)
+            cells = [
+                (field.key, False),
+                (field.label, True),   # solo l'etichetta è modificabile inline
+                (type_label, False),
+                ("Sì" if field.required else "No", False),
+                ("Sì" if field.read_only else "No", False),
+                (field.formula or "", False),
+            ]
+            for col, (text, editable) in enumerate(cells):
+                item = QTableWidgetItem(text)
+                if editable:
+                    item.setToolTip("Doppio clic per rinominare")
+                else:
+                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+                self.fields_table.setItem(row_idx, col, item)
+        self.fields_table.blockSignals(False)
+
+    def _on_field_cell_changed(self, item):
+        """Rinomina inline dell'etichetta di un campo (colonna 1)."""
+        if item.column() != 1:
+            return
+        idx = item.row()
+        if 0 <= idx < len(self.section.fields):
+            new_label = item.text().strip()
+            if new_label:
+                self.section.fields[idx].label = new_label
+            else:
+                self.fields_table.blockSignals(True)
+                item.setText(self.section.fields[idx].label)
+                self.fields_table.blockSignals(False)
+
+    def _inline_add_field(self):
+        """Aggiunge un campo testo dalla riga di inserimento rapido."""
+        label = self.field_quick_edit.text().strip()
+        if not label:
+            return
+        key = self._slugify_key(label) or f"campo_{len(self.section.fields) + 1}"
+        if any(f.key == key for f in self.section.fields):
+            suffix = 2
+            while any(f.key == f"{key}_{suffix}" for f in self.section.fields):
+                suffix += 1
+            key = f"{key}_{suffix}"
+        self.section.fields.append(FunctionalField(key=key, label=label, field_type="text"))
+        self.field_quick_edit.clear()
+        self._refresh_fields()
+        self.field_quick_edit.setFocus()
 
     def _refresh_rows(self):
+        self.rows_list.blockSignals(True)
         self.rows_list.clear()
         for row in self.section.rows:
             label = row.label or row.key
-            item = QListWidgetItem(f"{row.key} - {label} ({len(row.fields)} campi)")
+            item = QListWidgetItem(label)
+            item.setFlags(item.flags() | Qt.ItemIsEditable)
             item.setData(Qt.UserRole, row)
+            extra = ", ".join(f.label for f in row.fields if f.key != "esito")
+            tip = f"Chiave: {row.key} · {len(row.fields)} campo/i"
+            if extra:
+                tip += f" · {extra}"
+            item.setToolTip(tip)
             self.rows_list.addItem(item)
+        self.rows_list.blockSignals(False)
+
+    def _on_row_label_edited(self, item):
+        """Rinomina inline di una verifica (doppio clic sull'elemento)."""
+        row = item.data(Qt.UserRole)
+        if row is None:
+            return
+        new_label = item.text().strip()
+        if new_label:
+            row.label = new_label
+        else:
+            self.rows_list.blockSignals(True)
+            item.setText(row.label or row.key)
+            self.rows_list.blockSignals(False)
+
+    def _inline_add_row(self):
+        """Aggiunge una verifica con esito OK/KO/N.A. dalla riga rapida."""
+        label = self.row_quick_edit.text().strip()
+        if not label:
+            return
+        key = self._slugify_key(label) or f"riga_{len(self.section.rows) + 1}"
+        if any(r.key == key for r in self.section.rows):
+            suffix = 2
+            while any(r.key == f"{key}_{suffix}" for r in self.section.rows):
+                suffix += 1
+            key = f"{key}_{suffix}"
+        self.section.rows.append(FunctionalRowDefinition(
+            key=key, label=label,
+            fields=[FunctionalField(key="esito", label="Esito", field_type="choice",
+                                    required=True, options=["OK", "KO", "N.A."])]))
+        self.row_quick_edit.clear()
+        self._refresh_rows()
+        self.row_quick_edit.setFocus()
 
     def add_field(self):
         dialog = FieldEditorDialog(parent=self)
@@ -978,44 +1076,6 @@ class SectionEditorDialog(QDialog):
                 return
             self.section.rows.append(new_row)
             self._refresh_rows()
-
-    def quick_add_row(self):
-        """Aggiunge velocemente una riga con campo esito preconfigurato (OK/KO/N.A.)."""
-        from PySide6.QtWidgets import QInputDialog
-        label, ok = QInputDialog.getText(
-            self,
-            "Aggiungi Riga Rapida",
-            "Nome della verifica (es: Integrità cavo di alimentazione):",
-        )
-        if not ok or not label.strip():
-            return
-        label = label.strip()
-        # Genera chiave dalla label
-        key = self._slugify_key(label)
-        if not key:
-            key = f"riga_{len(self.section.rows) + 1}"
-        # Verifica chiave unica
-        if any(r.key == key for r in self.section.rows):
-            suffix = 2
-            while any(r.key == f"{key}_{suffix}" for r in self.section.rows):
-                suffix += 1
-            key = f"{key}_{suffix}"
-
-        new_row = FunctionalRowDefinition(
-            key=key,
-            label=label,
-            fields=[
-                FunctionalField(
-                    key="esito",
-                    label="Esito",
-                    field_type="pass_fail",
-                    required=True,
-                    options=["PASS", "FAIL", "N.A."],
-                ),
-            ],
-        )
-        self.section.rows.append(new_row)
-        self._refresh_rows()
 
     def duplicate_row(self):
         """Duplica la riga selezionata con una nuova chiave."""
@@ -1343,22 +1403,22 @@ class FunctionalProfileEditorDialog(QDialog):
         self.sections_list.itemDoubleClicked.connect(lambda _: self.edit_section())
         self.sections_list.currentRowChanged.connect(self._update_preview)
 
+        # Nuovo profilo: parte già con una struttura tipica pronta da editare
+        # (riferimenti normativi + checklist visiva standard + note), così
+        # l'editor strutturato non si apre vuoto
+        if self.is_new and not self.profile.sections:
+            self.profile.sections = build_sections(
+                SimpleFunctionalOptions(blocks=default_new_profile_blocks()))
         self._refresh_sections()
 
-        # Modalità iniziale: guidata se la struttura del profilo è riconoscibile
+        # Prepara anche la vista "documento" come modalità alternativa (pulsante)
         parsed = parse_profile_sections(self.profile)
-        view = None
-        if parsed is not None:
-            if not self.profile.sections and not parsed.blocks:
-                # Nuovo profilo: punto di partenza tipico (normativa +
-                # checklist visiva standard + note)
-                parsed = SimpleFunctionalOptions(blocks=default_new_profile_blocks())
-            view = outline_view_from_options(parsed)
+        view = outline_view_from_options(parsed) if parsed is not None else None
         if view is not None:
             self._load_outline_view(view)
-            self._set_sections_mode(simple=True)
-        else:
-            self._set_sections_mode(simple=False)
+
+        # Default: editor strutturato avanzato (quello che l'utente preferisce)
+        self._set_sections_mode(simple=False)
         self._update_preview()
 
     # ─── Modalità documento: profilo scritto come testo ──────────────────
