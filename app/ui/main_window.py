@@ -551,8 +551,78 @@ class MainWindow(QMainWindow):
                     f"{str(device.get('description') or '').upper()} segnato come non messo a disposizione.",
                     level='warning'
                 )
+                self.reload_devices()
             except Exception as e:
                 QMessageBox.critical(self, "ERRORE", f"Impossibile salvare la segnalazione:\n{e}")
+
+    def remove_device_unavailable(self, device_id: int, reports: list):
+        """Rimuove la segnalazione 'non messo a disposizione' per il dispositivo."""
+        device = services.get_device_by_id(device_id)
+        desc = str(dict(device).get('description') or 'Dispositivo').upper() if device else 'Dispositivo'
+
+        if not reports:
+            QMessageBox.information(self, "Nessuna segnalazione", "Non ci sono segnalazioni da rimuovere nel periodo corrente.")
+            return
+
+        # Se c'è una sola segnalazione, chiedi conferma diretta
+        if len(reports) == 1:
+            r = reports[0]
+            msg = (
+                f"Vuoi rimuovere la segnalazione <b>NON MESSO A DISPOSIZIONE</b> per:<br><br>"
+                f"<b>{desc}</b><br>"
+                f"Periodo: {r.get('period_start','')[:10]} → {r.get('period_end','')[:10]}<br>"
+                f"Motivo: {r.get('reason') or '—'}"
+            )
+            reply = QMessageBox.question(self, "Rimuovi segnalazione", msg,
+                                         QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                try:
+                    services.delete_unavailability_report(r['uuid'])
+                    self.show_inline_feedback(
+                        f"Segnalazione rimossa per {desc}.", level='success'
+                    )
+                    self.reload_devices()
+                except Exception as e:
+                    QMessageBox.critical(self, "ERRORE", f"Impossibile rimuovere la segnalazione:\n{e}")
+            return
+
+        # Più segnalazioni: mostra elenco con checkbox per scegliere quali eliminare
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QDialogButtonBox, QScrollArea, QWidget
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Rimuovi segnalazioni")
+        dlg.setMinimumWidth(420)
+        lay = QVBoxLayout(dlg)
+        lay.addWidget(QLabel(f"<b>{desc}</b> — seleziona le segnalazioni da rimuovere:"))
+        scroll = QScrollArea(); scroll.setWidgetResizable(True)
+        inner = QWidget(); inner_lay = QVBoxLayout(inner)
+        checkboxes = []
+        for r in reports:
+            text = (f"{r.get('period_start','')[:10]} → {r.get('period_end','')[:10]}"
+                    f"  |  {r.get('reason') or '—'}")
+            cb = QCheckBox(text)
+            cb.setChecked(True)
+            cb.setProperty('report_uuid', r['uuid'])
+            inner_lay.addWidget(cb)
+            checkboxes.append(cb)
+        scroll.setWidget(inner)
+        lay.addWidget(scroll)
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        lay.addWidget(btns)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        removed = 0
+        for cb in checkboxes:
+            if cb.isChecked():
+                try:
+                    services.delete_unavailability_report(cb.property('report_uuid'))
+                    removed += 1
+                except Exception:
+                    pass
+        if removed:
+            self.show_inline_feedback(f"{removed} segnalazione/i rimossa/e per {desc}.", level='success')
+            self.reload_devices()
 
     def open_duplicate_devices_dialog(self):
         """Apre la finestra per la gestione dei dispositivi duplicati."""
@@ -1891,6 +1961,20 @@ class MainWindow(QMainWindow):
         self._update_device_period_button_tooltip()
         toolbar.addWidget(self.device_period_button)
 
+        self.device_sort_combo = QComboBox()
+        self.device_sort_combo.setFixedHeight(38)
+        self.device_sort_combo.setToolTip("Ordina i dispositivi")
+        self.device_sort_combo.addItem("↕ Tipologia",  "description")
+        self.device_sort_combo.addItem("↕ S/N",         "serial_number")
+        self.device_sort_combo.addItem("↕ Inv. AMS",    "ams_inventory")
+        self.device_sort_combo.addItem("↕ Inv. Cliente", "customer_inventory")
+        self.device_sort_combo.setCurrentIndex(0)
+        self.device_sort_combo.currentIndexChanged.connect(
+            lambda *_: self._populate_device_list(self._get_device_cache(),
+                                                   self.device_search.text() if hasattr(self, 'device_search') else '')
+        )
+        toolbar.addWidget(self.device_sort_combo)
+
         lay.addLayout(toolbar)
 
         self.device_list = QListWidget()
@@ -2894,6 +2978,7 @@ class MainWindow(QMainWindow):
         add_caption("Profilo elettrico", 0, 5)
         self.profile_selector = QComboBox()
         self.profile_selector.setMinimumHeight(32)
+        self.profile_selector.setMaximumWidth(260)
         self.profile_selector.setAutoFillBackground(False)
         self._update_summary_fields_background()
         summary_layout.addWidget(self.profile_selector, 1, 5, 1, 2)
@@ -2901,6 +2986,7 @@ class MainWindow(QMainWindow):
         add_caption("Profilo funzionale", 2, 5)
         self.functional_profile_selector = QComboBox()
         self.functional_profile_selector.setMinimumHeight(32)
+        self.functional_profile_selector.setMaximumWidth(260)
         self.functional_profile_selector.setAutoFillBackground(False)
         summary_layout.addWidget(self.functional_profile_selector, 3, 5, 1, 2)
 
@@ -2962,8 +3048,8 @@ class MainWindow(QMainWindow):
 
         summary_layout.setColumnStretch(1, 2)
         summary_layout.setColumnStretch(3, 2)
-        summary_layout.setColumnStretch(5, 2)
-        summary_layout.setColumnStretch(6, 1)
+        summary_layout.setColumnStretch(5, 1)
+        summary_layout.setColumnStretch(6, 0)
         summary_layout.setColumnStretch(8, 2)
 
         outer.addWidget(summary_frame)
@@ -3691,6 +3777,18 @@ class MainWindow(QMainWindow):
         current_selected_id = self.selected_device_id
         filtered_devices = [dev for dev in devices if self._device_matches_query(dev, search_query)]
 
+        # ── Ordinamento ────────────────────────────────────────────────────────
+        sort_key = "description"
+        if hasattr(self, "device_sort_combo"):
+            sort_key = self.device_sort_combo.currentData() or "description"
+
+        def _nat_sort_key(dev):
+            import re as _re
+            val = str(dev.get(sort_key) or "").strip().upper()
+            return [int(t) if t.isdigit() else t for t in _re.split(r'(\d+)', val)]
+
+        filtered_devices.sort(key=_nat_sort_key)
+
         selected_item = None
         for dev in filtered_devices:
             item = QListWidgetItem()
@@ -3778,17 +3876,42 @@ class MainWindow(QMainWindow):
             dept_badge.setAttribute(Qt.WA_TransparentForMouseEvents, True)
             row1.addWidget(dept_badge)
 
-        # Pulsante "Non messo a disposizione"
-        unavail_btn = QPushButton("🚫")
-        unavail_btn.setToolTip("Segna come non messo a disposizione")
-        unavail_btn.setFixedSize(26, 26)
-        unavail_btn.setStyleSheet(
-            "QPushButton { background: #ede9fe; color: #7c3aed; border: 1px solid #c4b5fd;"
-            " border-radius: 5px; font-size: 12px; padding: 0; }"
-            " QPushButton:hover { background: #ddd6fe; }"
-        )
+        # Pulsante "Non messo a disposizione" / "Rimuovi segnalazione"
         device_id = dev.get('id')
-        unavail_btn.clicked.connect(lambda _checked=False, did=device_id: self.mark_device_unavailable(did))
+        # Controlla se esiste una segnalazione attiva nel periodo corrente
+        _is_unavail = False
+        _unavail_reports = []
+        try:
+            start_str, end_str = self._get_device_filter_period()
+            _unavail_reports = services.get_unavailability_reports_for_period(
+                dev.get('destination_id') or self.selected_destination_id,
+                start_str, end_str
+            )
+            _is_unavail = any(r.get('device_id') == device_id for r in _unavail_reports)
+        except Exception:
+            pass
+
+        unavail_btn = QPushButton("✅" if _is_unavail else "🚫")
+        if _is_unavail:
+            unavail_btn.setToolTip("Dispositivo NON MESSO A DISPOSIZIONE nel periodo — clicca per rimuovere la segnalazione")
+            unavail_btn.setStyleSheet(
+                "QPushButton { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5;"
+                " border-radius: 5px; font-size: 12px; padding: 0; font-weight: bold; }"
+                " QPushButton:hover { background: #fecaca; }"
+            )
+            _dev_reports = [r for r in _unavail_reports if r.get('device_id') == device_id]
+            unavail_btn.clicked.connect(
+                lambda _checked=False, did=device_id, reports=_dev_reports: self.remove_device_unavailable(did, reports)
+            )
+        else:
+            unavail_btn.setToolTip("Segna come non messo a disposizione")
+            unavail_btn.setStyleSheet(
+                "QPushButton { background: #ede9fe; color: #7c3aed; border: 1px solid #c4b5fd;"
+                " border-radius: 5px; font-size: 12px; padding: 0; }"
+                " QPushButton:hover { background: #ddd6fe; }"
+            )
+            unavail_btn.clicked.connect(lambda _checked=False, did=device_id: self.mark_device_unavailable(did))
+        unavail_btn.setFixedSize(26, 26)
         row1.addWidget(unavail_btn)
 
         lay.addLayout(row1)

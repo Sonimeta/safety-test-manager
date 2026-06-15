@@ -1,0 +1,195 @@
+[
+  [
+    [
+      "COMMITTENTE"
+    ],
+    [
+      "Ragione sociale",
+      ""
+    ],
+    [
+      "Riferimento",
+      "",
+      "Tel.",
+      ""
+    ],
+    [
+      ""
+    ],
+    [
+      "DATI IDENTIFICATIVI APPARECCHIATURA"
+    ],
+    [
+      "Produttore",
+      "",
+      "Modello",
+      ""
+    ],
+    [
+      "S/N",
+      "",
+      "N.inventario",
+      ""
+    ],
+    [
+      "Localizzazione/CDC",
+      "",
+      "Cod.AMS",
+      ""
+    ],
+    [
+      "Accessori",
+      ""
+    ],
+    [
+      ""
+    ],
+    [
+      "STRUMENTAZIONE USATA PER IL CONTROLLO"
+    ],
+    [
+      "Produttore",
+      "FLUKE",
+      "Modello",
+      "BP PUMP 2",
+      "S/N",
+      "212192"
+    ],
+    [
+      ""
+    ],
+    [
+      "RIFERIMENTI NORMATIVI-PROCEDURE"
+    ],
+    [
+      "Norme/Procedure",
+      ""
+    ],
+    [
+      ""
+    ],
+    [
+      "CONTROLLO VISIVO/FUNZIONALE"
+    ],
+    [
+      "",
+      "OK",
+      "KO",
+      "N.A."
+    ],
+    [
+      "Leggibilità delle serigrafie",
+      "",
+      "",
+      ""
+    ],
+    [
+      "Integrità involucro",
+      "",
+      "",
+      ""
+    ],
+    [
+      "Integrità accessori",
+      "",
+      "",
+      ""
+    ],
+    [
+      "Funzionalità tastiera",
+      "",
+      "",
+      ""
+    ],
+    [
+      "Funzionalità display/spie luminose",
+      "",
+      "",
+      ""
+    ],
+    [
+      "Indicazione presenza rete 220V",
+      "",
+      "",
+      ""
+    ],
+    [
+      "Funzionamento a batteria",
+      "",
+      "",
+      ""
+    ],
+    [
+      "Test di perdita NIBP",
+      "",
+      "",
+      ""
+    ],
+    [
+      ""
+    ],
+    [
+      "VERIFICA NIBP"
+    ],
+    [
+      "N°",
+      "IMPOSTATA (mmHg)",
+      "RILEVATA (mmHg)",
+      "ERRORE (mmHg)"
+    ],
+    [
+      "1",
+      "240",
+      "",
+      "-240"
+    ],
+    [
+      "2",
+      "200",
+      "",
+      "-200"
+    ],
+    [
+      "3",
+      "160",
+      "",
+      "-160"
+    ],
+    [
+      "4",
+      "120",
+      "",
+      "-120"
+    ],
+    [
+      "5",
+      "80",
+      "",
+      "-80"
+    ],
+    [
+      "6",
+      "40",
+      "",
+      "-40"
+    ],
+    [
+      ""
+    ],
+    [
+      "ESITO DELLA PROVA NIBP",
+      ""
+    ],
+    [
+      "NOTE",
+      ""
+    ],
+    [
+      "Data",
+      "",
+      "Tecnico",
+      "",
+      "Firma"
+    ]
+  ]
+]

@@ -1,0 +1,848 @@
+{
+  "profile_key": "ventilatore_primo_soccorso",
+  "name": "Ventilatore di Primo Soccorso",
+  "device_type": "VENTILATORE",
+  "sections": [
+    {
+      "key": "visual_functional_control",
+      "title": "Controllo Visivo/Funzionale",
+      "section_type": "checklist",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "involucro_esterno",
+          "label": "Involucro esterno",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "pannello_frontale",
+          "label": "Pannello frontale, interruttori, regolatore vuoto e pulsanti",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "manometro",
+          "label": "Manometro",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "circuito_aspirante",
+          "label": "Condizioni circuito aspirante",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "tubo_raccordo",
+          "label": "Condizioni tubo raccordo",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "circuito_alimentazione_o2",
+          "label": "Condizioni circuito alimentazione O2",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "base_ricarica",
+          "label": "Verifica base di ricarica (connettori, cavo e indicatore alimentazione esterna)",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "functional_exam",
+      "title": "Esame Funzionale",
+      "section_type": "checklist",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "interruttore_on_off",
+          "label": "Controllo interruttore ON/OFF",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "allarmi_mancanza_gas",
+          "label": "Controllo allarmi mancanza alimentazione gas",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "alimentazione_elettrica",
+          "label": "Controllo alimentazione elettrica",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "environmental_conditions",
+      "title": "Condizioni Ambientali di Verifica",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "compliance",
+          "label": "Compliance",
+          "field_type": "number",
+          "required": false,
+          "unit": null,
+          "options": [],
+          "read_only": true,
+          "default": 0.05,
+          "help_text": null,
+          "formula": null,
+          "precision": 2
+        },
+        {
+          "key": "pressione_atmosferica",
+          "label": "Pressione Atmosferica",
+          "field_type": "number",
+          "required": false,
+          "unit": "mmHg",
+          "options": [],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": 1
+        },
+        {
+          "key": "umidita_relativa",
+          "label": "Umidita relativa ambiente",
+          "field_type": "number",
+          "required": false,
+          "unit": "%",
+          "options": [],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": 1
+        },
+        {
+          "key": "temperatura_ambiente",
+          "label": "Temperatura dell'ambiente",
+          "field_type": "number",
+          "required": false,
+          "unit": "°C",
+          "options": [],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": 1
+        },
+        {
+          "key": "concentrazione_o2",
+          "label": "Concentrazione O2",
+          "field_type": "number",
+          "required": false,
+          "unit": "%",
+          "options": [],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": 1
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "freq_volume_ossigeno",
+      "title": "Controllo Frequenza e Volume al Minuto - OSSIGENO",
+      "section_type": "table",
+      "description": "Valori di perdita di carico considerato = 0. Modalita funzionamento: OSSIGENO",
+      "fields": [],
+      "rows": [
+        {
+          "key": "o2_rr35_l5",
+          "label": "RR 35 bpm / 5 L",
+          "fields": [
+            {
+              "key": "rr_impostato",
+              "label": "RR impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 35,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "litri_impostati",
+              "label": "Litri impostati",
+              "field_type": "number",
+              "required": false,
+              "unit": "L",
+              "options": [],
+              "read_only": true,
+              "default": 5,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "rr_misurato",
+              "label": "RR misurato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "litri_misurati",
+              "label": "Litri misurati",
+              "field_type": "number",
+              "required": false,
+              "unit": "L",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            }
+          ]
+        },
+        {
+          "key": "o2_rr20_l7",
+          "label": "RR 20 bpm / 7 L",
+          "fields": [
+            {
+              "key": "rr_impostato",
+              "label": "RR impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 20,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "litri_impostati",
+              "label": "Litri impostati",
+              "field_type": "number",
+              "required": false,
+              "unit": "L",
+              "options": [],
+              "read_only": true,
+              "default": 7,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "rr_misurato",
+              "label": "RR misurato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "litri_misurati",
+              "label": "Litri misurati",
+              "field_type": "number",
+              "required": false,
+              "unit": "L",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            }
+          ]
+        },
+        {
+          "key": "o2_rr12_l10",
+          "label": "RR 12 bpm / 10 L",
+          "fields": [
+            {
+              "key": "rr_impostato",
+              "label": "RR impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 12,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "litri_impostati",
+              "label": "Litri impostati",
+              "field_type": "number",
+              "required": false,
+              "unit": "L",
+              "options": [],
+              "read_only": true,
+              "default": 10,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "rr_misurato",
+              "label": "RR misurato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "litri_misurati",
+              "label": "Litri misurati",
+              "field_type": "number",
+              "required": false,
+              "unit": "L",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "freq_volume_airmix",
+      "title": "Controllo Frequenza e Volume al Minuto - AIR MIX",
+      "section_type": "table",
+      "description": "Valori di perdita di carico considerato = 0. Modalita funzionamento: AIR MIX (Miscela Aria/Ossigeno)",
+      "fields": [],
+      "rows": [
+        {
+          "key": "mix_rr35_l5",
+          "label": "RR 35 bpm / 5 L",
+          "fields": [
+            {
+              "key": "rr_impostato",
+              "label": "RR impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 35,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "litri_impostati",
+              "label": "Litri impostati",
+              "field_type": "number",
+              "required": false,
+              "unit": "L",
+              "options": [],
+              "read_only": true,
+              "default": 5,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "rr_misurato",
+              "label": "RR misurato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "litri_misurati",
+              "label": "Litri misurati",
+              "field_type": "number",
+              "required": false,
+              "unit": "L",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            }
+          ]
+        },
+        {
+          "key": "mix_rr20_l7",
+          "label": "RR 20 bpm / 7 L",
+          "fields": [
+            {
+              "key": "rr_impostato",
+              "label": "RR impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 20,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "litri_impostati",
+              "label": "Litri impostati",
+              "field_type": "number",
+              "required": false,
+              "unit": "L",
+              "options": [],
+              "read_only": true,
+              "default": 7,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "rr_misurato",
+              "label": "RR misurato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "litri_misurati",
+              "label": "Litri misurati",
+              "field_type": "number",
+              "required": false,
+              "unit": "L",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            }
+          ]
+        },
+        {
+          "key": "mix_rr12_l10",
+          "label": "RR 12 bpm / 10 L",
+          "fields": [
+            {
+              "key": "rr_impostato",
+              "label": "RR impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 12,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "litri_impostati",
+              "label": "Litri impostati",
+              "field_type": "number",
+              "required": false,
+              "unit": "L",
+              "options": [],
+              "read_only": true,
+              "default": 10,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "rr_misurato",
+              "label": "RR misurato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "litri_misurati",
+              "label": "Litri misurati",
+              "field_type": "number",
+              "required": false,
+              "unit": "L",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "qualita_aria_uscita",
+      "title": "Controllo Qualita Aria in Uscita",
+      "section_type": "table",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "ossigeno",
+          "label": "OSSIGENO",
+          "fields": [
+            {
+              "key": "valore_riferimento",
+              "label": "Valore riferimento",
+              "field_type": "text",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": true,
+              "default": ">97%",
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            }
+          ]
+        },
+        {
+          "key": "airmix",
+          "label": "AIR MIX (Miscela Aria/Ossigeno)",
+          "fields": [
+            {
+              "key": "valore_riferimento",
+              "label": "Valore riferimento",
+              "field_type": "text",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": true,
+              "default": "tra 50% e 60%",
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "test_strumentazione",
+      "title": "Esecuzione Test con Strumentazione",
+      "section_type": "checklist",
+      "description": "Strumentazione: FLUKE VT PLUS HF",
+      "fields": [],
+      "rows": [
+        {
+          "key": "valori_norma",
+          "label": "Valori nella norma (vedi dettagli nelle sezioni di misura)",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "final_evaluation",
+      "title": "Esito Complessivo della Prova",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "esito_complessivo",
+          "label": "Esito Complessivo",
+          "field_type": "choice",
+          "required": false,
+          "unit": null,
+          "options": [
+            "OK",
+            "KO",
+            "N.A."
+          ],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "notes",
+      "title": "Note",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "note",
+          "label": "Note",
+          "field_type": "multiline",
+          "required": false,
+          "unit": null,
+          "options": [],
+          "read_only": false,
+          "default": "Si consiglia la sostituzione annuale del set di ventilazione",
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    }
+  ]
+}

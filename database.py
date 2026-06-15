@@ -5217,6 +5217,29 @@ def get_unavailability_reports_by_date_range(
     return [dict(r) for r in rows]
 
 
+def get_all_unavailability_reports_for_destination(destination_id: int) -> list:
+    """
+    Recupera tutte le segnalazioni 'non messo a disposizione' attive (non cancellate)
+    per una destinazione, arricchite con description e serial del dispositivo.
+    Usata dal dialog di gestione in Gestione Anagrafiche.
+    """
+    ensure_unavailability_table()
+    with DatabaseConnection() as conn:
+        rows = conn.execute(
+            """
+            SELECT r.*,
+                   d.description AS device_description,
+                   d.serial_number AS device_serial
+            FROM device_unavailability_reports r
+            JOIN devices d ON d.id = r.device_id
+            WHERE r.destination_id = ? AND r.is_deleted = 0 AND d.is_deleted = 0
+            ORDER BY d.description, r.period_start DESC
+            """,
+            (destination_id,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 # Applica le migrazioni del database all'avvio del modulo
 migrate_database()
 ensure_assignments_table()

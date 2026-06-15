@@ -1,0 +1,226 @@
+COMMITTENTE
+Ragione sociale:
+ 
+ 
+ 
+ 
+ 
+Riferimento:
+ 
+ 
+ 
+ 
+ 
+Tel.
+ 
+ 
+ 
+ 
+ 
+DATI IDENTIFICATIVI APPARECCHIATURA
+Produttore:
+ 
+ 
+ 
+ 
+ 
+Modello:
+ 
+ 
+ 
+ 
+ 
+S/N:
+ 
+ 
+ 
+ 
+ 
+N.inventario
+:
+ 
+ 
+ 
+ 
+ 
+Classe e tipo
+    
+Cod.AMS:
+ 
+ 
+ 
+ 
+ 
+Localizz.
+/
+Reparto
+:
+ 
+ 
+ 
+ 
+ 
+STRUMENTAZIONE USATA PER IL CONTROLLO
+Produttore
+Medicap
+Modello
+Prècise 1100
+S/N
+221.000.12.0109
+RIFERIMENTI NORMATIVI-PROCEDURE
+Norme/Procedure:
+UNI EN ISO 80601-2-61:2011
+CONTROLLO VISIVO/FUNZIONALE
+OK
+KO
+N.A.
+Leggibilità delle serigrafie
+Manuale d’uso disponibile
+Integrità involucro 
+Cambio filtri 
+(PM6000 
+2800 ore
+ - 
+SIM 10000
+ 
+ore
+ - OXIMAT
+ 5000 ore)
+Cambio batteria tampone 
+(PM6000 5000 ore)
+CONT
+ROLLO LIVELLI D’OSSIGENO, FLUSSO 
+(4L/min dopo 10 min)
+Flusso impostato 
+(L/min)
+Flusso Rilevato 
+±
+ 0,3L/min
+ 
+Errore
+L/min
+CONC. TEORICA
+Conc. Misurata 
+± 
+3%
+Errore 
+%
+2,00
+ 
+ 
+ 
+ 
+ 
+-2,00
+95
+ 
+ 
+ 
+ 
+ 
+-100,0%
+4,00
+ 
+ 
+ 
+ 
+ 
+-4,00
+90
+ 
+ 
+ 
+ 
+ 
+-100,0%
+5,00
+ 
+ 
+ 
+ 
+ 
+-5,00
+82
+ 
+ 
+ 
+ 
+ 
+-100,0%
+PRESSIONE 
+D’USCITA
+  mbar
+ 
+(PM6000
+ 300-350 - SIM 300-400 - OXYMAT
+ 600)
+ 
+(4L/min dopo 10 min)
+ 
+ 
+ 
+ 
+ 
+PRESSIONI  
+4L/min
+COLONNA 1
+COLONNA 2
+COLONNA 3
+Min >  
+120
+Max <  
+240
+MIN
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+MAX
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+CONTROLLO FUNZIONALITA’ ALLARMI
+Allarme impostato
+OK
+KO
+N.A.
+Allarme flusso basso
+Allarme mancanza rete elettrica
+ESITO COMPLESSIVO DELLA PROVA
+NOTE
+ 
+ 
+ 
+ 
+ 
+Data:
+ 
+ 
+ 
+ 
+ 
+Tecnico:
+Firma:

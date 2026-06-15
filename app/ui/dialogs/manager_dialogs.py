@@ -447,7 +447,22 @@ class DbManagerDialog(QDialog):
         
         self.device_search_box = QLineEdit()
         self.device_search_box.setPlaceholderText("🔍 Cerca dispositivo per descrizione, S/N, costruttore, modello...")
-        
+
+        self.unavail_btn = QPushButton("🚫 Non messi a disposizione")
+        self.unavail_btn.setToolTip("Visualizza e gestisci i dispositivi segnati come non messi a disposizione per questa destinazione")
+        self.unavail_btn.setStyleSheet(
+            "QPushButton { background:#7c3aed; color:#fff; border-radius:4px; padding:0 12px; font-weight:600; }"
+            "QPushButton:hover { background:#6d28d9; }"
+            "QPushButton:disabled { background:#9ca3af; color:#e5e7eb; }"
+        )
+        self.unavail_btn.setEnabled(False)
+        self.unavail_btn.clicked.connect(self.open_unavailability_manager)
+
+        search_row = QHBoxLayout()
+        search_row.setSpacing(6)
+        search_row.addWidget(self.device_search_box)
+        search_row.addWidget(self.unavail_btn)
+
         self.device_table = QTableWidget(0, 11)
         self.device_table.setObjectName("deviceTable")  # ObjectName per regole QSS specifiche
         self.device_table.setHorizontalHeaderLabels([
@@ -463,7 +478,7 @@ class DbManagerDialog(QDialog):
         buttons_layout = self.create_device_buttons()
         
         layout.addWidget(self.device_label)
-        layout.addWidget(self.device_search_box)
+        layout.addLayout(search_row)
         layout.addWidget(self.device_table)
         layout.addLayout(buttons_layout)
 
@@ -1018,15 +1033,28 @@ class DbManagerDialog(QDialog):
         self.reset_views(level='device')
         dest_id = self.get_selected_id(self.destination_table)
         is_dest_selected = dest_id is not None
+        self._current_dest_id = dest_id  # traccia destinazione corrente
         self.set_destination_buttons_enabled(self.get_selected_id(self.customer_table) is not None, is_dest_selected)
         if dest_id:
             dest_name = self.destination_table.item(self.destination_table.currentRow(), 1).text()
             self.device_label.setText(f"DISPOSITIVI '{dest_name.upper()}'")
             self.load_devices_table(dest_id)
             self.set_device_buttons_enabled(True)
+            self.unavail_btn.setEnabled(True)
             # Carica anche le verifiche di sistema per questa destinazione
             self.system_verification_label.setText(f"VERIFICHE DI SISTEMA — '{dest_name.upper()}'")
             self._load_system_verifications(dest_id)
+
+    def open_unavailability_manager(self):
+        """Apre il dialog per gestire i dispositivi non messi a disposizione della destinazione corrente."""
+        dest_id = getattr(self, '_current_dest_id', None)
+        if not dest_id:
+            QMessageBox.information(self, "Nessuna destinazione", "Seleziona prima una destinazione.")
+            return
+        dlg = UnavailabilityManagerDialog(dest_id, parent=self)
+        dlg.exec()
+        # Ricarica la tabella dispositivi dopo eventuali rimozioni
+        self.load_devices_table(dest_id)
 
     def load_devices_table(self, destination_id):
         self.device_table.setSortingEnabled(False)
@@ -2485,3 +2513,143 @@ class InstrumentManagerDialog(QDialog):
         if not inst_id: return
         services.set_default_instrument(inst_id)
         self.load_instruments()
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Dialog gestione "Non messi a disposizione" per una destinazione
+# ──────────────────────────────────────────────────────────────────────────────
+
+class UnavailabilityManagerDialog(QDialog):
+    """
+    Mostra tutti i record 'non messo a disposizione' per una destinazione,
+    permettendo all'utente di rimuoverli singolarmente.
+    """
+
+    def __init__(self, destination_id: int, parent=None):
+        super().__init__(parent)
+        self.destination_id = destination_id
+        self.setWindowTitle("🚫 Dispositivi non messi a disposizione")
+        self.setMinimumSize(860, 480)
+        self.resize(980, 560)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        # Titolo
+        title = QLabel("Segnalazioni attive — dispositivi non messi a disposizione")
+        title.setStyleSheet("font-size:13px; font-weight:700; margin-bottom:4px;")
+        layout.addWidget(title)
+
+        # Tabella
+        self.table = QTableWidget(0, 7)
+        self.table.setHorizontalHeaderLabels([
+            "DISPOSITIVO", "S/N", "PERIODO DAL", "AL", "MOTIVO", "TECNICO", "AZIONE"
+        ])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setAlternatingRowColors(True)
+        layout.addWidget(self.table)
+
+        # Info sotto tabella
+        self.info_label = QLabel("")
+        self.info_label.setStyleSheet("color:#6b7280; font-size:11px;")
+        layout.addWidget(self.info_label)
+
+        # Pulsante chiudi
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        close_btn = QPushButton("Chiudi")
+        close_btn.setFixedWidth(100)
+        close_btn.clicked.connect(self.accept)
+        btn_row.addWidget(close_btn)
+        layout.addLayout(btn_row)
+
+        self._load()
+
+    # ── private ──────────────────────────────────────────────────────────────
+
+    def _load(self):
+        """Carica tutti i record non-disponibile attivi per la destinazione."""
+        self.table.setRowCount(0)
+        try:
+            reports = database.get_all_unavailability_reports_for_destination(self.destination_id)
+        except AttributeError:
+            # Fallback: usa la query diretta se la funzione specifica non esiste ancora
+            reports = self._fallback_load()
+
+        if not reports:
+            self.info_label.setText("Nessun dispositivo segnato come non messo a disposizione per questa destinazione.")
+            return
+
+        self.info_label.setText(f"{len(reports)} segnalazione/i trovate.")
+
+        for rep in reports:
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+
+            desc = str(rep.get('device_description') or rep.get('description') or '—').upper()
+            sn   = str(rep.get('device_serial') or rep.get('serial_number') or '—').upper()
+            p_start = str(rep.get('period_start') or '—')[:10]
+            p_end   = str(rep.get('period_end')   or '—')[:10]
+            reason  = str(rep.get('reason') or '—')
+            tech    = str(rep.get('technician_name') or rep.get('technician_username') or '—')
+            uuid    = rep.get('uuid', '')
+
+            desc_item = QTableWidgetItem(desc)
+            desc_item.setData(Qt.UserRole, uuid)   # UUID salvato nell'item
+            self.table.setItem(row, 0, desc_item)
+            self.table.setItem(row, 1, QTableWidgetItem(sn))
+            self.table.setItem(row, 2, QTableWidgetItem(p_start))
+            self.table.setItem(row, 3, QTableWidgetItem(p_end))
+            self.table.setItem(row, 4, QTableWidgetItem(reason))
+            self.table.setItem(row, 5, QTableWidgetItem(tech))
+
+            del_btn = QPushButton("✅ Rimuovi")
+            del_btn.setToolTip("Rimuove la segnalazione: il dispositivo tornerà 'da verificare'")
+            del_btn.setStyleSheet(
+                "QPushButton { background:#dc2626; color:#fff; border-radius:4px; padding:2px 10px; font-weight:600; }"
+                "QPushButton:hover { background:#b91c1c; }"
+            )
+            del_btn.clicked.connect(lambda checked=False, u=uuid: self._remove(u))
+            self.table.setCellWidget(row, 6, del_btn)
+
+        self.table.resizeRowsToContents()
+
+    def _fallback_load(self) -> list:
+        """Query di fallback usando database.DatabaseConnection direttamente."""
+        import sqlite3
+        try:
+            with database.DatabaseConnection() as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    """
+                    SELECT r.*, d.description AS device_description, d.serial_number AS device_serial
+                    FROM device_unavailability_reports r
+                    JOIN devices d ON r.device_id = d.id
+                    WHERE r.destination_id = ? AND r.is_deleted = 0
+                    ORDER BY r.period_start DESC
+                    """,
+                    (self.destination_id,)
+                ).fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logging.error(f"UnavailabilityManagerDialog fallback_load: {e}")
+            return []
+
+    def _remove(self, report_uuid: str):
+        """Soft-delete della segnalazione e ricarica la tabella."""
+        reply = QMessageBox.question(
+            self, "Conferma rimozione",
+            "Rimuovere questa segnalazione?\n\nIl dispositivo tornerà tra quelli da verificare.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+        try:
+            services.delete_unavailability_report(report_uuid)
+            self._load()   # ricostruisce tutta la tabella con indici corretti
+        except Exception as e:
+            QMessageBox.critical(self, "Errore", f"Impossibile rimuovere la segnalazione:\n{e}")

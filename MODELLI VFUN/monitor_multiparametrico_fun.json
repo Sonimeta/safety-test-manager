@@ -1,0 +1,2681 @@
+{
+  "profile_key": "monitor_multiparametrico",
+  "name": "Monitor Multiparametrico",
+  "device_type": "MONITOR MULTIPARAMETRICO",
+  "sections": [
+    {
+      "key": "general_visual_control",
+      "title": "Controllo Visivo/Funzionale",
+      "section_type": "checklist",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "serigrafie",
+          "label": "Leggibilita delle serigrafie/etichette",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "manuale_uso",
+          "label": "Manuale d'uso disponibile",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "involucro_display",
+          "label": "Integrita involucro/display",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "tastiera_display",
+          "label": "Funzionalita tastiera/display",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "stampante",
+          "label": "Funzionalita stampante",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "impostazioni_sistema",
+          "label": "Verifica impostazioni di sistema (lingua, data, ora)",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "allarmi",
+          "label": "Funzionalita allarmi (visivi/acustici)",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "alimentazione_esterna",
+          "label": "Indicazione presenza alimentazione esterna",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "batteria",
+          "label": "Funzionamento batteria",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "decommissioning",
+      "title": "Messa in Fuori Uso",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "fuori_uso",
+          "label": "Messa in Fuori Uso",
+          "field_type": "choice",
+          "required": false,
+          "unit": null,
+          "options": [
+            "SI",
+            "NO"
+          ],
+          "read_only": false,
+          "default": "NO",
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "verifiche_effettuate",
+      "title": "Verifiche Effettuate",
+      "section_type": "checklist",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "verifica_ecg",
+          "label": "Verifica elettrocardiografo",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": false,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "verifica_spo2",
+          "label": "Verifica saturimetro",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": false,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "verifica_nibp_statica",
+          "label": "Verifica NIBP statica",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": false,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "verifica_nibp_dinamica",
+          "label": "Verifica NIBP dinamica",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": false,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "ecg_visual",
+      "title": "ECG - Controllo Visivo/Funzionale",
+      "section_type": "checklist",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "cavo_paziente",
+          "label": "Integrita cavo paziente",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "filtro_muscolare",
+          "label": "Funzionalita filtro muscolare",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "filtro_rete",
+          "label": "Funzionalita filtro rete 50Hz",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "ecg_hr_control",
+      "title": "ECG - Controllo Frequenza Cardiaca (BPM)",
+      "section_type": "table",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "freq_1",
+          "label": "Livello 1",
+          "fields": [
+            {
+              "key": "freq_set",
+              "label": "FREQ impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 30,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "freq_measured",
+              "label": "FREQ misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "freq_2",
+          "label": "Livello 2",
+          "fields": [
+            {
+              "key": "freq_set",
+              "label": "FREQ impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 60,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "freq_measured",
+              "label": "FREQ misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "freq_3",
+          "label": "Livello 3",
+          "fields": [
+            {
+              "key": "freq_set",
+              "label": "FREQ impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 80,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "freq_measured",
+              "label": "FREQ misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "freq_4",
+          "label": "Livello 4",
+          "fields": [
+            {
+              "key": "freq_set",
+              "label": "FREQ impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 120,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "freq_measured",
+              "label": "FREQ misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "freq_5",
+          "label": "Livello 5",
+          "fields": [
+            {
+              "key": "freq_set",
+              "label": "FREQ impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 180,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "freq_measured",
+              "label": "FREQ misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "freq_6",
+          "label": "Livello 6",
+          "fields": [
+            {
+              "key": "freq_set",
+              "label": "FREQ impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 240,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "freq_measured",
+              "label": "FREQ misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "ecg_amp_control",
+      "title": "ECG - Controllo Ampiezza Segnale (mV)",
+      "section_type": "table",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "amp_1",
+          "label": "Livello 1",
+          "fields": [
+            {
+              "key": "amp_set",
+              "label": "AMP impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mV",
+              "options": [],
+              "read_only": true,
+              "default": 0.5,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            },
+            {
+              "key": "amp_measured",
+              "label": "AMP misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mV",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            }
+          ]
+        },
+        {
+          "key": "amp_2",
+          "label": "Livello 2",
+          "fields": [
+            {
+              "key": "amp_set",
+              "label": "AMP impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mV",
+              "options": [],
+              "read_only": true,
+              "default": 1.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            },
+            {
+              "key": "amp_measured",
+              "label": "AMP misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mV",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            }
+          ]
+        },
+        {
+          "key": "amp_3",
+          "label": "Livello 3",
+          "fields": [
+            {
+              "key": "amp_set",
+              "label": "AMP impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mV",
+              "options": [],
+              "read_only": true,
+              "default": 1.5,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            },
+            {
+              "key": "amp_measured",
+              "label": "AMP misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mV",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            }
+          ]
+        },
+        {
+          "key": "amp_4",
+          "label": "Livello 4",
+          "fields": [
+            {
+              "key": "amp_set",
+              "label": "AMP impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mV",
+              "options": [],
+              "read_only": true,
+              "default": 2.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            },
+            {
+              "key": "amp_measured",
+              "label": "AMP misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mV",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 2
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "ecg_final",
+      "title": "ECG - Esito Complessivo",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "esito_ecg",
+          "label": "Esito complessivo",
+          "field_type": "choice",
+          "required": false,
+          "unit": null,
+          "options": [
+            "OK",
+            "KO",
+            "N.A."
+          ],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "spo2_visual",
+      "title": "SpO2 - Controllo Visivo/Funzionale",
+      "section_type": "checklist",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "cavo_sensore",
+          "label": "Integrita cavo prolunga/sensore SpO2",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "spo2_control",
+      "title": "SpO2 - Controllo Ossigenazione e Frequenza Cardiaca",
+      "section_type": "table",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "level_100",
+          "label": "Livello 1",
+          "fields": [
+            {
+              "key": "spo2_set",
+              "label": "% SpO2 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": true,
+              "default": 100,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "spo2_measured",
+              "label": "% SpO2 rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "hr_set",
+              "label": "HR impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 60,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "hr_measured",
+              "label": "HR rilevato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "level_98",
+          "label": "Livello 2",
+          "fields": [
+            {
+              "key": "spo2_set",
+              "label": "% SpO2 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": true,
+              "default": 98,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "spo2_measured",
+              "label": "% SpO2 rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "hr_set",
+              "label": "HR impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 65,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "hr_measured",
+              "label": "HR rilevato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "level_96",
+          "label": "Livello 3",
+          "fields": [
+            {
+              "key": "spo2_set",
+              "label": "% SpO2 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": true,
+              "default": 96,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "spo2_measured",
+              "label": "% SpO2 rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "hr_set",
+              "label": "HR impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 70,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "hr_measured",
+              "label": "HR rilevato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "level_94",
+          "label": "Livello 4",
+          "fields": [
+            {
+              "key": "spo2_set",
+              "label": "% SpO2 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": true,
+              "default": 94,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "spo2_measured",
+              "label": "% SpO2 rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "hr_set",
+              "label": "HR impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 75,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "hr_measured",
+              "label": "HR rilevato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "level_92",
+          "label": "Livello 5",
+          "fields": [
+            {
+              "key": "spo2_set",
+              "label": "% SpO2 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": true,
+              "default": 92,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "spo2_measured",
+              "label": "% SpO2 rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "hr_set",
+              "label": "HR impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 80,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "hr_measured",
+              "label": "HR rilevato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "level_90",
+          "label": "Livello 6",
+          "fields": [
+            {
+              "key": "spo2_set",
+              "label": "% SpO2 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": true,
+              "default": 90,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "spo2_measured",
+              "label": "% SpO2 rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "hr_set",
+              "label": "HR impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 85,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "hr_measured",
+              "label": "HR rilevato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "level_86",
+          "label": "Livello 7",
+          "fields": [
+            {
+              "key": "spo2_set",
+              "label": "% SpO2 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": true,
+              "default": 86,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "spo2_measured",
+              "label": "% SpO2 rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "hr_set",
+              "label": "HR impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 90,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "hr_measured",
+              "label": "HR rilevato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "level_82",
+          "label": "Livello 8",
+          "fields": [
+            {
+              "key": "spo2_set",
+              "label": "% SpO2 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": true,
+              "default": 82,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "spo2_measured",
+              "label": "% SpO2 rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "hr_set",
+              "label": "HR impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 95,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "hr_measured",
+              "label": "HR rilevato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "level_78",
+          "label": "Livello 9",
+          "fields": [
+            {
+              "key": "spo2_set",
+              "label": "% SpO2 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": true,
+              "default": 78,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "spo2_measured",
+              "label": "% SpO2 rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "%",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "hr_set",
+              "label": "HR impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 100,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "hr_measured",
+              "label": "HR rilevato",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "spo2_final",
+      "title": "SpO2 - Esito Complessivo",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "esito_spo2",
+          "label": "Esito complessivo",
+          "field_type": "choice",
+          "required": false,
+          "unit": null,
+          "options": [
+            "OK",
+            "KO",
+            "N.A."
+          ],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "nibp_statica_visual",
+      "title": "NIBP Statica - Controllo Visivo/Funzionale",
+      "section_type": "checklist",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "perdita_nibp",
+          "label": "Test di perdita NIBP",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "tubo_bracciale",
+          "label": "Integrita tubo/bracciale NIBP",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "nibp_statica_table",
+      "title": "NIBP Statica - Verifica",
+      "section_type": "table",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "nibp_1",
+          "label": "1",
+          "fields": [
+            {
+              "key": "pressure_set",
+              "label": "Impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 240,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "pressure_measured",
+              "label": "Rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "error_mmHg",
+              "label": "Errore",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "nibp_2",
+          "label": "2",
+          "fields": [
+            {
+              "key": "pressure_set",
+              "label": "Impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 200,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "pressure_measured",
+              "label": "Rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "error_mmHg",
+              "label": "Errore",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "nibp_3",
+          "label": "3",
+          "fields": [
+            {
+              "key": "pressure_set",
+              "label": "Impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 160,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "pressure_measured",
+              "label": "Rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "error_mmHg",
+              "label": "Errore",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "nibp_4",
+          "label": "4",
+          "fields": [
+            {
+              "key": "pressure_set",
+              "label": "Impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 120,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "pressure_measured",
+              "label": "Rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "error_mmHg",
+              "label": "Errore",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "nibp_5",
+          "label": "5",
+          "fields": [
+            {
+              "key": "pressure_set",
+              "label": "Impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 80,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "pressure_measured",
+              "label": "Rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "error_mmHg",
+              "label": "Errore",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "nibp_6",
+          "label": "6",
+          "fields": [
+            {
+              "key": "pressure_set",
+              "label": "Impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 40,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "pressure_measured",
+              "label": "Rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "error_mmHg",
+              "label": "Errore",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "nibp_statica_final",
+      "title": "NIBP Statica - Esito Complessivo",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "esito_nibp_statica",
+          "label": "Esito complessivo",
+          "field_type": "choice",
+          "required": false,
+          "unit": null,
+          "options": [
+            "OK",
+            "KO",
+            "N.A."
+          ],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "nibp_dinamica",
+      "title": "NIBP Dinamica",
+      "section_type": "table",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "dyn_1",
+          "label": "1 MISURA",
+          "fields": [
+            {
+              "key": "sys_set",
+              "label": "SYS impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 120,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "sys_measured",
+              "label": "SYS rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "dia_set",
+              "label": "DIA impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 80,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "dia_measured",
+              "label": "DIA rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "hr_set",
+              "label": "HR impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 80,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "hr_measured",
+              "label": "HR rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "dyn_2",
+          "label": "2 MISURA",
+          "fields": [
+            {
+              "key": "sys_set",
+              "label": "SYS impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 150,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "sys_measured",
+              "label": "SYS rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "dia_set",
+              "label": "DIA impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 100,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "dia_measured",
+              "label": "DIA rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "hr_set",
+              "label": "HR impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 80,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "hr_measured",
+              "label": "HR rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "dyn_3",
+          "label": "3 MISURA",
+          "fields": [
+            {
+              "key": "sys_set",
+              "label": "SYS impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 180,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "sys_measured",
+              "label": "SYS rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "dia_set",
+              "label": "DIA impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 120,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "dia_measured",
+              "label": "DIA rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "hr_set",
+              "label": "HR impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 80,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "hr_measured",
+              "label": "HR rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "dyn_4",
+          "label": "4 MISURA",
+          "fields": [
+            {
+              "key": "sys_set",
+              "label": "SYS impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 120,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "sys_measured",
+              "label": "SYS rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "dia_set",
+              "label": "DIA impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 80,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "dia_measured",
+              "label": "DIA rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "hr_set",
+              "label": "HR impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 80,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "hr_measured",
+              "label": "HR rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "dyn_5",
+          "label": "5 MISURA",
+          "fields": [
+            {
+              "key": "sys_set",
+              "label": "SYS impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 150,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "sys_measured",
+              "label": "SYS rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "dia_set",
+              "label": "DIA impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 100,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "dia_measured",
+              "label": "DIA rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "hr_set",
+              "label": "HR impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 80,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "hr_measured",
+              "label": "HR rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "dyn_6",
+          "label": "6 MISURA",
+          "fields": [
+            {
+              "key": "sys_set",
+              "label": "SYS impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 180,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "sys_measured",
+              "label": "SYS rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "dia_set",
+              "label": "DIA impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 120,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "dia_measured",
+              "label": "DIA rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "hr_set",
+              "label": "HR impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 80,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "hr_measured",
+              "label": "HR rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "dyn_7",
+          "label": "7 MISURA",
+          "fields": [
+            {
+              "key": "sys_set",
+              "label": "SYS impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 120,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "sys_measured",
+              "label": "SYS rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "dia_set",
+              "label": "DIA impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 80,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "dia_measured",
+              "label": "DIA rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "hr_set",
+              "label": "HR impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 80,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "hr_measured",
+              "label": "HR rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "dyn_8",
+          "label": "8 MISURA",
+          "fields": [
+            {
+              "key": "sys_set",
+              "label": "SYS impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 150,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "sys_measured",
+              "label": "SYS rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "dia_set",
+              "label": "DIA impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 100,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "dia_measured",
+              "label": "DIA rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "hr_set",
+              "label": "HR impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 80,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "hr_measured",
+              "label": "HR rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "dyn_9",
+          "label": "9 MISURA",
+          "fields": [
+            {
+              "key": "sys_set",
+              "label": "SYS impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 180,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "sys_measured",
+              "label": "SYS rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "dia_set",
+              "label": "DIA impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 120,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "dia_measured",
+              "label": "DIA rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "hr_set",
+              "label": "HR impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": true,
+              "default": 80,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "hr_measured",
+              "label": "HR rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "bpm",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "nibp_dinamica_final",
+      "title": "NIBP Dinamica - Esito Complessivo",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "esito_nibp_dinamica",
+          "label": "Esito complessivo",
+          "field_type": "choice",
+          "required": false,
+          "unit": null,
+          "options": [
+            "OK",
+            "KO",
+            "N.A."
+          ],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "verifiche_effettuate",
+      "title": "Verifiche Effettuate",
+      "section_type": "checklist",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "verifica_ecg",
+          "label": "Verifica elettrocardiografo",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": false,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": "esito_ecg",
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "verifica_spo2",
+          "label": "Verifica saturimetro",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": false,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": "esito_spo2",
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "verifica_nibp_statica",
+          "label": "Verifica NIBP statica",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": false,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": "esito_nibp_statica",
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "verifica_nibp_dinamica",
+          "label": "Verifica NIBP dinamica",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": false,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": "esito_nibp_dinamica",
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "final_evaluation",
+      "title": "Esito Complessivo della Prova",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "esito_complessivo",
+          "label": "Esito Complessivo",
+          "field_type": "choice",
+          "required": false,
+          "unit": null,
+          "options": [
+            "OK",
+            "KO",
+            "N.A."
+          ],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "notes",
+      "title": "Note",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "note",
+          "label": "Note",
+          "field_type": "multiline",
+          "required": false,
+          "unit": null,
+          "options": [],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    }
+  ]
+}
+

@@ -128,7 +128,6 @@ class AdvancedReportDialog(QDialog):
         scope_layout = QFormLayout(scope_group)
         scope_layout.setSpacing(4)
         self.scope_combo = QComboBox()
-        self.scope_combo.addItem("Tutto il database", "all")
         self.scope_combo.addItem("Cliente", "customer")
         self.scope_combo.addItem("Destinazione", "destination")
         self.scope_combo.currentIndexChanged.connect(self._update_scope_controls)

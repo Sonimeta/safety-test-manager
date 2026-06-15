@@ -1,0 +1,49 @@
+ 
+ 
+VERIFICA GENERICO 
+ 
+ASSISTENZA TECNICA 
+ 
+ 
+ 
+ 
+ 
+Sistema di Qualità Certificato 
+UNI EN ISO 9001:2008 
+ 
+ 
+ 
+ 
+VERIFICA MP GENERICO 
+ 
+COMMITTENTE 
+Ragione sociale       
+Riferimento Ordine       
+DATI IDENTIFICATIVI APPARECCHIATURA 
+Categoria       
+Produttore       
+Modello       S/N       
+N.inventario       N.inv. struttura       
+Localizzazione/CDC             
+Accessori       
+ 
+ CONTROLLO VISIVO/FUNZIONALE  
+ OK KO N.A. 
+Controllare l’integrità telaio    
+Controllare l’integrità dei supporti    
+Controllare la corretta funzionalità di ruote e freni    
+Controllare l’integrità di cavi elettrici/spine/prese/corretta messa a terra    
+Controllare la corretta funzionalità di comandi, interruttori, pulsanti e manopole    
+Controllare la corretta funzionalità di motore / pompa    
+Controllare l’integrità e la corretta funzionalità di batterie e carica batterie    
+Controllare l’efficienza dei movimenti meccanici    
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ESITO COMPLESSIVO DELLA PROVA          
+NOTE        
+Data        Tecnico             Firma    

@@ -1,0 +1,215 @@
+{
+  "profile_key": "generico_manut",
+  "name": "Generico Manutenzione",
+  "device_type": "GENERICO",
+  "sections": [
+    {
+      "key": "visual_functional_control",
+      "title": "Controllo Visivo/Funzionale",
+      "section_type": "checklist",
+      "description": "Checklist da modulo AMS-MOD-GENERICO MANUT.",
+      "show_in_summary": true,
+      "fields": [],
+      "rows": [
+        {
+          "key": "integrita_telaio",
+          "label": "Controllare l'integrita telaio",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "integrita_supporti",
+          "label": "Controllare l'integrita dei supporti",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "ruote_freni",
+          "label": "Controllare la corretta funzionalita di ruote e freni",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "cavi_spine_prese_terra",
+          "label": "Controllare l'integrita di cavi elettrici/spine/prese/corretta messa a terra",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "comandi_interruttori_pulsanti_manopole",
+          "label": "Controllare la corretta funzionalita di comandi, interruttori, pulsanti e manopole",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "motore_pompa",
+          "label": "Controllare la corretta funzionalita di motore/pompa",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "batterie_carica_batterie",
+          "label": "Controllare l'integrita e la corretta funzionalita di batterie e carica batterie",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "movimenti_meccanici",
+          "label": "Controllare l'efficienza dei movimenti meccanici",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "overall_outcome",
+      "title": "Esito Complessivo della Prova",
+      "section_type": "fields",
+      "description": "Esito finale del profilo di manutenzione generico.",
+      "show_in_summary": true,
+      "fields": [
+        {
+          "key": "esito_complessivo",
+          "label": "Esito complessivo",
+          "field_type": "choice",
+          "required": true,
+          "unit": null,
+          "options": ["OK", "KO"],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "notes_section",
+      "title": "Note",
+      "section_type": "fields",
+      "description": "Campo note del modulo.",
+      "show_in_summary": true,
+      "fields": [
+        {
+          "key": "note",
+          "label": "Note",
+          "field_type": "multiline",
+          "required": false,
+          "unit": null,
+          "options": [],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    }
+  ]
+}

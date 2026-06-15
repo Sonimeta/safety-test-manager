@@ -1,0 +1,62 @@
+{
+  "cei62353_alt_classe_i_b_bf_ve": {
+    "name": "CEI EN 62353 ALT - Classe I - Tipo B/BF",
+    "tests": [
+      {
+        "name": "Resistenza conduttore di terra",
+        "parameter": "",
+        "limits": {
+          "::ST": {
+            "unit": "Ohm",
+            "high_value": 0.3
+          }
+        },
+        "is_applied_part_test": false
+      },
+      {
+        "name": "Corrente dispersione diretta dispositivo",
+        "parameter": "Polarità Normale",
+        "limits": {
+          "::ST": {
+            "unit": "uA",
+            "high_value": 500.0
+          }
+        },
+        "is_applied_part_test": false
+      },
+      {
+        "name": "Corrente dispersione diretta dispositivo",
+        "parameter": "Polarità Inversa",
+        "limits": {
+          "::ST": {
+            "unit": "uA",
+            "high_value": 500.0
+          }
+        },
+        "is_applied_part_test": false
+      },
+      {
+        "name": "Corrente dispersione diretta P.A.",
+        "parameter": "Polarità Normale",
+        "limits": {
+          "::BF": {
+            "unit": "uA",
+            "high_value": 500.0
+          }
+        },
+        "is_applied_part_test": true
+      },
+      {
+        "name": "Corrente dispersione diretta P.A.",
+        "parameter": "Polarità Inversa",
+        "limits": {
+          "::BF": {
+            "unit": "uA",
+            "high_value": 500.0
+          }
+        },
+        "is_applied_part_test": true
+      }
+    ]
+  }
+}

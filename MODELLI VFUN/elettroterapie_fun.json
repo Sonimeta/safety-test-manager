@@ -1,0 +1,653 @@
+{
+  "profile_key": "elettroterapie",
+  "name": "Elettroterapie",
+  "device_type": "ELETTROTERAPIA",
+  "sections": [
+    {
+      "key": "visual_functional_control",
+      "title": "Controllo Visivo/Funzionale",
+      "section_type": "checklist",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "condizioni_generali",
+          "label": "Controllo condizioni generali",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "involucro",
+          "label": "Controllo integrita involucro",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "interruttori",
+          "label": "Controllo interruttori, pulsanti e manopole",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "cavi_connettori",
+          "label": "Controllo condizione cavi elettrici e connettori",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "allarmi",
+          "label": "Controllo allarmi",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "human_error_protection",
+      "title": "Protezione contro Errori Umani",
+      "section_type": "checklist",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "circuito_aperto",
+          "label": "Verifica funzionamento con uscita a circuito aperto (5 minuti)",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "cortocircuito",
+          "label": "Verifica funzionamento con uscita in cortocircuito (5 minuti)",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "output_currents_12",
+      "title": "Verifica Correnti d'Uscita - Canali 1 e 2",
+      "section_type": "table",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "row_1",
+          "label": "1",
+          "fields": [
+            {
+              "key": "ch1_set",
+              "label": "Canale 1 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "ch1_measured",
+              "label": "Canale 1 misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "ch2_set",
+              "label": "Canale 2 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "ch2_measured",
+              "label": "Canale 2 misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            }
+          ]
+        },
+        {
+          "key": "row_2",
+          "label": "2",
+          "fields": [
+            {
+              "key": "ch1_set",
+              "label": "Canale 1 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "ch1_measured",
+              "label": "Canale 1 misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "ch2_set",
+              "label": "Canale 2 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "ch2_measured",
+              "label": "Canale 2 misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            }
+          ]
+        },
+        {
+          "key": "row_3",
+          "label": "3",
+          "fields": [
+            {
+              "key": "ch1_set",
+              "label": "Canale 1 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "ch1_measured",
+              "label": "Canale 1 misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "ch2_set",
+              "label": "Canale 2 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "ch2_measured",
+              "label": "Canale 2 misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "output_currents_34",
+      "title": "Verifica Correnti d'Uscita - Canali 3 e 4",
+      "section_type": "table",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "row_1",
+          "label": "1",
+          "fields": [
+            {
+              "key": "ch3_set",
+              "label": "Canale 3 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "ch3_measured",
+              "label": "Canale 3 misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "ch4_set",
+              "label": "Canale 4 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "ch4_measured",
+              "label": "Canale 4 misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            }
+          ]
+        },
+        {
+          "key": "row_2",
+          "label": "2",
+          "fields": [
+            {
+              "key": "ch3_set",
+              "label": "Canale 3 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "ch3_measured",
+              "label": "Canale 3 misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "ch4_set",
+              "label": "Canale 4 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "ch4_measured",
+              "label": "Canale 4 misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            }
+          ]
+        },
+        {
+          "key": "row_3",
+          "label": "3",
+          "fields": [
+            {
+              "key": "ch3_set",
+              "label": "Canale 3 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "ch3_measured",
+              "label": "Canale 3 misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "ch4_set",
+              "label": "Canale 4 impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "ch4_measured",
+              "label": "Canale 4 misurata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mA",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "output_block",
+      "title": "Blocco dell'Uscita",
+      "section_type": "fields",
+      "description": "Uscita non alimentata se i controlli dell'ampiezza non sono stati impostati al minimo.",
+      "fields": [
+        {
+          "key": "blocco_uscita",
+          "label": "Blocco dell'uscita",
+          "field_type": "choice",
+          "required": false,
+          "unit": null,
+          "options": [
+            "OK",
+            "KO",
+            "N.A."
+          ],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "output_indicator",
+      "title": "Indicatore di Uscita",
+      "section_type": "fields",
+      "description": "Presenza indicatori di uscita (se R=1000 Ohm; corrente uscita > 10 mA).",
+      "fields": [
+        {
+          "key": "indicatore_uscita",
+          "label": "Indicatore di uscita",
+          "field_type": "choice",
+          "required": false,
+          "unit": null,
+          "options": [
+            "OK",
+            "KO",
+            "N.A."
+          ],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "final_evaluation",
+      "title": "Esito Complessivo della Prova",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "esito_complessivo",
+          "label": "Esito Complessivo",
+          "field_type": "choice",
+          "required": false,
+          "unit": null,
+          "options": [
+            "OK",
+            "KO",
+            "N.A."
+          ],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "notes",
+      "title": "Note",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "note",
+          "label": "Note",
+          "field_type": "multiline",
+          "required": false,
+          "unit": null,
+          "options": [],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    }
+  ]
+}
+

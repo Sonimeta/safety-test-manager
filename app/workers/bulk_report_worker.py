@@ -76,6 +76,13 @@ class BulkReportWorker(QObject):
             verif_id = verif.get('id')
             dev_id = verif.get('device_id')
             verification_type = verif.get('verification_type', 'ELETTRICA')
+
+            # Le segnalazioni "non messo a disposizione" non hanno un PDF da generare:
+            # compaiono solo nel frontespizio/tabella del fascicolo, quindi le saltiamo.
+            if verification_type == 'NON_DISPONIBILE':
+                success_count += 1
+                continue
+
             if verification_type == 'SISTEMA':
                 type_label = "Sistema"
             elif verification_type == 'FUNZIONALE':
@@ -613,12 +620,15 @@ class BulkReportWorker(QObject):
             el_count  = info.get('electrical_count', 0)
             fun_count = info.get('functional_count', 0)
 
-            def _bullet(clr, y, text):
+            # indent=0 → riga principale, indent=1 → sotto-voce rientrata
+            def _bullet(clr, y, text, indent=0):
+                off = 0.9*cm * indent
                 c.setFillColor(HexColor(clr))
-                c.circle(box_x + 1.2*cm, y + 0.15*cm, 0.18*cm, fill=1, stroke=0)
+                r = 0.14*cm if indent else 0.18*cm
+                c.circle(box_x + 1.2*cm + off, y + 0.13*cm, r, fill=1, stroke=0)
                 c.setFillColor(HexColor("#ffffff"))
-                c.setFont("Helvetica", 8)
-                c.drawString(box_x + 1.8*cm, y, text)
+                c.setFont("Helvetica", 7 if indent else 8)
+                c.drawString(box_x + 1.8*cm + off, y, text)
 
             def _section_sep(y, clr):
                 c.setStrokeColor(HexColor(clr))
@@ -638,13 +648,13 @@ class BulkReportWorker(QObject):
                 detail_y -= 0.1*cm
                 _section_hdr(detail_y, "VERIFICHE ELETTRICHE", "#93c5fd")
                 detail_y -= 0.65*cm
-                _bullet("#93c5fd", detail_y, f"{el_count} verifiche totali")
-                detail_y -= 0.65*cm
-                _bullet("#4ade80", detail_y, f"{info.get('el_conformi_count', 0)} CONFORMI")
-                detail_y -= 0.65*cm
-                _bullet("#f59e0b", detail_y, f"{info.get('el_cca_count', 0)} CONF. CON ANNOTAZIONE")
-                detail_y -= 0.65*cm
-                _bullet("#f87171", detail_y, f"{info.get('el_nc_count', 0)} NON CONFORMI")
+                _bullet("#93c5fd", detail_y, f"{el_count} VERIFICHE TOTALI")
+                detail_y -= 0.58*cm
+                _bullet("#4ade80",  detail_y, f"{info.get('el_conformi_count', 0)} CONFORMI",           indent=1)
+                detail_y -= 0.55*cm
+                _bullet("#f59e0b",  detail_y, f"{info.get('el_cca_count', 0)} CONF. CON ANNOTAZIONE",  indent=1)
+                detail_y -= 0.55*cm
+                _bullet("#f87171",  detail_y, f"{info.get('el_nc_count', 0)} NON CONFORMI",            indent=1)
                 detail_y -= 0.5*cm
 
             # ── VERIFICHE FUNZIONALI ──────────────────────────────────
@@ -653,19 +663,23 @@ class BulkReportWorker(QObject):
                 detail_y -= 0.1*cm
                 _section_hdr(detail_y, "VERIFICHE FUNZIONALI", "#86efac")
                 detail_y -= 0.65*cm
-                _bullet("#86efac", detail_y, f"{fun_count} verifiche totali")
-                detail_y -= 0.65*cm
-                _bullet("#4ade80", detail_y, f"{info.get('fun_conformi_count', 0)} CONFORMI")
-                detail_y -= 0.65*cm
-                _bullet("#f59e0b", detail_y, f"{info.get('fun_cca_count', 0)} CONF. CON ANNOTAZIONE")
-                detail_y -= 0.65*cm
-                _bullet("#f87171", detail_y, f"{info.get('fun_nc_count', 0)} NON CONFORMI")
+                _bullet("#86efac", detail_y, f"{fun_count} VERIFICHE TOTALI")
+                detail_y -= 0.58*cm
+                _bullet("#4ade80",  detail_y, f"{info.get('fun_conformi_count', 0)} CONFORMI",          indent=1)
+                detail_y -= 0.55*cm
+                _bullet("#f59e0b",  detail_y, f"{info.get('fun_cca_count', 0)} CONF. CON ANNOTAZIONE", indent=1)
+                detail_y -= 0.55*cm
+                _bullet("#f87171",  detail_y, f"{info.get('fun_nc_count', 0)} NON CONFORMI",           indent=1)
                 detail_y -= 0.5*cm
 
             # ── NON MESSI A DISPOSIZIONE ──────────────────────────────
             non_disp = info.get('non_disponibili_count', 0)
             if non_disp:
-                _bullet("#c4b5fd", detail_y, f"{non_disp} NON MESSI A DISPOSIZIONE")
+                _section_sep(detail_y + 0.2*cm, "#c4b5fd")
+                detail_y -= 0.1*cm
+                _section_hdr(detail_y, "NON MESSI A DISPOSIZIONE", "#c4b5fd")
+                detail_y -= 0.65*cm
+                _bullet("#c4b5fd", detail_y, f"{non_disp} DISPOSITIVI", indent=0)
 
             if include_table:
                 c.showPage()

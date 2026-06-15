@@ -1,0 +1,573 @@
+{
+  "profile_key": "monibp_statica",
+  "name": "NIBP Statica",
+  "device_type": "NIBP",
+  "sections": [
+    {
+      "key": "normative_references",
+      "title": "Riferimenti Normativi-Procedure",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "norme_procedure",
+          "label": "Norme/Procedure",
+          "field_type": "text",
+          "required": false,
+          "unit": null,
+          "options": [],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "visual_functional_control",
+      "title": "Controllo Visivo/Funzionale",
+      "section_type": "checklist",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "serigrafie",
+          "label": "Leggibilita delle serigrafie",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "manuale_uso",
+          "label": "Manuale d'uso disponibile",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "involucro",
+          "label": "Integrita involucro",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "accessori",
+          "label": "Integrita accessori",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "tastiera",
+          "label": "Funzionalita tastiera",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "display_spie",
+          "label": "Funzionalita display/spie luminose",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "presenza_rete",
+          "label": "Indicazione presenza rete 220V",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "batteria",
+          "label": "Funzionamento a batteria",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "perdita_nibp",
+          "label": "Test di perdita NIBP",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "nibp_verification",
+      "title": "Verifica NIBP",
+      "section_type": "table",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "level_1",
+          "label": "1",
+          "fields": [
+            {
+              "key": "pressure_set",
+              "label": "Impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 240,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "pressure_measured",
+              "label": "Rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "error_mmHg",
+              "label": "Errore",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "level_2",
+          "label": "2",
+          "fields": [
+            {
+              "key": "pressure_set",
+              "label": "Impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 200,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "pressure_measured",
+              "label": "Rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "error_mmHg",
+              "label": "Errore",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "level_3",
+          "label": "3",
+          "fields": [
+            {
+              "key": "pressure_set",
+              "label": "Impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 160,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "pressure_measured",
+              "label": "Rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "error_mmHg",
+              "label": "Errore",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "level_4",
+          "label": "4",
+          "fields": [
+            {
+              "key": "pressure_set",
+              "label": "Impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 120,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "pressure_measured",
+              "label": "Rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "error_mmHg",
+              "label": "Errore",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "level_5",
+          "label": "5",
+          "fields": [
+            {
+              "key": "pressure_set",
+              "label": "Impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 80,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "pressure_measured",
+              "label": "Rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "error_mmHg",
+              "label": "Errore",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        },
+        {
+          "key": "level_6",
+          "label": "6",
+          "fields": [
+            {
+              "key": "pressure_set",
+              "label": "Impostata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": true,
+              "default": 40,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "pressure_measured",
+              "label": "Rilevata",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            },
+            {
+              "key": "error_mmHg",
+              "label": "Errore",
+              "field_type": "number",
+              "required": false,
+              "unit": "mmHg",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "final_evaluation",
+      "title": "Esito della prova NIBP",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "esito_prova",
+          "label": "Esito della prova",
+          "field_type": "choice",
+          "required": false,
+          "unit": null,
+          "options": [
+            "OK",
+            "KO",
+            "N.A."
+          ],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "notes",
+      "title": "Note",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "note",
+          "label": "Note",
+          "field_type": "multiline",
+          "required": false,
+          "unit": null,
+          "options": [],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    }
+  ]
+}
+

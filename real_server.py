@@ -1394,7 +1394,8 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                 changes_dict = payload.changes.model_dump()
                 tables_order = ["customers", "mti_instruments", "profiles", "profile_tests", "functional_profiles",
                                 "destinations", "devices", "verifications", "functional_verifications", "verification_attachments",
-                                "system_verifications", "system_verification_devices", "verification_assignments", "signatures", "audit_log"]
+                                "system_verifications", "system_verification_devices", "verification_assignments",
+                                "device_unavailability_reports", "signatures", "audit_log"]
 
                 for table in tables_order:
                     records = changes_dict.get(table, [])

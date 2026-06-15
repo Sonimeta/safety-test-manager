@@ -287,7 +287,13 @@ def _add_instrument_info(story, styles, mti_info, verification_data=None):
     """Aggiunge la tabella con le informazioni sullo strumento di misura."""
     # Se ci sono più strumenti usati nella verifica funzionale, mostra tutti
     used_instruments = verification_data.get('used_instruments') if verification_data else None
-    
+
+    # Nessun strumento selezionato: non mostrare la sezione
+    _mti_valid = mti_info and any(mti_info.get(k) for k in ('instrument', 'serial', 'cal_date'))
+    _used_valid = used_instruments and len(used_instruments) > 0
+    if not _mti_valid and not _used_valid:
+        return
+
     if used_instruments and len(used_instruments) > 1:
         # Mostra tutti gli strumenti usati
         story.append(_create_styled_paragraph("Strumenti Utilizzati", styles['SectionHeader']))

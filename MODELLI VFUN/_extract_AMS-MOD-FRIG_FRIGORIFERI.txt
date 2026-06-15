@@ -1,0 +1,151 @@
+COMMITTENTE
+Ragione sociale
+ 
+ 
+ 
+ 
+ 
+Riferimento Ordine
+ 
+ 
+ 
+ 
+ 
+DATI IDENTIFICATIVI APPARECCHIATURA
+Produttore
+ 
+ 
+ 
+ 
+ 
+Modello
+ 
+ 
+ 
+ 
+ 
+S/N
+ 
+ 
+ 
+ 
+ 
+N.inventario
+ 
+ 
+ 
+ 
+ 
+Localizzazione/CDC
+ 
+ 
+ 
+ 
+ 
+Cod.AMS
+ 
+ 
+ 
+ 
+ 
+Accessori
+ 
+ 
+ 
+ 
+ 
+STRUMENTAZIONE USATA PER IL CONTROLLO
+Produttore
+ 
+ 
+ 
+ 
+ 
+Modello
+ 
+ 
+ 
+ 
+ 
+S/N
+ 
+ 
+ 
+ 
+ 
+RIFERIMENTI NORMATIVI-PROCEDURE
+Norme/Procedure:
+CONTROLLO VISIVO/FUNZIONALE
+OK
+KO
+N.A.
+Leggibilità delle serigrafie
+Manuale d’uso disponibile
+Funzionamento Display/spie
+Integrità involucro 
+Integrità accessori
+Funzionalità allarmi
+CONTROLLO TEMPERATURE (°C) 
+(errore
+ max 
+∆
+t <= 1°C se non diversamente specificato)
+VALORE IMPOSTATO °C
+VALORE MISURATO °C
+N.A.
+ERRORE 
+°C
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+0,0
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+0,0
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+0,0
+MESSA IN FUORI USO
+SI 
+NO 
+ESITO COMPLESSIVO DELLA PROVA
+ 
+NOTE
+ 
+ 
+ 
+ 
+ 
+Data
+ 
+ 
+ 
+ 
+ 
+Tecnico
+ 
+ 
+Firma

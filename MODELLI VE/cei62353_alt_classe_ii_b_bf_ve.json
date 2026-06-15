@@ -1,0 +1,51 @@
+{
+  "cei62353_alt_classe_ii_b_bf_ve": {
+    "name": "CEI EN 62353 ALT - Classe II - Tipo B/BF",
+    "tests": [
+      {
+        "name": "Corrente dispersione diretta dispositivo",
+        "parameter": "Polarità Normale",
+        "limits": {
+          "::ST": {
+            "unit": "uA",
+            "high_value": 100.0
+          }
+        },
+        "is_applied_part_test": false
+      },
+      {
+        "name": "Corrente dispersione diretta dispositivo",
+        "parameter": "Polarità Inversa",
+        "limits": {
+          "::ST": {
+            "unit": "uA",
+            "high_value": 100.0
+          }
+        },
+        "is_applied_part_test": false
+      },
+      {
+        "name": "Corrente dispersione diretta P.A.",
+        "parameter": "Polarità Normale",
+        "limits": {
+          "::BF": {
+            "unit": "uA",
+            "high_value": 100.0
+          }
+        },
+        "is_applied_part_test": true
+      },
+      {
+        "name": "Corrente dispersione diretta P.A.",
+        "parameter": "Polarità Inversa",
+        "limits": {
+          "::BF": {
+            "unit": "uA",
+            "high_value": 100.0
+          }
+        },
+        "is_applied_part_test": true
+      }
+    ]
+  }
+}

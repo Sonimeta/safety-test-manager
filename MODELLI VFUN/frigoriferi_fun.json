@@ -1,0 +1,442 @@
+{
+  "profile_key": "frigoriferi",
+  "name": "Frigoriferi",
+  "device_type": "FRIGO",
+  "sections": [
+    {
+      "key": "normative_references",
+      "title": "Riferimenti Normativi-Procedure",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "norme_procedure",
+          "label": "Norme/Procedure",
+          "field_type": "text",
+          "required": false,
+          "unit": null,
+          "options": [],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "visual_functional_control",
+      "title": "Controllo Visivo/Funzionale",
+      "section_type": "checklist",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "serigrafie",
+          "label": "Leggibilita delle serigrafie",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "manuale_uso",
+          "label": "Manuale d'uso disponibile",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "display_spie",
+          "label": "Funzionamento display/spie",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "involucro",
+          "label": "Integrita involucro",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "accessori",
+          "label": "Integrita accessori",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "allarmi",
+          "label": "Funzionalita allarmi",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": [
+                "OK",
+                "KO",
+                "N.A."
+              ],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "temperature_control",
+      "title": "Controllo Temperature (C)",
+      "section_type": "table",
+      "description": "Errore max delta t <= 1C se non diversamente specificato.",
+      "fields": [],
+      "rows": [
+        {
+          "key": "temp_1",
+          "label": "Misura 1",
+          "fields": [
+            {
+              "key": "temp_set",
+              "label": "Valore impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "C",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "temp_measured",
+              "label": "Valore misurato",
+              "field_type": "number",
+              "required": false,
+              "unit": "C",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "na",
+              "label": "N.A.",
+              "field_type": "choice",
+              "required": false,
+              "unit": null,
+              "options": [
+                "SI",
+                "NO"
+              ],
+              "read_only": false,
+              "default": "NO",
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "temp_error",
+              "label": "Errore",
+              "field_type": "number",
+              "required": false,
+              "unit": "C",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            }
+          ]
+        },
+        {
+          "key": "temp_2",
+          "label": "Misura 2",
+          "fields": [
+            {
+              "key": "temp_set",
+              "label": "Valore impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "C",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "temp_measured",
+              "label": "Valore misurato",
+              "field_type": "number",
+              "required": false,
+              "unit": "C",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "na",
+              "label": "N.A.",
+              "field_type": "choice",
+              "required": false,
+              "unit": null,
+              "options": [
+                "SI",
+                "NO"
+              ],
+              "read_only": false,
+              "default": "NO",
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "temp_error",
+              "label": "Errore",
+              "field_type": "number",
+              "required": false,
+              "unit": "C",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            }
+          ]
+        },
+        {
+          "key": "temp_3",
+          "label": "Misura 3",
+          "fields": [
+            {
+              "key": "temp_set",
+              "label": "Valore impostato",
+              "field_type": "number",
+              "required": false,
+              "unit": "C",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "temp_measured",
+              "label": "Valore misurato",
+              "field_type": "number",
+              "required": false,
+              "unit": "C",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            },
+            {
+              "key": "na",
+              "label": "N.A.",
+              "field_type": "choice",
+              "required": false,
+              "unit": null,
+              "options": [
+                "SI",
+                "NO"
+              ],
+              "read_only": false,
+              "default": "NO",
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            },
+            {
+              "key": "temp_error",
+              "label": "Errore",
+              "field_type": "number",
+              "required": false,
+              "unit": "C",
+              "options": [],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "decommissioning",
+      "title": "Messa in Fuori Uso",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "fuori_uso",
+          "label": "Messa in Fuori Uso",
+          "field_type": "choice",
+          "required": false,
+          "unit": null,
+          "options": [
+            "SI",
+            "NO"
+          ],
+          "read_only": false,
+          "default": "NO",
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "final_evaluation",
+      "title": "Esito Complessivo della Prova",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "esito_complessivo",
+          "label": "Esito Complessivo",
+          "field_type": "choice",
+          "required": false,
+          "unit": null,
+          "options": [
+            "OK",
+            "KO",
+            "N.A."
+          ],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "notes",
+      "title": "Note",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "note",
+          "label": "Note",
+          "field_type": "multiline",
+          "required": false,
+          "unit": null,
+          "options": [],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    }
+  ]
+}
+

@@ -1,0 +1,1602 @@
+Norma Italiana Data Pubblicazione 
+CEI EN 62353 2015-11 
+La seguente Norma è identica a: EN 62353:2014-10 . 
+Titolo 
+Apparecchi elettromedicali - Verifiche periodiche e prove da effettuare 
+dopo interventi di riparazione degli apparecchi elettromedicali 
+Title 
+Medicai electrical equipment - Recurrent test and test after repair of medicai 
+electrical equipment 
+Sommario 
+La presente Norma si applica alle prove sugli apparecchi elettromedicali e sui sistemi elettromedicali o su 
+parti di tali apparecchi o sistemi , conformi alle prescrizioni della EN/IEC 60601-1 :1 988 (seconda edizione) 
+e s.m.i. e della EN/IEC 60601-1 :2005 (terza edizione) e s.m.i ., prima della loro messà in servizio , durante 
+le operazioni di manutenzione, ispezione , assistenza e dopo la riparazione, oppure in occasione delle 
+prove periodiche effettuate per valutare la sicurezza di tali apparecchi o sistemi EM o di loro parti. Nel caso 
+di apparecchiature costruite non secondo la EN/IEC 60601-1, le seguenti prescrizioni possono essere 
+applicate tenendo conto delle norme di sicurezza per la progettazione e delle informazioni contenute nelle 
+istruzioni per l'uso di tale apparecch iatura. 
+Ai fini della presente Norma, l'applicazione dei metodi di misura è indipendente dall'edizione per la quale 
+l'apparecchio/sistema EM è stato progettato. 
+8 Questa edizione comprende le seguenti modifiche principali : 
+-li,;i - chiarisce che le misure delle correnti di dispersione basate sulle configurazioni delle prove derivate dalla 
+EN/IEC 60601-1 sono un metodo alternativo consentito con l'inserimento di spiegazione informativa 
+i:::; nell'Allegato A; 
+~-,1. - revisiona i requisiti di protezione di resistenza di terra per sistemi EM che utilizzano prese multiple per 
+~ tener conto della Norma EN/IEC 60601-1 :2005/A1 :2012 per i valori di sicurezza consentiti di resistenza di 
+~~ messa a terra delle apparecchiature collegate; ti~ 
+_r; -inserisce i valori di resistenza di isolamento minimi previsti nella Tabella 2 e riordina la sequenza delle 
+~J prove nell'Allegato B. 
+j È La Norma in oggetto sostituisce completamente la Norma CEI EN 62353:2010 -1 O, che rimane applicabile 
+~f tino al 09-10-2017. 
+~ ~ La presente Norma riporta il testo in italiano e in inglese della EN 62353; rispetto al precedente fascicolo 
+::-~ n. 14244E di luglio 2015, essa contiene la traduzione completa della EN sopra indicata . 
+~~ 
+~ o Inoltre è stato aggiunto un Allegato Nazionale che fornisce indicazioni operative sull'applicazione delle ·1 i::JJ prescrizioni contenute nella Norma stessa. Tali indicazioni sono rivolte al personale tecnico impegnato 
+i! nelle prove di accettazione delle apparecchiature elettromedicali e dei sistemi elettromedicali, nell'ambito 
+., $: delle verifiche periodiche o dopo gli interventi di riparazione e lo aiutano ad applicare meglio le prescrizioni 
+·;;i contenute nella Norma europea. ij] 
+"!: ll 'è 
+-!! ;!,, 
+~& 
+• • ©C EI COMITATO ELETTROTECNICO ITALIANO- Milano 2015. Riproduzione vietata 
+Tutti i diritti sono riservati Nessuna parte del presente Documento puO essere riprodotta, messa in rete o diffusa 
+con un mezzo quals las f senza il consenso scritto del CEl Concessione per utente singolo . Le Normé CEI sono 
+revisionate -. quando n0cessario, con la pubblicazione sia di nuove edizioni sia di variantL È importante pertanto 
+che gli utenti delle stesse si accertinc> di essere in possesso del l 'ultima edizione o variante 
+Copia concessa /11 data 202/-0 4-27 a Livio Sarda (lhdo.sardo@p msmw to.lt). dn CEl 
+Copy dlstributed to Livio Sardo (llvio.sardo@llmstrtnto .il) 2021-04-27, by CE!. 
+
+...J 
+EN 62353 
+Sostituisce la Norma EN 62353:2008 
+Apparecchi elettromedicali - Verifiche periodiche e prove da effettuare dopo 
+interventi di riparazione degli apparecchi elettromedicali 
+Medicai electrical equipment - Recurrent test and test after repair of medicai 
+electrical equipment 
+Appareils électromédicaux - Essai récurrent et essai après réparation d'un appareil 
+électromédical 
+Medizinische elektrische Gerate - Wiederholungsprufungen und Prufung nach 
+lnstandsetzung van medizinischen elektrischen Geraten 
+I Comitati Nazionali membri del CENELEC sono tenuti, in accordo col regolamento interno del CEN/CENELEC, 
+ad adottare questa Norma Europea, senza alcuna modifica, come Norma Nazionale. Gli elenchi aggiornati e i 
+relativi riferimenti di tali Norme Nazionali possono essere ottenuti rivolgendosi al Segretariato Centrale del 
+CENELEC o agli uffici di qualsiasi Comitato Nazionale membro. La presente Norma Europea esiste in tre 
+versioni ufficiali (inglese, francese, tedesco). Una traduzione effettuata da un altro Paese membro, sotto la sua 
+responsabilità, nella sua lingua nazionale e notificata al CENELEC, ha la medesima validità. I membri del 
+CENELEC sono i Comitati Elettrotecnici Nazionali dei seguenti Paesi: Austria, Belgio, Bulgaria, Cipro, Croazia, 
+Danimarca, Estonia, Ex Repubblica Jugoslava di Macedonia, Finlandia, Francia, Germania, Grecia, Irlanda, 
+Islanda, Italia, Lettonia, Lituania, Lussemburgo, Malta, Norvegia, Olanda, Polonia, Portogallo, Regno Unito, 
+Repubblica Ceca, Romania, Slovacchia, Slovenia, Spagna, Svezia, Svizzera, Turchia e Ungheria. 
+I diritti di riproduzione di questa Norma Europea sono riservati esclusivamente ai membri nazional i del CENELEC . 
+CENELEC members are bound to comply with the CEN/CENELEC Internal Regulations which stipulate the 
+conditions for givìng this European Standard the status of a National Standard without any alteration. Up-to­
+date llsts and bibliographical references concerning such National Standards may be obtained on application to 
+the Centrai Secretariat orto any CENELEC member. This European Standard exists in three officiai versions 
+(English, French, German). A version in any other language and notìfied to the CENELEC Centrai Secretariat 
+has the same status as the officiai versions. CENELEC members are the national electrotechnìcal committees 
+of: Austria, Belgium, Bulgaria, Cyprus, Croatia, Czech Republic, Denmark, Estonia, Finland, Former Yugoslav 
+Republic of Macedonia, France, Germany, Greece, Hungary, lceland, lreland, ltaly, Latvia, Lithuania, 
+Luxembourg, Malta, Netherlands, Norway, Poland, Portugal, Romania, Slovakia, Slovenia, Spain, Sweden, 
+Switzerland, Turkey and Uniteci Kingdom, 
+© CENELEC Copyright reserved to ali CENELEC members . 
+Comitato Europeo di Normalizzazlone Elettrotecnica 
+European Committee tor Etectrotechnical Standardization 
+CENELEC 
+Centrai Secrétariat 
+Avenue Marnix 17, B- 1000 Bruxelles 
+Comité Européen de NormalisatJon Electrotechnique 
+Europaische Komitee fOr Elektrotechnische Normung 
+Copia conce.<sa i11 daJa 202/-04-27 a Uvla Sardo (livlo.,ordo@am.w,mto.il}, d<1 CE!. 
+Copy dìstrlbuted 10 Livio Sordo (livio.sordo@amstrcnto.il) 202/-04-27. by CE!. 
+
+NORMA TECNICA -------
+• 
+CEI EN 62353 :2015-11 
+Premessa Nazionale 
+La presente Norma costituisce il recepimento nazionale della Norma EN 62353 e contiene la 
+versione in lingua italiana e il testo originale inglese. 
+In aggiunta comprende, al termine della versione italiana, un Allegato Nazionale dal titolo 
+"Guida alla applicazione della Norma CEI EN 62353:2015-11" . 
+Il CT 62 del CEI ha ritenuto opportuno integrare la Norma CEI EN 62353 con l'Allegato 
+Nazionale con lo scopo di fornire indicazioni operative sull'applicazione delle prescrizioni 
+contenute nella norma stessa. 
+Tali indicazioni sono rivolte al personale tecnico impegnato nelle prove di accettazione delle 
+apparecchiature elettromedicali e dei sistemi elettromedicali, nell'ambito delle verifiche 
+periodiche o dopo gli interventi di riparazione. 
+Capiu co11cessa In daJo 2021-04-27 a Livio Sardo (1ivio,sardo@pmrtrc111o.lt). do CEl 
+Copy clistrlh11ted to lìvio Sardo (1/vio,satdo@amstret1to.il) 2021-04-27. by CE!. 
+5 
+
+NORMA TECNICA ♦ CEI EN 62353:2015 - 11 ---------
+APPARECCHI ELETTROMEDICALI -
+VERIFICHE PERIODICHE E PROVE DA EFFETTUARE DOPO INTERVENTI 
+DI RIPARAZIONE DEGLI APPARECCHI ELETTROMEDICALI 
+1 Oggetto 
+La presente Norma Internazionale si applica alle prove sugli APPARECCHI ELETTROMEDICALI e 
+sui SISTEMI ELETTROMEDICALI , nel seguito indicati come APPARECCHI EM e SISTEMI EM, o su parti 
+di tali apparecchi o sistemi, conformi alle prescrizioni della I EC 60601-1: 1988 (seconda 
+edizione) e delle sue modifiche e della IEC 60601-1 :2005 (terza edizione) e delle sue 
+modifiche, prima della loro MESSA IN SERVIZIO, durante le operazioni di MANUTENZIONE, 
+ISPEZIONE, ASSISTENZA e dopo la RIPARAZIONE, oppure in occasione delle PROVE PERIODICHE 
+effettuate per valutare la sicurezza di tali APPARECCHI EM o SISTEMI EM o di loro parti . Nel caso 
+di apparecchiature costruite non secondo la IEC 60601-1, le seguenti prescrizioni possono 
+essere applicate tenendo conto delle Norme di sicurezza per la progettazione e delle 
+informazioni contenute nelle istruzioni per l'uso di tale apparecchiatura. 
+La presente Norma contiene tabelle che riportano i valori ammessi, relativi alle diverse 
+edizioni della IEC 60601-1. Ai fini della presente Norma, l'applicazione dei metodi di misura è 
+indipendente dall'edizione per la quale i 'APPARECCHiO EM o il SISTEMA EM è stato progettato. 
+La presente Norma contiene: 
+- "prescrizioni generali", che prevedono articoli di carattere generale, e 
+- "prescrizioni particolari", altri articoli riferiti agli APPARECCHI EM o SISTEMI EM di tipo 
+speciale, che vengono applicati insieme alle "Prescrizioni generali". 
+NOTA In questa fase non sono previste prescrizioni particolar i. 
+La presente Norma non è idonea per valutare se un APPARECCHIO EM od un SISTEMA EM o una 
+qualsiasi altra apparecchiatura sia conforme alle corrispondenti Norme dal punto di vista del 
+progetto. 
+La presente Norma non si applica agli assiemi di SISTEMI EM. Per l'assemblaggio dei SISTEMI 
+EM si veda l'articolo 16 della I EC 60601-1 :2005 + I EC 60601-1 :2005/A 1:20121. 
+La presente Norma non definisce le prescrizioni per la RIPARAZIONE, la sostituzione di 
+componenti e la MODIFICA degli APPARECCHI EM e dei SISTEMI EM. 
+Tutte le attività di MANUTENZIONE, ISPEZIONE , ASSISTENZA e RIPARAZIONE effettuate secondo le 
+istruzioni del fabbricante mantengono la conformità alla Norma utilizzata per la progettazione 
+dell'apparecchiatura. In caso contrario, la conformità alle prescrizioni applicabili dovrebbe 
+essere valutata e verificata prima di effettuare le prove indicate nella presente Norma . 
+La presente Norma è applicabile anche alle prove successive alla RIPARAZIONE. 
+La IEC 60601-1 :2005 + IEC 60601-1 :2005/A 1 :2012 richiedono che , come parte del PROCESSO 
+DI GESTIONE DEL RISCHIO, che il FABBRICANTE valuti come la sicurezza di un APPARECCHIO EM o 
+di un SISTEMA EM possa essere garantita durate la vita in servizio del prodotto. Come parte del 
+processo di gestione del rischio il FABBRICANTE può dover identificare le procedure di 
+MANUTENZIONE . Questo comprende il definire le corrispondenti prove per i'APPARECCHiO EM o 
+per il SISTEMA EM. 
+1 Questo riferimento è alla IEC 60601- 1.2005 , modificata dalla A1 pubblicata nel 2012 . 
+7 
+Copia concusa In daJa 2021-04-27 a Livio Sardo (livio.~urdo@amstnmto.il), da CEL 
+Copy distribl4t•dtoLMo Sardo (livio.sardo@amstrento ,it) 202/-04 -27, by CEL 
+
+NORMA TECNICA CEI EN 62353 :2015-11 
+3.4 
+PARTE APPLICATA 
+parte di un APPARECCHIO EM che nell'uso normale entra necessariamente in contatto fisico con 
+il paziente affinché i'APPARECCHiO EM od il SISTEMA EM svolgano la propria funzionalità 
+[IEC 60601-1 :2005, 3.8, modificata - Le note della definizioni originale sono state cancellate 
+in quanto rilevanti solo per il documento di origine] 
+3.5 
+CORRENTE DI DISPERSIONE NELLA PARTE APPLICATA 
+corrente che fluisce attraverso una PARTE APPLICATA DI TIPO F e tutte le seguenti, a seconda di 
+come applicabile: 
+PARTI COLLEGATE ALLA RETE e 
+PARTI CONDUTTRICI ACCESSIBILI dell'involucro; 
+dovuta ad una tensione esterna sulla PARTE APPLICATA DI TIPO F. 
+3.6 
+CLASSE I 
+termine che si riferisce ad un apparecchio elettrico , in cui la protezione contro lo shock 
+elettrico non si basa esclusivamente sull'isolamento fondamentale, ma che adotta misure 
+supplementari di sicurezza, in modo che le parti accessibili di metallo o le parti interne di 
+metallo siano protettivamente messe a terra 
+[IEC 60601-1 :2005, 3.13] 
+3.7 
+CLASSE Il 
+termine che si riferisce ad un apparecchio elettrico in cui la protezione contro lo shock 
+elettrico non si basa esclusivamente sull'isolamento fondamentale, ma anche su misure 
+supplementari di sicurezza , come il doppio isolamento o l 'isolamento rinforzato, in cui non è 
+prevista la messa a terra di protezione, oppure la sicurezza non dipende dalle condizioni 
+d'installazione 
+NOTA 1 L'APPARECCHIO EM DI CLASSE 11 può essere mun ito di un morsetto di terra funzionale o di un conduttore di 
+messa a terra funzionale . 
+[IEC 60601-1 :2005, 3.14] 
+3.8 
+CONFIGURAZIONE 
+termine riferito alle impostazioni software o hardware di un APPARECCHIO EM, o all'allestimento 
+ed al collegamento di un APPARECCHIO EM con qualsiasi altra apparecchiatura, che costituisce 
+un SISTEMA EM, appropriato per un'applicazione clinica prevista 
+3.9 
+CAVO DI ALIMENTAZIONE SEPARABILE 
+cavo flessibile previsto per il collegamento dell 'apparecchio elettrico all'alimentazione 
+attraverso un connettore 
+[IEC 60601-1 :2005 , 3.21] 
+3.10 
+CORRENTE DI DISPERSIONE VERSO TERRA 
+corrente che fluisce dalla PARTE COLLEGATA ALLA RETE verso il CONDUTTORE DI TERRA DI 
+PROTEZIONE attraverso l'isolamento 
+[I EC 60601-1 :2005 + I EC 60601-1 :2005/A 1:2012 , 3 .25, modificata 
+collegamento alla terra funzionale è stato eliminato .] 
+Copio co11ces.ra in timo 2021-04-17 a liv/o Sardo (llv/Q . .rardo@amstJ,mto.lt), tir, CE/. 
+Copy distrlbuted to Uvio Sardo (IMo.sordo@t,mstrento.il) 2021-04-27, by CE/. 
+9 
+Il riferimento al 
+
+NORMA TECNICA ♦ CE! EN 62353:2015 -11 ------------
+3.18 
+PARTE COLLEGATA ALLA RETE 
+parte dell'apparecchiatura elettrica che costituisce un circuito previsto per essere collegato 
+all'ALIMENTAZIONE DI RETE 
+NOTA 1 LA PARTE COLLEGATA ALLA RETE comprende tutte le parti conduttrici che non sono separate 
+dall' ALIMENTAZIONE DI RETE con almeno un mezzo di proiez ione. 
+NOTA 2 Ai fini di questa definizione , il conduttore di terra di proiezione non è considerato una PARTE COLLEGATA 
+ALLA RETE. 
+[IEC 60601-1 :2005 + IEC 60601-1 :2005/A1 :2012, 3.49] 
+3.19 
+SPINA DI ALIMENTAZIONE 
+parte, integrante o prevista per essere connessa ad un CAVO DI ALIMENTAZIONE 
+dell'apparecchio elettrico, destinata ad essere inserita in una presa d'alimentazione fissa 
+[IEC 60601-1 :2005, 3.50, modificata - È stata cancellata la nota che fa riferimento alla 
+IEC 60083 ed alla IEC 60309-1 ]. 
+3.20 
+TENSIONE DI RETE 
+tensione dell'ALIMENTAZIONE DI RETE tra due conduttori di fase di un sistema polifase , oppure 
+tensione tra il conduttore di fase ed il conduttore neutro di un sistema monofase 
+[IEC 60601-1 :2005, 3.54) 
+3.21 
+MANUTENZIONE 
+combinazione di tutti i mezzi e attività tecniche ed amministrative , compresa la supervisione, 
+adottate per mantenere o riportare un APPARECCHIO EM o un SISTEMA EM nelle sue condizioni 
+normali di lavoro 
+3.22 
+FABBRICANTE 
+persona fisica o giuridica che ha la responsabilità del progetto , della costruzione , 
+dell 'imballaggio o dell ' etichettatura dell'APPARECCHIO EM, oppure dell ' assemblaggio di un 
+SISTEMA EM, o dell'adattamento dell'APPARECCHIO EM o del SISTEMA EM, indipendentemente dal 
+fatto che queste operazioni siano svolte da tale persona o per suo conto da una terza parte 
+NOTA 1 La ISO 13485 [9]1 definisce come "etichettatura" un testo scritto , stampato o un disegno 
+affisso ad un dispositivo medico o a uno qualsiasi dei suoi contenitori o imballi; oppure 
+allegato al dispositivo medico , 
+relativo all'identificazione, alla descr izione tecni ca e all 'impiego del dispositivo medico, ma che non comprende i 
+documenti di spedizione . Nella presente Norma, tale materiale è indicato come dati di targa e DOCUMENTAZIONE 
+ANNESSA. 
+NOTA 2 Il termine "adattare" comprende apportare modifiche sostanziali ad un apparecchio EM o ad un sistema 
+EM già in uso. 
+NOTA 3 In alcune legislazioni, l'organizzazione responsabile può essere considerata il fabbricante, quando 
+questi sia coinvolto nelle attività sopra descritte . 
+NOTA 4 Adattata dalla definizione 2.8 della ISO 14971 :2007[10] . 
+[I EC 60601-1 :2005 + IEC 60601-1 :2005/ A 1 :2012 , 3 .55] 
+I numeri tra parentesi quadre si riferiscono alla Bibliografia . 
+11 
+Copia co11c,ssa i11 dolo 2021--04-2 7 a Livio St1rdo (livio.sardo@tm1s1re1110.il), dt1 CEI. 
+Copy dlttrlbuted lo [,iv/o Sardo (livio.sardo@nm.,1rc11to.il) 102/-04-17. by CE/. 
+
+NORMA TECNICA CEI EN 62353:2015-11 
+3.29 
+AMBIENTE DEL PAZIENTE 
+volume in cui può avvenire un contatto, intenzionale o non intenzionale, tra il paziente e parti 
+dell'APPARECCHIO EM o di un SISTEMA EM, o tra il paziente ed altre persone che tocchino parti 
+dell'APPARECCHIO EM o del SISTEMA EM 
+NOTA 1 È difficile definire le dimensioni di un volume in cui vengano effettuati la diagnosi, il monitoraggio od il 
+trattamento. Le dimensioni dell'ambiente del paziente indicate nella Figura D.1 sono giustificate dall'esperienza 
+pratica. 
+[IEC 60601-1 :2005 , 3.79, modificata - È stata aggiunta la nota.] 
+3.30 
+CORRENTE DI DISPERSIONE NEL PAZIENTE 
+corrente: 
+che circola tra le CONNESSIONI PAZIENTE attraverso il PAZIENTE verso terra; oppure 
+che è generata, dalla presenza involontaria di una tensione dovuta ad una sorgente 
+esterna sul PAZIENTE e che circola dal PAZIENTE, attraverso le CONNESSIONI PAZIENTE di 
+una PARTE APPLICATA DI TIPO F, verso terra 
+[IEC 60601-1 :2005 , 3.80] 
+3.31 
+INSTALLATO PERMANENTEMENTE 
+termine che indica un apparecchio collegato elettricamente all'ALIMENTAZIONE DI RETE 
+attraverso una connessione permanente, che può essere scollegata solo con l'uso di un 
+utensile 
+[IEC 60601-1 :2005 , 3.84] 
+3.32 
+CAVO DI ALIMENTAZIONE 
+cavo flessibile, fisso o assemblato con l'apparecchio elettrico , per la connessione 
+all'ALIMENTAZIONE DI RETE 
+[IEC 60601-1 :2005, 3.87] 
+3.33 
+CONDUTTORE DI TERRA DI PROTEZIONE 
+conduttore di collegamento tra il MORSETTO DI TERRA DI PROTEZIONE ed un sistema esterno di 
+messa a terra di protezione 
+[IEC 60601-1 :2005 , 3.93] 
+3.34 
+RESISTENZA DI TERRA DI PROTEZIONE 
+resistenza tra qualsiasi PARTE ACCESSIBILE CONDUTTRICE, che deve essere collegata per motivi 
+di sicurezza al MORSETTO DI TERRA DI PROTEZIONE, ed 
+il connettore di protezione della SPINA DI ALIMENTAZIONE, oppure 
+il connettore di protezione della spina di connettore, oppure 
+il conduttore di protezione collegato in modo permanente all'ALIMENTAZIONE DI RETE; 
+resistenza presente tra i connettori di protezione e ciascuna estremità di un CAVO DI 
+ALIMENTAZIONE NON SEPARABILE 
+Copio C0'1Cl?Ma l11 data 2021-04-27 a Livio Sardo (1/vlo.sordo@amstren to.il), da CE/. 
+Copy distrib 11u,d to Livio Sardo (livio.sardo@amsfre1 ,to.lt) 2021-04-27, by CEI. 
+13 
+
+NOR MA TECNICA CEI EN 62353 :2015-1 1 
+3.44 
+CORRENTE DI CONTATTO 
+corrente di dispersione che, nell'uso normale, fluisce dall 'involucro o da sue parti, escluse le 
+connessioni paziente, accessibile durante l'uso normale all'operatore o al paziente, attraverso 
+un collegamento esterno diverso dal CONDUTTORE DI TERRA DI PROTEZIONE, verso la terra o 
+un'altra parte dell'involucro 
+NOTA 1 Il significato di questo termine è lo stesso di "CORRENTE DI DISPERSIONE SULL'INVOLUCRO" della prima e 
+della seconda edizione della IEC 60601-1. Il termine è stato modificato per allinearlo alla IEC 60950 -1 [3) e per 
+riflettere il fatto che la misura, ora, si applica anche alle parti che sono normalmente protettivamente messe a 
+terra. 
+[IEC 60601-1 :2005, 3.129] 
+3.45 
+PARTE APPLICATA DI TIPO B 
+PARTE APPLICATA conforme alle prescrizioni specificate nella IEC 60601-1 , che fornisce un 
+grado di protezione contro lo shock elettrico, con particolare riguardo alla CORRENTE DI 
+DISPERSIONE NEL PAZIENTE ed alla corrente ausiliaria nel paziente ammissibili 
+NOTA 1 Una parte applicata di tipo b viene marcatura con il simbolo IEC 60417-5840 (2002-10) ( '1t) oppure, se 
+classificata come protetta contro la defibrillazione, con il simbolo IEC 60417-5841 (2002-10) (k\ 
+NOTA 2 Le parti applicate di tipo b non sono adatte per un'applicazione cardiaca diretta . 
+[IEC60601-1 :2005+ IEC60601-1 :2005/A1:2012, 3.132, modificata - La Nota 1 è stata 
+modificata per fare riferimento specifico ai contenuti dei simboli di una PARTE APPLICATA ed 
+una PARTE PROTETTA CONTRO LA DEFIBRILLAZIONE. La Nota 3 è stata cancellata.] 
+3.46 
+PARTE APPLICATA DI TIPO BF 
+PARTE APPLICATA DI TIPO F, conforme alle prescrizioni specificate nella IEC 60601-1, che 
+fornisce un grado di protezione più elevato contro lo shock elettrico, rispetto a quello fornito 
+dalle PARTI APPLICATE DI TIPO B 
+NOTA 1 Una PARTE APPLICATA DI TIPO BF viene marcatura con il simbolo IEC 60417-5333 (2002-10) ([!I) oppure , 
+se classificala come protetta contro la defibrillazione , con il simbolo 60417-5334 (2002-10) ( ) . 
+NOTA 2 Le PARTI APPLICATE DI TIPO BF non sono adatte per un'applicazione cardiaca diretta . 
+[IEC60601-1 :2005+IEC60601-1:2005/A1:2012 , 3.133 , modificata . - La Nota 1 è stata 
+modificata per fare riferimento specifico ai contenuti dei simboli di una PARTE APPLICATA DI 
+TIPO BF e della PARTE APPLICATA DI TIPO BF protetta contro la defibrillazione" . La Nota 3 è stata 
+cancellata.] 
+3.47 
+PARTE APPLICATA DI TIPO CF 
+PARTE APPLICATA DI TIPO F, conforme alle prescrizioni specificate nella I EC 60601-1, che 
+fornisce un più elevato grado di protezione contro lo shock elettrico, rispetto a quello fornito 
+dalle PARTI APPLICATE DI TIPO BF 
+NOTA 1 Una PARTE APPLICATA DI TIPO CF viene marcata con il simbolo IEC 60417-5335 (2002-10) ( lfl) oppure , 
+se classificata come protetta contro la defibrillazione , con il simbolo 60417-5336 (2002-10) (@ ). 
+[IEC 60601-1 :2005 + IEC 60601-1:2005/A1:2012, 3.134, modificata - La Nota 1 è stata 
+modificata per fare riferimento specifico ai contenuti dei simboli di una PARTE APPLICATA DI 
+TIPO F e di una PARTE APPLICATA DI TIPO F protetta contro la defibrillazione" . La Nota 2 e la Nota 
+3 sono state cancellate.] 
+Copia concessa in data 2021-04-27 a Livio Sardo (livio.sardo@amsrrento .il), da CE/. 
+Copy disrributed lo Livio Sardo (livio.sardo@amsrrenlo .it) 2021-04-2 7, by CE/. 
+15 
+
+NORMA TECNICA CEI EN 62353 :2015-11 
+Gli ACCESSORI di un APPARECCHIO EM che possono influire sulla sicurezza dell'apparecchio in 
+prova o sui risultat i delle misure , devono essere inclusi nelle prove . Gli ACCESSORI inclusi 
+nelle prove devono essere indicati nel rapporto di prova. 
+I CAVI DI ALIMENTAZIONE SEPARABILI, che sono disponibili e sono previsti per essere utilizzati 
+con i'APPARECCHiO EM o il SISTEMA EM, devono essere ispezionati e deve essere misurata la 
+loro RESISTENZA DI TERRA DI PROTEZIONE, come indicato in 5.3.2. 
+Tutte le prove devono essere effettuate in modo tale che non si verifichino situazion i di 
+pericolo per il personale che le effettua , per i pazienti o le altre persone. 
+Quando non sia diversamente indicato , tutti i valori di corrente sono espressi in va lore 
+efficace. 
+4.2 Prove prima della MESSA IN SERVIZIO, dopo le MODIFICHE e la RIPARAZIONE 
+I metodi di prova indicati nella presente Norma possono essere utilizzati : 
+dal FABBRICANTE per effettuare le prove finali, e 
+per le prove prima della MESSA IN SERVIZIO. 
+NOTA 1 I risultati di queste misure rappresentano il "VALORE DI RIFERIMENTO" e possono essere riportati nella 
+documentazione, insieme al metodo di misura utilizzato, come riferimento per le misure future. 
+NOTA 2 Se indicato nella DOCUMENTAZIONE ANNESSA fornita dal FABBRICANTE, le prove finali sulla produzione 
+possono sostituire da prove in sito prima della MESSA IN SERVIZIO, quando questo sia reputato accettabile 
+dall'ORGANIZZAZIONE RESPONSABI LE. 
+Dopo ogni RIPARAZIONE degli APPARECCHI EM o dei SISTEMI EM, deve essere verificata la 
+condizione di sicurezza . 
+NOTA 3 Questo è possibile effettuando le prove riportate nell'articolo 5. 
+Dopo ogni operazione di RIPARAZIONE e/o di aggiornamento dell'APPARECCHIO EM , effettuata 
+secondo le istru zio ni del FABBRICANTE, prima che l'apparecchio venga rimesso in servizio, 
+l'apparecchio d eve es sere valut ato rispetto alle prescrizioni della presente Norma . 
+Dopo ogni operazione di RIPARAZIONE e/o di MODIFICA dell'APPARECCHIO EM, non effettuate 
+secondo le istruzioni del FABBRICANTE, prima che l'apparecchio venga rimesso in servizio , le 
+modifiche all'apparecchio devono essere valutate dal punto di vista delle Norme di progetto 
+applicabili, e delle prescrizioni della presente Norma. 
+Il livello di prove conforme alla presente Norma deve tenere in considerazione la natura della 
+RIPARAZIONE o della MODIFICA effe ttuate . Le prove devono essere definite in funzione del 
+lavoro svolto e sulla base dell e ind icazioni applicabili del FABBRICANTE. 
+4.3 * PROVA PERIODICA 
+Le prove applicabili che devono essere utilizzate come PROVA PERIODICA sono indicate 
+nell'articolo 5. 
+I valori risultanti da queste prove devono essere documentati e valutati insieme al metodo di 
+misura scelto. I valori misurati non devono superare il limite ammesso, definito nella Tabella 3 
+o nelle altre tabelle dell'Allegato E. 
+NOTA I valori precedentemente misurati (valori di riferimento) possono essere tenuti in considerazione nella 
+valutazione della sicurezza elettrica APPARECCHIO EM o del SISTEMA EM. 
+I SISTEMI EM devono essere esaminati visivamente per determinare se la loro CONFIGURAZIONE 
+sia ancora la stessa del momento in cui è stata effettuata l'ultima ISPEZIONE, o se nel SISTEMA 
+EM sono state sostituite, agg iunte o rimosse eventuali unità componenti del SISTEMA EM . 
+Queste modifiche devono essere documentate, insieme a quelle della CONFIGURAZIONE 
+hardware del SISTEMA EM, ed influenzeranno la validità dei precedenti VALORI DI RIFERIMENTO. I 
+valori/risultati delle correnti di dispersione misurati dopo queste modifiche del SISTEMA EM 
+devono essere registrati come VALORI DI RIFERIMENTO. 
+Copia concessa In dota 202/ -0<1-27 a Livia Sardo (livio.sarda@pmitnmfo.lt), da CEl 
+Cop)I distr lbuttd lo Livio Sardo (livio.sardo@am.<trt!lllo.ir) 1011-0<1-17, by CEf. 
+17 
+
+NORMA TECNICA CEI EN 62353:2015-11 
+5.3.2 Misura della RESISTENZA DI TERRA DI PROTEZIONE 
+5.3.2.1 * Generalità 
+Nel caso di APPARECCHI EM DI CLASSE I, si deve dimostrare che il CONDUTTORE DELLA TERRA DI 
+PROTEZIONE colleghi tutte le PARTI CONDUTTRICI ACCESSIBILI, che potrebbero andare in tensione 
+in caso di guasto, in modo corretto e sicuro, al MORSETTO DELLA TERRA DI PROTEZIONE della 
+SPINA DI ALIMENTAZIONE nel caso di apparecchi a spina, oppure ad un punto della terra di 
+protezione nel caso di apparecchi INSTALLATI PERMANENTEMENTE. 
+Per valutare l'integrità del conduttore di terra del CAVO DI ALIMENTAZIONE, durante la misura il 
+cavo deve essere piegato nel senso della sua lunghezza . Se durante la flessione, si 
+osservano variazion i nei valori di resistenza, si deve ipotizzare che il CONDUTTORE DELLA 
+TERRA DI PROTEZIONE sia danneggiato, oppure che le connessioni non siano più adeguate. 
+5.3.2.2 * Condizioni di misura 
+Le misure devono essere effettuate utilizzando un dispositivo di misura in grado di erogare 
+una corrente di almeno 200 mA su un carico di 500 mo . La tensione a circuito aperto non 
+deve superare 24 V. 
+Sebbene siano raccomandate prove a bassa corrente (sino ad 1 A) , si possono effettuare 
+prove con correnti sino a 25 A. 
+NOTA Per bassi valori di resistenza (ad esempio quando vengono impiegati tratti di conduttori di maggior sezione 
+e/o più corti) l'uso di correnti più elevate per la prova di continuità migliora la ripetibilità dei risultati di prova. 
+Tuttavia, le prove effettuate utilizzando correnti più elevate possono non rilevare problemi di continuità verso terra 
+dovuti all'ossidazione o a contatti scadenti. 
+Nel caso si utilizzi una corrente continua , la misura deve essere ripetuta con la polarità 
+opposta . Entrambi i valori misurati non devono superare il valore ammesso . Il valore più alto 
+deve essere riportato nel rapporto di prova. 
+La RESISTENZA DI TERRA DI PROTEZIONE non deve superare i seguenti valori. 
+a) Nel caso di un APPARECCHIO EM o di un SISTEMA EM con CAVO DI ALIMENTAZIONE NON 
+SEPARABILE, la res istenza tra il connettore della terra di protez ione della SPINA DI 
+ALIMENTAZIONE e le PARTI ACCESSIBILI CONDUTTRICI protettivamente messe a terra 
+dell'APPARECCHIO EM o del SISTEMA EM non deve superare 300 mo (si veda la Figura 1 ). 
+b) Nel caso di un APPARECCHIO EM o di un SISTEMA EM con CAVO DI ALIMENTAZIONE SEPARABILE, 
+la resistenza tra il connettore della terra di protezione della spina di connettore e le PARTI 
+CONDUTTRICI ACCESSIBILI PROTETIVAMENTE MESSE A TERRA dell 'APPARECCHIO EM o del 
+SISTEMA EM non deve superare i 200 mo. La resistenza tra le connessioni di terra ai due 
+estremi di un cavo di alimentazione non deve superare 100 mo. Se il CAVO DI 
+ALIMENTAZIONE SEPARABILE e i'APPARECCHiO EM o il SISTEMA EM vengono misurati insieme, 
+la resistenza non deve superare 300 mo (si veda la Figura 1 ). 
+c) * Nel caso di APPARECCHI EM INSTALLATI PERMANENTEMENTE, la connessione della terra di 
+protezione ali' ALIMENTAZIONE DI RETE deve essere sottoposta a prova come indicato nella 
+Figura 2. La resistenza tra il MORSETTO DELLA TERRA DI PROTEZIONE dell 'APPARECCHIO EM o 
+del SISTEMA EM e le PARTI CONDUTTRICI ACCESSIBILI protettivamente messe a terra 
+dell'apparecchio che possono, in caso di guasto, andare in tensione, non deve superare 
+300 mo . Durante la prova nessun CONDUTTORE DELLA TERRA DI PROTEZIONE viene 
+scollegato . 
+Nell 'effettuare le misure , come indicato nella Figura 2, può essere tenuta in conto la 
+resistenza delle connessioni della terra di protezione nell'ALIMENTAZIONE DI RETE. 
+Copia concessa in data 2021-04-27 a Livio Sardo (livio.sardo@amstrenlo.it). da CEL 
+Copy dislributed lo Livio Sardo (livio.sardo@amstrento.il) 2021-04-27. by CEL 
+19 
+
+NORMA TECNICA CEI EN 62353 :2015-11 
+Tabella 1 - Legenda dei simboli 
+e 
+ALIMENTAZIONE DI RETE 
+@ 
+Terra di protezione (terra) 
+L, N Morsetti dell'ALIMENTAZIONE DI RETE PE MORSETTO DELLA TERRA DI PROTEZIONE 
+MP AP 
+][ 
+PARTE COLLEGATA ALLA RETE 
+[J 
+PARTE APPLICATA 
+AP 
+0 
+PARTE APPLICATA DI TIPO F AP1, AP2 PARTI APPLICATE con differenti 
+fun z ioni 
+@ 
+Dispositivo di misura 
+yq 
+Misuratore di corrente differenziale 
+(si veda la Figura C . 1) con risposta di frequenza come MD 
+® 
+Dispositivo di misura della 
+@) Dispositivo di misura dell 'isolamento resistenza 
+C.N . CONDIZIONE NORMALE S.F.C. CONDIZIONE DI PRIMO GUASTO 
+-T-
+PARTE DELL'INVOLUCRO non 
+t 
+CONNESSIONE ALLE PARTI CONDUTTRICI 
+PROTETTIVAMENTE MESSA A TERRA ACCESSI BILI 
+........ CONNESSIONE FACOLTATIVA 
+5.3.3 • Misura della resistenza di isolamento (non obbligatoria) 
+5.3.3.1 Generalità 
+La misura della resistenza di isolamento deve essere presa in considerazione , in aggiunta 
+alle misure delle correnti di dispersione in caso di dubbi sull 'isolamento dell'apparecchiatura. 
+Esempi di casi in cui potrebbero sorgere dubbi relativamente all'isolamento comprendono: 
+quando il dispositivo differenziale è intervenuto diverse volte ; 
+se sull'apparecchiatura si è versato del liquido e, di conseguenza, se si hanno dubbi sulle 
+distanze superficiali ; oppure 
+nel caso di alcuni componenti o apparecchiature , le cui caratteristiche di isolamento 
+possono variare con la temperatura, ad esempio gli elementi riscaldanti . 
+Copia t:o11cc/JSa In dola 202/-04-27 a Livio Sordo {llvla.sardo@amstrenlo.lt), da CE/. 
+Copy di.Jtribut~d lo Livio Sardo (1ivio .. wrdo@nms1r~111o.lt) 2021-04-27. by CE(. 
+21 
+
+NORMA Tl;__CNICA CE! EN 62353 :2015 -11 
+MP AP 
+L ~ [ 
+CLASSE I 
+MP AP 
+L 
+[ 
+o .... . ·@ 
+PE 
+CLASSE I e CLASSE Il 
+(Per la legenda si veda la Tabella 1) 
+Figura 3 - Circuito per la misura della resistenza d'isolamento tra la PARTE COLLEGATA 
+ALLA RETE e la terra di protezione per gli APPARECCHI EM di CLASSE I e tra la PARTE 
+COLLEGATA ALLA RETE e le PARTI CONDUTTRICI ACCESSIBILI (non messe a terra) 
+degli APPARECCHI EM di CLASSE I e CLASSE Il 
+MP 
+Lo---+-- [ 
+N o--+---­
+PE O······· 
+AP 
+(Per la legenda si veda la Tabella 1) 
+Figura 4 - Circuito per la misura della resistenza d'isolamento tra la PARTE COLLEGATA 
+ALLA RETE e le PARTI APPLICATE che formano il collegamento al paziente 
+degli APPARECCHI EM di CLASSE I e CLASSE Il 
+Copia conc~,sa in dota 2021-04-27 a Livio Sordo (livio.sardo@t1mstrcnto.it), do GEL 
+Copy distrib11t~d ro !,iv/o Sardo (Tlvio . .rardo@pmstrcnto.it) 2021-04-27, by CE/. 
+23 
+
+NORMA TECNICA CEI EN 62353 :2015-11 
+Tabella 2 - Valori della resistenza dell'isolamento 
+Resistenza in MO 
+Figura CLASSE I CLASSE Il 
+3 superiore "?. 2 -
+3 inferiore "?. 7 "?. 7 
+4, TIPO B "?. 2 "?. 7 
+4, TIPO F "?. 70 "?. 70 
+5 "?. 70 "?. 70 
+I valori limite per la resistenza dell'isolamento della Tabella 2 si basano su valori 
+comunemente accettati . Valori più bassi della resistenza di isolamento possono essere 
+ancora accettati, a condizione che siano previsti dal progetto dell'APPARECCHIO EM o del 
+SISTEMA EM. 
+Correnti di dispersione 
+5.3.4.1 • Generalità 
+In funzione del tipo di APPARECCHIO EM o del SISTEMA EM si può utilizzare uno dei seguenti 
+metodi di misura per le CORRENTI DI DISPERSIONE dell 'APPARECCHIO o per le CORRENTI DI 
+DISPERSIONE delle PARTI APPLICATE: 
+a) metodo alternativo secondo da 5.3.4.2 .2 a 5.3.4 .3.2; 
+b) metodo diretto secondo da 5.3.4.2.3 a 5.3.4.3.3 ; 
+c) metodo differenziale secondo 5.3.4 .2.4 . 
+Le correnti di dispersione non devono superare i valori indicati nella Tabella 3. 
+In alternativa , per le misure della CORRENTE DI DISPERSIONE VERSO TERRA, della CORRENTE DI 
+CONTATTO e della CORRENTE DI DISPERSIONE NEL PAZIENTE, possono essere utilizzate le 
+configurazioni di prova derivate dalla IEC 60601 -1 (tutte le edizioni). Si vedano la Figura A.1, 
+A.2, A.3, A.4 e A.5. 
+Quando si utilizzano i metodi indicati nella IEC 60601-1, le correnti dispersione non devono 
+superare i valori indicati nelle Tabella E.1 o E .2 e E.3 . 
+Questo si applica sia agli APPARECCHI EM sia ai SISTEMI EM , co me pure per gli APPARECCHI non­
+EM che si trovano nell'AMBIENTE DEL PAZIENTE. 
+Nel caso di apparecchi , in cui gli isolamenti della PARTE COLLEGATA ALLA RETE non siano 
+inclusi nella misura (ad esempio a causa di un relè che è chiuso solo in condizioni di 
+funzionamento) sono applicabili solo i metodi indicati ai punti b), c) e quelli secondo la 
+IEC60601-1). 
+Nel caso di APPARECCHI EM o ai SISTEMI EM DI CLASSE I, la misura della corrente di dispersione 
+può essere eseguita solo dopo che questi abbiano superato la prova del conduttore di 
+protezione. 
+Inoltre , prima di effettuare la prova con il metodo diretto per gli APPARECCHI EM di CLASSE I e 
+CLASSE Il è consigliabile, per motivi di sicurezza, misurare la resistenza di isolamento (si veda 
+la Figura B.1 ). 
+Nel caso di APPARECCHI EM INSTALLATI PERMANENTEMENTE, la misura della CORRENTE DI 
+DISPERSIONE NELL'APPARECCHIO non è necessaria. 
+Copia concessa in data 2021-04-27 a Livio Sardo (/ivlo.sardo@;,mstrento.it). da CE/. 
+Copy distrihuted lo Livio Sardo (livio.sardo@µmstrenlo.it) 2021-04-27. by CE/. 
+25 
+
+NORMA TECNICA CEI EN 62353:2015-11 
+NOTA 2 Nella versione della IEC 60601-1 :2005, sono ammessi limiti più elevati per la CORREN TE DI DI SPERSIONE 
+VERSO TERRA, mentre i limiti per la CORRENTE DI CONTATTO sono immutati . 
+AP 
+CLASSE I 
+MP AP 
+~ [ 
+CLASSE Il 
+(Per la legenda si veda la Tabella 1) 
+Figura 6 - Circuito per la misura della corrente di dispersione 
+nell'APPARECCHIO EM - metodo alternativo 
+5.3.4.2 .3 Metodo diretto 
+Le misure devono essere effettuate : 
+alla TENSIONE DI RETE, e 
+in qualunque posizione della SPINA DI ALIMENTAZIONE , se applicabile , e 
+secondo la Figura 7. 
+Se sono possibili misure in configurazioni diverse della SPINA DI ALIMENTAZIONE, deve essere 
+registrato nel rapporto di prova il valore più elevato. 
+NOTA 1 Nel caso di un'apparecchiatura di misura alimentata da un sistema IT, si otterranno valori di misura 
+errati. 
+Durante la misura, l'apparecchio deve essere isolato dalla terra, ad eccezione del 
+CONDUTTORE DELLA TERRA DI PROTEZIONE del CAVO DI ALIMENTAZIONE. In caso contrario il 
+metodo diretto non è applicabile. 
+NOTA 2 Uni potenziale di terra può essere introdotto, per esempio da una linea dati esterna . 
+NOTA 3 Nella misura della COR RENTE DI DIS PERS ION E di un APP ARECC HIO EM DI CLAS SE I , il personale che 
+effettua la prova, o i presenti possono essere esposti ad una situazione di pericolo a seguito dell 'interruzione della 
+connessione della terra di proiezione . 
+Copia concessa in data 2021 -04-27 a Livio Sardo (/1\/io.sardo@amstrento.il), da CEL 
+Copy distributed lo Livio Sardo (livio.sardo@amstrento .il) 2021-04-27 , by CEI. 
+27 
+
+) 
+NORMA TECNICA 
+• 
+CEI EN 62353:2015-11 
+L(N) 
+L 0--0---0--+ ... •Ht--t- -. AP 
+PE 0--------- --0--------.>- --0-------' 
+CLASSE I 
+L 
+N 
+~ L(N) MP AP -- .-
+[ 
+- --.... -... -.·-··~ .• -
+-· ,_ 
+-- - -
+. 
+N(L) 
+PE t 
+CLASSE Il 
+(Per la legenda si veda la Tabella 1) 
+Figura 8 - Circuito per la misura della CORRENTE DI DISPERSIONE 
+NELL'APPARECCHIO - metodo differenziale 
+NOTA 3 Alcuni strumenti di prova incorporano una resistenza da 1 kQ all'interno della sonda, ma questo non 
+influenzerà in alcun modo la misura con il metodo differenziale. 
+5.3.4.3 Misura della CORRENTE DI DISPERSIONE NELLA PARTE APPLICATA 
+5.3.4.3.1 Generalità 
+La misura della CORRENTE DI DISPERSIONE NELLA PARTE APPLICATA deve essere effettuata 
+sull'apparecchio. 
+Nel caso di PARTI APPLICATE DI TIPO B, normalmente non è necessario effettuare misure 
+separate. Le PARTI APPLICATE vengono collegate all'involucro (si vedano le figure) e 
+vengono incluse nelle misure della CORRENTE DI DISPERSIONE dell'APPARECCHIO, con gli 
+stessi valori ammissibili. 
+Le misure separate della corrente di dispersione per la PARTE APPLICATA DI TIPO B sono 
+necessarie solo se indicate dal FABBRICANTE (si veda la DOCUMENTAZIONE ANNESSA). 
+La corrente di dispersione del la PARTE APPLICATA DI TIPO F deve essere misurata da tutte 
+le connessioni del paziente di una singola funzione della PARTE APPLICATA collegate 
+insieme , come mostrato nella Figura 9, Figura 10, Figura 11 , o come indicato dal 
+FABBRICANTE. In alternativa, per le PARTI APPLICATE DI TIPO CF, le misure possono essere 
+effettuate da ciascuna connessione al paziente in sequenza. 
+Nell'effettuare le prove sugli APPARECCHI EM provvisti di PARTI APPLICATE multiple, collegare 
+ciascuna di esse in sequenza e verificare la conformità con i limiti applicabili della Tabella 3. 
+Le PARTI APPLICATE che non sono sottoposte a misura devono essere lasciate flottanti. 
+29 
+Copia concessa in data 2021-04-27 a Livio Sardo (Uvio.sardo@amstrento.it), da CE/. 
+Copy distributed lo Livio Sardo (livio.sardo@amstrento.il) 2021-04-2 7, by CE/. 
+
+NORMA TECNICA 
+• 
+-------
+L(N) 
+PE o----- >----- --o-i 
+CLASSE I 
+L(N) MP 
+L 0------0--\. . o-------t--- [ 
+'••· = .. ••·. .... ·• .. 
+N o--- -0-- --0----+-~-
+N(L) 
+PE 0----------- -0--{ 
+CLASSE Il 
+AP 
+AP 
+(Per la legenda si veda la Tabella 1) 
+CEI EN 62353 :2015-11 
+AP1 
+AP2 
+AP1 
+AP2 
+Figura 10 - Circuito per la misura della CORRENTE DI DISPERSIONE NELLA PARTE APPLICATA -
+TENSIONE DI RETE sulla PARTE APPLICATA DI TIPO F - metodo diretto 
+AP AP1 
+AP2 
+(Per la legenda si veda la Tabella 1) 
+Figura 11 - Circuito per la misura della CORRENTE DI DISPERSIONE NELLA PARTE APPLICATA 
+per gli apparecchi con una SORGENTE ELETTRICA INTERNA - metodo diretto 
+5.3.4.3.4 Misura della CORRENTE DI CONTATTO per le apparecchiature installate in modo 
+fisso 
+Questa misura è richiesta solo sulle PARTI CONDUTTRICI ACCESSIBILI prive di terra di protezione . 
+Le misure devono essere effettuate: 
+alla TENSIONE DI RETE , e 
+come mostrato nella Figura 7. 
+Copia co,rcessa i,r data 2021-04-17 a Livio Sardo (livlo.sardo@a111Strtmto.lt). da CE!. 
+Copy dls1rib111ed to Livio Sardo (1iv/o.~11rdo@omslre1110.it) 2021-04-27, by Ci:,'/. 
+31 
+
+\ 
+I 
+J 
+NORMA TECNICA CEI EN 62353 :2015-11 
+6 Risultati della prove e valutazione 
+6.1 Documentazione dei risultati 
+Tutte le prove effettuate devono essere documentate . L'insieme della documentazione deve 
+comprendere come minimo i seguenti dati: 
+l'identificazione dell 'organizzazione che ha eseguite le prove (ad esempio azienda , 
+dipartimento) ; 
+Il nome della o delle persone che hanno effettuato la prova e o la(e) loro valutazione(i); 
+l'identificazione dell'apparecchio/del sistema (ad esempio il tipo, il numero di serie, 
+inventario) e degli ACCESSORI verificati; 
+le prove e le misure effettuate; 
+la data, il tipo e l'esito/i risultati di 
+• ESAMI a vista; 
+• misure (valori misurati , il metodo e l'apparecchiatura utilizzati); 
+• prove funzionali secondo quanto indicato in 5.4; 
+la valutazione conclusiva; 
+la data e l'approvazione della persona che ha effettuato la valutazione; nel caso di 
+documentazione elettr _onica, la designazione dell'ispettore/valutatore deve essere 
+garantita. 
+- se applicabile (a discrezione della ORGANIZZAZIONE RESPONSABILE), l'apparecchio/il 
+sistema sottoposti a prova devono essere contrassegnati/identificati di conseguenza. 
+Un esempio di rapporto di prova nella Figura G .1. 
+6.2 Valutazione 
+La valutazione della sicurezza dell'APPARECCHIO EM o del SISTEMA EM deve essere effettuata 
+da persone esperte di sicurezza elettrica (come definite nella IEC 61140), che abbiano avuto 
+un'adeguata formazione sulle prove a cui sottoporre l'apparecchio. Se viene fatto uso di 
+strumenti di misura indicati nell'Allegato C, le incertezze di misura non devono essere tenute 
+in conto per i limiti . 
+Se la sicurezza dell'APPARECCHIO EM o del SISTEMA EM non è garantita, ad esempio in caso di 
+mancato superamento delle prove indicate nell'articolo 5, i'APPARECCHiO EM o il SISTEMA EM 
+devono essere marcati di conseguenza ed il rischio introdotto dall'APPARECCHIO EM o dal 
+SISTEMA EM deve essere documentato e comunicato per iscritto alla ORGANIZZAZIONE 
+RESPONSABILE . 
+33 
+Copia concessa in data 2021-04-27 a Livio Sardo (livio.sardo@amslrenlo .il). da CE/. 
+• Copy distribuled 10 Livio &udo (livio.sa,do@amslrenlo.il} 2021-04-27. by CE/. 
+
+NORMA TECNICA 
+• 
+CEI EN 62353:2015-11 ----
+Si presuppone che gli utilizzatori della presente Norma siano esperti in elettrotecnica. Quando 
+si utilizzano strumenti di misura adeguati (agli standard applicabili) si suppone che le persone 
+che effettuano le prove abbiano ricevuto un addestramento adeguato e siano stati istruiti. La 
+presente Norma è indirizzata solo agli esperti che abbiano conoscenze appropriate 
+dell'apparecchio da sottoporre a prova ed una conoscenza adeguata di tutte le Norme 
+applicabili. Di conseguenza ci si deve assicurare, all'interno della struttura organizzativa, che 
+gli esperti abbiano una conoscenza adeguata dei regolamenti di sicurezza applicabili, delle 
+istruzioni per l'uso e di quelle di funzionamento che riguardano la loro attività e delle 
+prescrizioni speciali relative all'apparecchio/al sistema in prova. Si deve assicurare anche che 
+aggiornino continuamente le loro conoscenze al corrente stato dell'arte. 
+La presente Norma definisce principalmente le prescrizioni per garantire la SICUREZZA 
+ELETTRICA dell'APPARECCHIO EM e del SISTEMA EM prima della loro MESSA IN SERVIZIO, durante le 
+PROVE PERIODICHE e dopo la RIPARAZIONE. Tuttavia devono essere tenuti in debito conto 
+prima della messa in servizio anche altri aspetti dell'apparecchiatura, qualora siano ritenuti 
+importanti per la sicurezza. 
+Per le prove sulla sicurezza di funzionamento definite nelle raccomandazioni del FABBRICANTE, 
+possono essere impiegate le funzioni definite come prestazioni essenziali nella 
+IEC 60601-1 :2005 e nella IEC 60601-1 :2005/A 1 :2012 e nella sezione "Prescrizioni particolari " 
+della serie IEC 60601 . 
+Apparecchi non costruiti secondo quanto prescritto dalla IEC 60601-1, sono, ad esempio, 
+quelli conformi alle IEC 60335 [1], IEC 60950 [2] ed alla serie IEC 61010 [4] . 
+A.2 Differenze tra la IEC 60601-1 e la IEC 62353 
+La IEC 60601-1 è una Norma per le prove di tipo , che descrive i criteri progettuali degli 
+APPARECCHI EM che dovrebbero essere sottoposti a prova applicando una combinazione di 
+prove e sollecitazioni distruttive . Inoltre la Norma IEC 60601-1 specifica che queste prove 
+vengono effettuate in precise condizioni ambientali. Queste condizioni di laboratorio non 
+possono essere garantire durante le prove effettuate sull'APPARECCHIO EM mentre questo è in 
+servizio . Di conseguenza, le misure che richiedono particolari condizioni ambientali, possono 
+solo essere difficilmente applicabili e, quindi, non sono considerate idonee se effettuate su 
+apparecchi in servizio. Un'ulteriore aspetto riguarda il fatto che gli apparecchi potrebbero 
+venire danneggiati durante l'esecuzione delle prove e possano rappresentare un potenziale 
+pericolo per la o le persone e l'ambiente circostante. 
+Un altro aspetto del processo di progettazione dell'APPARECCHIO EM è quello di garantire la 
+sicurezza dell'apparecchio durante la sua vita di utilizzo. La scelta ed i materiali dovrebbero 
+fornire un contributo in questo senso. 
+Per quanto possibile, viene richiesto un consenso per l'armonizzazione delle valutazioni del 
+funzionamento in sicurezza e delle prove degli APPARECCHI EM e dei SISTEMI EM, 
+contemporaneamente al rispetto delle prescrizioni locali ed al soddisfacimento delle crescenti 
+richieste di gestione del rischio. È quindi necessario descrivere le prove che vanno oltre le 
+prove di tipo e fornire mezzi uniformi e non ambigui di valutazione della sicurezza delle 
+apparecchiature, mantenendo la relazione della IEC 60601-1 e riducendo al minimo il rischio 
+di pericoli per le persone che effettuano la valutazione. 
+Tutti questi aspetti sono stati presi in considerazione durante la stesura della IEC 62353. 
+La IEC 62353 definisce principalmente le prescrizioni per garantire la SICUREZZA ELETTRICA 
+degli APPARECCHI EM e dei SISTEMI EM, prima della loro MESSA IN SERVIZIO, durante le PROVE 
+PERIODICHE e dopo la RIPARAZIONE, nel rispetto dei criteri progettuali della IEC 60601 -1, 
+fornendo strumenti per lo svolgimento in maggior sicurezza delle attività lavorative delle 
+persone coinvolte nella valutazione della sicurezza degli APPARECCHI EM e dei SISTEMI EM. 
+Inoltre, la IEC 62353 fornisce strumenti per la valutazione del processo di invecchiamento 
+degli APPARECCHI EM e/o dei SISTEMI EM, per mezzo di ISPEZIONI strutturate e regolari. 
+Copia concessa in da/a 2021-04-27 a Livio Sardo (livio .sardo@amstrento.il}, da CEL 
+Copy distributed lo Livio Sardo (livio.sardo@amslrenlo.il) 2021-04-27, by CEJ. 
+35 
+
+NORMA TECNICA CEI EN 62353:2015-11 
+Paragrafo 5.3.2.2 - Condizioni di misura 
+Generalmente le Norme riferite agli impianti elettrici non prevedono prescrizioni per i valori 
+della RESISTENZA DI TERRA DI PROTEZIONE. I valori di resistenza della terra di protezione 
+vengono presi in considerazione nelle prescrizioni relative ad alcune sezioni del 
+corrispondente CONDUTTORE DELLA TERRA DI PROTEZIONE, in funzione delle caratteristiche 
+tecniche del fusibile. Nella prima edizione della IEC 60601-1 , era richiesto un CAVO DI 
+ALIMENTAZIONE lungo 3 m , con una sezione minima di 0,75 mm2. La resistenza del 
+CONDUTTORE DELLA TERRA DI PROTEZIONE in questo tipo di cavo è circa di 100 mo. Altri 100 mQ 
+erano accettati per proteggere l'involucro dell'apparecchio. 
+Nella presente Norma i limiti per la resistenza del CONDUTTORE DELLA TERRA DI PROTEZIONE 
+sono di 100 mQ superiori a quelli indicati nella IEC 60601-1. Il motivo per accettare questi 
+limiti più elevati è che durante la vita dell'apparecchio in prova possono presentarsi valori più 
+alti, ad esempio a seguito dell'ossidazione dei connettori. Questi valori maggiori sono ancora 
+giustificabili dal punto di vista della sicurezza. Per i nuovi apparecchi ci si aspetta una 
+RESISTENZA DI TERRA DI PROTEZIONE dell'apparecchio inferiore a 200 mQ. È preferibile ridurre la 
+RESISTENZA or TERRA DI PROTEZIONE a tale valore non inferiore a 200 mQ dopo la MODIFICA o la 
+RIPARAZIONE. 
+Questa prescrizione prevede di non accettare valori maggiori in apparecchi in cui 1 
+componenti, ad esempio i CONDUTTORI DELLA TERRA DI PROTEZIONE vengano riparati o sostituiti. 
+Il valore scelto di 300 mQ / 500 mQ per i sistemi rappresenta un compromesso accettabile tra 
+la prescrizione per le minime resistenze possibili e la caratteristiche tecniche all'interno del 
+SISTEMA EM. 
+Paragrafo 5.3.2.2 e) 
+Montare e smontare ripetutamente la connessione della terra di protezione può provocare un 
+degrado delle sue proprietà meccaniche ed elettriche . 
+Qualsiasi possibile influenza delle connessioni di terra non previste dovrebbe essere tenuta in 
+considerazione. 
+Paragrafo 5.3.3 - Misura della resistenza di isolamento 
+La IEC 60601-1 non prende in considerazione la misura della resistenza di isolamento. Per 
+questo motivo, in assenza di raccomandazioni del FABBRICANTE dell'APPARECCHIO EM, per 
+definire adeguati criteri di accettabilità, si possono applicare i regolamenti locali o la pratica 
+comune. La presente Norma fornisce esclusivamente i mezzi per effettuare le prove della 
+resistenza di isolamento . 
+Prima della pubblicazione della IEC 60601-1, alcuni Paesi avevano adottato Norme per la 
+misura dell'isolamento di un APPARECCHIO EM . A quel momento non era possibile misurare le 
+correnti di dispersione con un livello di accuratezza accettabile . Di conseguenza, secondo la 
+legge di Ohm, veniva misurata la resistenza dell 'isolamento invece che la corrente attraverso 
+l'isolamento. Il criterio di accettabilità per i valori della resistenza di isolamento utilizzato nei 
+diversi Paesi si basava principalmente sull'esperienza sino ad allora disponibile. 
+Effettuare la prova in corrente continua può presentare un vantaggio rispetto alle equivalenti 
+prove in corrente alternata , in quanto un significativo deterioramento della resistenza di 
+isolamento aumenterà di poco la corrente alternata di dispersione aggiuntiva , che verrà 
+mascherata da una maggior quantità di dispersione capacitiva misurata utilizzano la tensione 
+di prova in corrente alternata . Per esempio e con una certa approssimazione, una 
+diminuzione della resistenza di isolamento da 100 MO a 25 MQ aggiungerà 7 µA alla corrente 
+di dispersione (a 230 V). Questo non registrerà un significativo aumento della corrente di 
+dispersione in e.a. misurata, mascherando, in questo modo , un deterioramento 
+potenzialmente grave, per esempio dovuto ad un versamento. 
+Copia concessa in data 2021-04-27 a Livio Sardo (/ivio.sardo@amstrento.it), da CE/. 
+Copy distribut ed to Livio Sardo (/ivio.sardo@amstrent o.lt) 2021-04-27, by CE/. 
+37 
+
+NORMA TECNICA CE! EN 62353 :2015- 11 
+L(N) AP L o-- -0-- -0--+-._ 
+···•.o.···· 
+./ •••• •.. N(L) 
+N o---0-- -0---+---
+PE o--•<:>- -o---
+Legenda c 
+Per APPARECCHI EM DI CLASSE I a spina: 
+A= CORRENTE DI CONTATTO (SFC) dalle PARTI CONDUTTRICI ACCESSIBILI mess.e a terra dell'involucro: 500 µA 
+(A è equivalente alla normale CORRENTE DI DISPERSIONE VERSO TERRA). 
+B = CORRENTE DI CONTATTO (SFC) dalle PARTI CONDUTTRICI ACCESSIBILI non messe a terra dell'involucro : 
+500 µA 
+C :: CORRENTE DI DISPERSIONE NEL PAZIENTE (SFC): TIPO B & BF 
+TIPO CF 
+NOTA La chiusura dì SW1 fornirà letture Condizioni Normali per B & C. 
+500 µA 
+50 µA 
+Figura A.2 - APPARECCHIO EM DI CLASSE I a spina 
+L(N) MP AP 
+L o-----o-_...~ [ 
+.:>< .. _ N(L) 
+N o-- -o-- -u---+---
+e 
+Legenda 
+Per APPARECCHI EM DI CLASSE Il a spina : 
+B = CORRENTE DI CONTATTO (NC) dalle PARTI CONDUTTRICI ACCESSIBILI dell 'involucro : 
+C = CORRENTE DI DISPERSIONE NEL PAZIENTE (NC): TIPO B & BF 
+TIPO CF 
+Figura A.3 - APPARECCHIO EM DI CLASSE II a spina 
+Copia conc= a In daro 2021-()4-27 o Livio Sordo {livio .sardo@ltmstrcnto.it), da CEl 
+Copy dlsIr/b11Ied ro I.iv/o Sardo (/ivio.sardo@ltnutrento.il} 202 J-04-27, by CEl 
+39 
+100 µA 
+100 µA 
+10 µA 
+
+NORMA TECNICA CEI EN 62353 :2015-11 
+Tabella A.2 - Motivazioni per la scelta tra i diversi metodi di misura 
+Metodo di 
+misura 
+Metodo 
+alternativo 
+Metodo diretto 
+Metodo 
+differenziale 
+Motivi a favore 
+Non è necessario un sistema TN 
+É' necessario effettuare una sola 
+misura (la polarità dell 'ALIMENTAZIONE 
+DI RETE è ininfluente). 
+La massima sicurezza per la persona 
+che effettua la prova (in quanto 
+l'apparecchio in prova (DUT) è 
+scollegato dall'ALIMENTAZIONE DI 
+RETE). 
+L'apparecchio in prova non richiede 
+di essere isolato durante la misura . 
+Possibilità di misurare la corrente di -
+dispersione sia in e.e. che in e.a. 
+L'altissima precisione della misura 
+delle correnti di dispersione di bassi 
+valori rispetto ad altri metodi . 
+Non è influenzato dal tipo di 
+commutazione dell'ALIMENTAZION E DI 
+RETE. 
+Misura la corrente effettiva di 
+dispersione che potrebbe verificarsi 
+durante l'uso tipico dell'apparecchio 
+elettromedicale . 
+Permette il confronto diretto con le 
+misure per l'accettazione 
+/approvazione di tipo effettuate in 
+conformità con la IEC 60601-1 . 
+- Non è infl uenzato dal ti po di -
+commut azione dell'ALIMENTAZIONE DI 
+RETE 
+- L'apparecchio in prova non necessita 
+di essere isolato durante la misura. 
+- Misura la corrente di dispersione -
+totale . 
+A un livello maggior di sicurezza per la -
+persona che effettua la prova in quanto la 
+terra non è scollegata , 
+41 
+Copia concessa in data 2021-04-27 a Livio Sardo (livio.sardo@amslre nlo. il), da CE/. 
+Copy dislributed lo Livio Sardo (livio.sardo@amslrenlo.il) 2021-04-27, by CE!. 
+Motivi contrari 
+Gli interruttori elettronici sull 'ALIMENTAZIONE 
+DI RETE dell 'apparecchio devono essere 
+cortocircuitati durante la prova (difficile nel 
+caso di interruttori elettronici) . 
+Non paragonabile direttamente con gli altr i 
+metod i di misura (i valori misurati sono la 
+somma delle correnti di dispersione in 
+entrambe le polarità , misurale utilizzando il 
+metodo diretto o quello differenziale . Di 
+conseguenza i valori ammessi sono il doppio 
+di quelli degli altri metodi). 
+Non idoneo per apparecchiature con 
+componenti riscaldanti (la corrente di 
+dispersione nel modo di funzionamento a 
+freddo può non corrispondere a quella 
+misurata nel modo di funzionamento 
+normale ). 
+La necessità di interrompere IL MORSETTO 
+DELLA TERRA DI PROTEZIONE (PE ) per 
+effettuare la misura 
+- collegando un resistenza da 1 kQ (MD) 
+nel conduttore di protezione PE durante 
+la misura, che potrebbe portare ad un 
+aumento del pericolo per la persona che 
+effettua tale misura , 
+- sui dispositivi con un'elevata corrente di 
+dispersione (a seguito di un guasto nel 
+l'apparecchio in prova) , 
+- scollegando il dispositivo di misura , 
+- quando utiliz zato collegato ad altri 
+dispositivi. 
+L'apparecchio in prova deve essere isolato 
+elettricamente dalla terra durante la misura , 
+questo non è possibile , per esempio, nel 
+caso di 
+- la maggior parte degli apparecchi per 
+immagini con cablaggi fissi, 
+- la maggior parte delle poltrone 
+dentistiche con cablaggi fissi , 
+- dispositivi collegati alle forn iture di gas o 
+di acqua . 
+La misura deve essere effettuata per 
+ciascuna polarità dell 'ALIMENTAZIONE DI RETE. 
+Meno adatto per la misura di corrent i di 
+dispersione di bassi valori . 
+Influenzato dal campo magnetico esterno, 
+dalla frequenza e dall 'assorbimento di 
+corrente dell'apparecchio in prova. 
+La misura deve essere effettuata per 
+ciascuna polarità dell 'ALIMENTAZIONE DI RETE. 
+L'Accuratezza e l'intervallo di frequenza 
+possono essere limitati rispetto agli altri 
+metodi di misura . 
+
+NORMA TEç NICA CEJ EN 6235:3:2015-11 
+Paragrafo 5.3.4.3.2 - Metodo alternativo 
+Il metodo alternativo di misura della CORRENTE DI DISPERSIONE NELLA PARTE APPLICATA viene 
+applicato utilizzando una tensione di prova uguale alla TENSIONE DI RETE DI ALIMENTAZIONE 
+effettiva. Questa misura deve essere effettuata esclusivamente su apparecchi con PARTI 
+APPLICATE isolate secondo la IEC 60601-1. 
+Questi APPARECCHI EM con una o più PARTI APPLICATE sono normalmente contrassegnati con il 
+simbolo di PARTE APPLICATA DI TIPO BF ([!]) (IEC 60417-5333) (2002-10) o con quello di PARTE 
+APPLICATA DI TIPO CF ( ~ ) (IEC 60417-5335) (2002-10). 
+Copia concessa in data 2021-04-27 a Livio Sardo (livio.sardo@amstrento.it), da CEL 
+Copy dlstributed to Livio Sardo (livio.sardo@amstrento.it) 2021-04-27, by CEL 
+43 
+
+NORMA TECNICA CEI EN 62353 :2015-11 
+Misura <1e11, 
+cor1en10 di 
+dlsi,ersìono 
+Motodo d eronz)Jto dl m,1ur.1 
+OELIJ\ CORRENTE 
+DI DISPERS!OIIE 
+NEU:N'PMECCtl JO iF,gua 8) 
+CORRENTE 
+01 DISPERSIONE 
+nolla 
+PARTIAPPLIC.\11, 
+CORRE>ffE DI 
+DISPERSIONE IIEl 
+PARTI, APPLICATA­
+metodO a~ll~o 
+F ura9 
+Figura B.2 - Misura delle CORRENTI DI DISPERSIONE 
+(APPARECCHI EM di CLASSE I non INSTALLATI PERMANENTEMENTE) 
+Copia co11ce.ua in dato 2021-04-27 a Livio Sardo (/lvlo . .ardo@pm,1rt1111o.it), da CEL 
+Copy dislrib11ted lo Livio Sardo (li\llo.sordo@amstre11to.it) 1021-04-27, by CE/. 
+45 
+No 
+
+NORMA TECNICA 
+• 
+CEI EN 62353 :2015-11 
+----------
+C.2 Apparecchiatura per la misura della RESISTENZA DI TERRA DI PROTEZIONE 
+L'apparecchiatura di misura deve: 
+permettere le misure indicate nella Figura 1 o nella Figura 2, e 
+permettere le misure indicate nelle condizioni di misura di 5.3 .2.2. 
+C.3 Apparecchiatura per la misura della CORRENTE DI DISPERSIONE 
+NELL'APPARECCHIO 
+L'apparecchiatura di misura per il metodo alternativo deve: 
+permettere le misure indicate nella Figura 6, 
+- far sì che la misura delle correnti alternative di dispersione sia effettuata applicando la 
+frequenza della rete di alimentazione sinusoidale e la TENSIONE DI RETE. 
+Nel caso di applicazione di una corrente di prova superiore a 3 ,5 mA, per effettuare la misura 
+della CORRENTE DI DISPERSIONE NELLA PARTE APPLICATA, devono essere implementati mezzi 
+specifici per imped ire il contatto con le PARTI CONDUTTRICI ACCESSIBILI della sonda . Il valore 
+misurato deve essere corretto al valore corrispondente per la TENSIONE nominale DI RETE . 
+L'apparecchiatura di misura per il metodo diretto deve: 
+garantire che i risultati della misura siano equivalenti a quelli della valutazione effettuata 
+con il dispositivo di misura MD, come indicato nella Figura C.1; e 
+misurare la corrente come valore efficace (e.a.). 
+L'apparecchiatura di misura che utilizza il metodo differenziale, deve: 
+garantire che i risultati della misura siano equivalenti a quelli della valutazione effettuata 
+con il dispositivo di misura MD, come indicato nella Figura C .1; e 
+garantire che la corrente sia determinata come valore efficace (e.a .). 
+NOTA Se le prescrizion i per la larghezza di banda non possono essere soddisfatte per il metodo differenziale, si 
+raccomanda di utilizzare il metodo diretto . 
+C.4 Apparecchiatura per le misure della CORRENTE DI DISPERSIONE NELLA PARTE 
+APPLICATA 
+L'apparecchiatura di misura per il metodo alternativo deve : 
+permettere le misure mostrate nella Figura 9; 
+essere effettuata applicando una frequenza sinusoidale della rete di alimentazione e la 
+TENSIONE DI RETE per la misura delle CORRENTI DI DISPERSIONE NELLA PARTE APPLICATA. 
+Nel caso di applicazione di una corrente di prova superiore a 3,5 mA, per effettuare la misura 
+della CORRENTE DI DISPERSIONE NELLA PARTE APPLICATA, devono essere implementati mezzi 
+specifici per impedire il contatto con le PARTI CONDUTTRICI ACCESSIBILI della sonda. Il valore 
+misurato deve essere corretto al valore corrispondente per la TENSIONE nominale DI RETE. 
+L'apparecchiatura di misura per il metodo diretto deve : 
+garantire che i risultati della misura siano uguali a quelli della valutazione effettuata con il 
+dispositivo di misura MD, come indicato nella Figura C.1; e 
+misurare la corrente come valore efficace (e.a.); 
+La tensione alimentata alle PARTI APPLICATE DI TIPO F deve essere sinusoidale alla frequenza 
+della rete di alimentazione ed uguale alla TENSIONE DI RETE. Il valore misurato deve essere 
+corretto al valore corr ispondente per la TENSIONE nominale DI RETE. 
+Copi" co11cesso In data 201/ -04-27 a Livio Sardo (Uvio.sardo@t,msJrento.il}. da CE/. 
+Copy distributad lo livio Sardo (livio.sardo@amslrento.it) 2011-04-27, by CE/. 
+47 
+
+N9Rt,v'I_A TEçN ICA 
+Allegato D 
+(informativo) 
+AMBIENTE DEL PAZIENTE 
+CEI EN 6235~ :2015-11 
+///// 
+\ 
+' 
+NOTA Le dimensioni della figura mostrano l'estensione minima dell'AMBJENTE DEL PAZIENTE in un'area circostante 
+libera da ostacoli. 
+Figura D.1 - Esempio di AMBIENTE DEL PAZIENTE 
+[Derivata dalla IEC 60601-1 :2005 + IEC 60601-1 :2005/A 1 :2012] 
+C.òpla concessa In dala 2()21-04-17 a Livio Sartio (IMo.,ordo@pmstrento.it), do CEL 
+Copy dJS/ributed lo lìvlo St,irdo (/ivio.,r,rdo@pmstrento.il) 2021-04-27, by Cl::/. 
+49 
+
+NORMA TECNICA CEI EN 62353:2015-11 
+Tabella E.2 - Valori ammessi per le CORRENTI DI CONTATTO, le CORRENTI DI DISPERSIONE 
+VERSO TERRA, le CORRENTI DI DISPERSIONE NEL PAZIENTE e le correnti ausiliarie nel paziente 
+nella CONDIZIONE NORMALE e nella CONDIZIONE DI PRIMO GUASTO tratte dalla IEC 60601-1 :2005 
+Corrente in µA 
+PARTE PARTE PARTE 
+APPLICATA DI APPLICATA DI APPLICATA 
+TIPO B TIPO BF DI TIPO CF 
+Corrente Descrizione Riferimento Circuito di N.C . S.F.C . N.C . S.F.C. N.C . S.F.C. 
+misura 
+CORRENT E e.e. 10 50 10 50 10 50 
+AUSILIARIA 8.7.4.8 Figura 19 NEL e.a. 100 500 100 500 10 50 
+PAZIENTE 
+Dalla e.e. 10 50 10 50 10 50 connessione 
+paziente alla 8.7.4.7 a) Figura 15 
+t; ORREN TE DI e.a. 100 500 100 500 10 50 terra DISPERSIONE Dovuta ad una NEL e.e. 10 50 10 50 10 50 tensione esterna PAZIENTE sulla parte di 8.7.4 .7 e) Figura 17 
+i ng ressa/ use ila e.a. 100 500 100 500 10 50 
+del segnale 
+Con le PARTI 8.7.4 .7 a) Figura 15 e.e. 50 100 50 100 50 100 
+APP LI CATE dello CORRENTE stesso tipo e e 
+compless iva collegate insieme 8.7.4.7 h) Figura 20 e.a. 500 1 000 500 1 000 50 100 
+DI Dovuta ad una DISPERSIONE e.e. 50 100 50 100 50 100 
+NEL PAZIENTE tensione esterna 8, 7.4 .7 e) Figura 17 
+a sulla parte di e e 
+ingresso/uscita 8.7.4.7 h) Figura 20 e.a. 500 1 000 500 1 000 50 100 
+del segnale 
+CORRENTE DI CONTATT O - CONDIZION E NORMALE 100 µa 
+- COND IZIONE DI PRIMO GUASTO 500 µa 
+CORRENTE DI DISPERSIONE VERSO TERRA - CONDIZI ONE NORMALE 5 mA 
+- CONDIZIONE DI PRIMO GUASTO 10 mA 
+Nel caso di un APPARECCHIO EM INSTALLATO PERMANENTEMENTE collegato ad un circuito di alimentazione che 
+alimenta solo questo APPARECCHIO EM, per la CORRENTE DI DISPERSIONE VERSO TERRA è ammesso un valore più 
+elevato . 
+NOTA 1 I regolamenti locali possono stabilire limiti per le correnti di terra di protezione dell'impianto. Si veda 
+anche la IEC 60364-7-710. 
+Tutti i riferimenti della presente tabella sono ai paragrafi o alle figure della in I EC 60601-1 :2005 + 
+IEC 60601-1 :2005 /A1 :2012 . 
+N.C. = CONDIZ IONE NORMALE 
+S.F.C. = CONDIZIONE DI PRIMO GUASTO 
+NOTA 2 Per la CORRENTE DI DISPERSIONE VERSO TERRA si veda 8.7.3 d) . 
+NOTA 3 Per la CORR ENTE DI CONTATTO si veda 8.7.3 e). 
+a I valori della CORRENTE COMPLESSIVA DI DISPERSI ONE NEL PAZIENTE sono applicabili solo ad apparecchi con 
+PARTI APPLICATE multiple . Si veda 8.7.4.7 h). Le singole PARTI APPLICATE devono essere conformi ai valori per 
+la CORRENTE DI DISPERSI ONE NEL PAZIENTE . 
+Copia concessa in data 2021-04-27 a Livio Sardo (livio.sardo@amstrento.it) , da CE/. 
+Copy distrihuted lo Livio Sardo (livio.sardo@amslrento .il) 2021-04-27, by CE/. 
+51 
+
+NORMA TECNICA 
+Allegato F 
+(informativo) 
+Intervalli tra le prove 
+CEI EN 62353:2015-11 
+Quando il FABBRICANTE degli APPARECCHI EM /dei SISTEMI EM ha definito per le PROVE 
+periodiche, l'intervallo ed il loro livello, queste informazioni verranno riportate nella 
+DOCUMENTAZIONE ANNESSA. 
+In mancanza di informazioni nella DOCUMENTAZIONE ANNESSA sugli intervalli tra le prove per le 
+ISPEZIONI periodiche (ad esempio nel caso di apparecchi meno recenti), questo intervallo 
+dovrebbe essere definito, caso per caso, da una persona competente. Nel definire il livello di 
+rischio, i fattori e le raccomandazioni sotto indicati forniti dal FABBRICANTE devono essere 
+tenuti in considerazione , ed il corrispondente intervallo tra le prove deve essere impostato per 
+una durata da 6 mesi a 36 mesi. Se il FABBRICANTE non ha fornito nessuna indicazione relativa 
+al superamento dell'intervallo di prova , viene consigliata una tolleranza pari a 1/6 di tale 
+intervallo. 
+Nel definire l'intervallo tra le prove, il FABBRICANTE deve tenere in considerazione quanto 
+segue: 
+il livello di rischio dell'apparecchio, 
+la sua frequenza di utilizzo, 
+l'ambiente di funzionamento, 
+il modo di funzionamento (ad esempio stazionario, mobile, di emergenza), e 
+la frequenza con cui si verificano i guasti nel dispositivo. 
+Per gli apparecchi che seguono, l'intervallo non dovrebbe superare i 24 mesi : 
+APPARECCHI EM / SISTEMI EM per: 
+a) la generazione e l 'applicazione di energia elettrica per influenzare direttamente le 
+funzioni di risposta dei nervi e/o dei muscoli, l'attività del cuore, defibrillatori compresi; 
+b) la misura delle grandezze elettriche cardio-vascolari, tramite sonde di misura a 
+funzionamento elettrico, inserite in vasi sanguigni o appoggiate su vasi sanguigni; 
+c) la generazione e l'applicazione di qualsiasi tipo di energia per la coagulazione diretta, la 
+distruzione di tessuti o la riduzione di sedimento nel corpo ; 
+d) l'introduzione diretta di sostanze e di liquidi nel circolo sanguigno, con la possibilità di 
+aumento della pressione, in cui tali sostanze e liquidi possono anche subire un 
+trattamento, o in modo particolare essere considerate alla stregua di sostanze e liquidi 
+corporei, nel caso in cui la loro introduzione sia direttamente collegata alla funzione di 
+raccolta; 
+e) la ventilazione artificiale con o senza anestesia; 
+f) la diagnosi per mezzo della rappresentazione di immagini ottenute per risonanza 
+magnetica; 
+g) la terapia in camere iperbariche; 
+h) la terapia ipotermica o ipertermica ; 
+i) le incubatrici neonatali; e 
+j) le componenti attive esterne degli impianti attivi, che non siano oggetto di un uso 
+continuativo da parte del paziente. 
+Copia concessa in data 2021-04-27 a Livio Sardo (livio.sardo@amstrento.it), da CEJ. 
+Copy distributed lo Livio Sardo (livio.sardo@amstrento.il) 2021-04-27, by CEI. 
+53 
+
+NORMA TECNICA 
+H.1 Generalità 
+Allegato H 
+(informativo) 
+Note sulle prove dei SISTEMI EM 
+CEI EN 62353:2015-11 . 
+Il presente Allegato mira a fornire un supporto integrativo per le prove da effettuare prima 
+della MESSA IN SERVIZIO, durante la MANUTENZIONE, !'ISPEZIONE, i'ASSiSTENZA e 
+successivamente alla RIPARAZIONE o in occasione di PROVE PERIODICHE dei SISTEMI EM. 
+Esso è un aiuto al personale tecnico che opera nell'ambiente sanitario o ai fornitori di servizi 
+esterni ed introduce eventi casi tipici che si verificano durante una normale vita in servizio dei 
+SISTEMI EM. 
+Dovrebbero essere rispettate le seguenti condizioni: 
+- la valutazione iniziale di un SISTEMA EM per la sua realizzazione o la MODIFICA dimostra la 
+sua conformità alla serie IEC 60601; 
+- nel caso di sostituzione di un dispositivo o di un'apparecchiatura componente all'interno di 
+un SISTEMA EM, deve essere riprodotta l'identica CONFIGURAZIONE o quella 
+precedentemente valutata. 
+H.2 Linee-guida per ri-sottoporre a prova un SISTEMA EM 
+H.2.1 Il personale che effettua la prova dovrebbe verificare la compatibilità del SISTEMA EM 
+sottoposto a prova con la documentazione esistente. Le verifiche dovrebbero essere 
+effettuate prestando particolare attenzione agli eventuali componenti rimossi, aggiunti o 
+sostituiti. 
+NOTA La documentazione contiene le informazioni necessarie richieste per il funzionamento in sicurezza del 
+SISTEMA EM, ad esempio le necessarie limitazioni di utilizzo, le proibizioni relative al funzionamento congiunto con 
+altri dispositivi o componenti, insieme alle informazioni relative alla durata ed ai termini delle ISPEZIONI per 
+l'assistenza. 
+Si raccomanda di allegare una lista di componenti o una lista di riferimenti chiaramente 
+visibile e un'avvertenza del tipo: "AWISO DI SICUREZZA: Sistema verificato. NON collegare 
+nessun altra apparecchiatura a questo sistema." 
+Quando nell'assemblaggio vengono utilizzati dispositivi di separazione (isolatori di rete dati) 
+la loro presenza dovrebbe essere verificata. 
+H.2.2 Se il SISTEMA EM da verificare è conforme alla documentazione, o se sono state 
+rimosse e sostituite apparecchiature identiche o conforme al sistema, esso può essere 
+sottoposto a prova secondo la presente Norma. Se il SISTEMA EM, non corrisponde alla 
+documentazione, o in assenza di tale documentazione, è richiesta una valutazione del 
+SISTEMA EM come indicato nell'articolo 16 della IEC 60601-1 :2005 
++ IEC 60601-1:2005/A1:20121 
+H.2.3 Il personale che effettua la prova su un SISTEMA EM deve rispettare le istruzioni del 
+FABBRICANTE riportate nella DOCUMENTAZIONE ANNESSA per ciascun dispositivo e per l'intero 
+SISTEMA EM. 
+H.2.4 All'interno del AMBIENTE DEL PAZIENTE, l'intero SISTEMA EM o un singolo componente 
+dovrebbero rispettare i limiti della corrente di dispersione come fosse un singolo APPARECCHIO 
+EM. 
+Al di fuori dell'AMBIENTE DEL PAZIENTE dovrebbe essere mantenuto un livello di sicurezza 
+conforme alle Norme applicabili relative al dispositivo. 
+1 Questo riferimento è alla I EC 60601-1 :2005 con la sua Modifica 1, pubblicate nel 2012. 
+55 
+Copia concessa in data 2021-04-27 a Livio Sardo (livio.sardo@amstrento.it), da CEl 
+Copy distributed lo Livio Sardo (livio.sardo@amstrento.it) 2021-04-27, by CEl 
+
+\ I 
+NORMA TECNICA CEI EN 62353:2015-11 
+Sempre più spesso, il SISTEMA EM comprende apparecchi, originariamente costruiti per 
+l'impiego in specifici e diversi campi di applicazione, non necessariamente medici, e che sono 
+collegati tra loro in modo diretto o indiretto . Un APPARECCHIO EM conforme alla presente 
+Norma può essere collegato ad altri APPARECCHI non EM. Questi ultimi apparecchi possono 
+soddisfare completamente le prescrizioni delle Norme di sicurezza applicabili nel proprio 
+campo specifico di applicazione. Tuttavia essi possono non sempre risultare conformi alle 
+prescrizioni di sicurezza per gli APPARECCHI EM e, quindi influenzano la sicurezza dell'intero 
+SISTEMA EM. È per questo motivo che il FABBRICANTE deve applicare la GESTIONE DEL RISCHIO 
+all'intero SISTEMA EM . Un esempio di un PERICOLO aggiuntivo è rappresentato dall'accensione 
+di un incendio quando un SISTEMA EM, che contiene un APPARECCHIO non EM, è casualmente 
+impiegato in un AMBIENTE RICCO DI OSSIGENO. 
+L'apparecchio elettrico può essere posto sia in un locale ad uso medico , come quelli per la 
+diagnosi, il trattamento o il monitoraggio di PAZIENTI, o in un locale utilizzato per scopi 
+differenti, in cui non vengano svolte attività mediche . Nel primo caso, l'apparecchio elettrico 
+può essere posto all'interno o all'esterno del volume definito come AMBIENTE DEL PAZIENTE. 
+Nella pratica medica si hanno due possibili situazioni: 
+a) Non si applica l'articolo 16 quando 
+Si ha il caso di APPARECCHI EM fatti funzionare simultaneamente, vale a dire diversi 
+APPARECCHI EM simultaneamente collegati ad uno stesso PAZIENTE, ma non collegati tra 
+loro. Questi APPARECCHI EM possono influenzarsi reciprocamente . Per esempio un 
+apparecchio chirurgico ad alta frequenza in una sala operatoria può influenzare i 
+dispositivi di monitoraggio del PAZIENTE. 
+NOTA Un aiuto per affrontare una situazione di questo tipo si può trovare nelle istruzioni per l'uso di ciascun 
+APPARECCHIO EM. 
+b) Si applica l'articolo 16 quando 
+Si ha un SISTEMA EM costituito da APPARECCHI EM e probabilmente anche da APPARECCHI 
+non EM, interconnessi in modo permanente o temporaneo per un determinato scopo, come 
+la diagnosi o il trattamento di un PAZIENTE. Esempi: SISTEMI EM per l'esame a raggi X per 
+scopi diagnostici, endoscopi con videocamera, dispositivi di monitoraggio del PAZIENTE, 
+apparecchiature ad ultrasuoni collegate ad un persona! computer, tomografia 
+computerizzata o risonanza magnetica. 
+Le diverse parti di un tale SISTEMA EM potrebbero essere poste all'interno dell'AMBIENTE DEL 
+PAZIENTE o ali' esterno, ma anche in altri locali adibiti ad uso medico, oppure parti del 
+SISTEMA EM potrebbero essere poste in un locale non adibito ad uso medico che contiene, 
+per esempio , il quadro di distribuzione elettrica o apparecchiature di trattamento dati. 
+57 
+Copia concessa in data 2021-04-27 a Livio Sardo (livio.sardo@amstrenlo .il), da CEJ. 
+Copy distributed lo Livio Sardo (livio.sardo@amslrento .il) 2021-04-27, by CEJ. 
+
+NORMA TECNICA CEI EN 62353:2015-11 
+Tabella H.1 (2 di 3) 
+Locali utilizzat i per scopi medici Locali in Esempi di Misure pratiche 
+ambienti possibili cause di di conformità 
+Situazione N. All'interno non superamento dei In tutte le 
+All'Interno dell'AMBIENTE dell'AMBIENTE utilizzati limiti della situazioni si 
+DEL PAZIENTE DEL PAZIENTE per scopi CORRENTE DI applica quanto 
+medici DISPERSIONE indicato in 16.5 
+2a Gli elementi Spina Spina Non provoca il 
+indicati con A e B 
+ollm, 
+~
+''" 
+superamento dei - Non sono A 
+sono APPARECCHI IECeo50I IEC0060I limiti per la necessarie altre 
+EM CORRENTE DI misure. 
+DISPERSIONE. 
+2b Gli elementi - CONNESSIONE 
+indicati con A e B 
+f8·------ --- ------- --87 
+DELLA TERRA DI 
+rappresentano Il conduttore di PROTEZIONE 
+APPARECCHI EM terra della PRESA aggiuntiva (per 
+alimentati i ~ 
+MULTIPLA è A or B), o 
+attraverso una I PRESAlolUlTIPlA I interrotto . - Trasformatore di 
+PRESA MULTIPLA separazione. 
+A causa - Non utilizzare un 2c L'elemento A !fmrm Sjl{IOI dell'elevata 2 illlm. connettore con rappresenta un A 8 CORRENTE DI 
+APPARECCHIO EM, IECOOOOI IECl0000< CONTATTO di 8. custodia 
+mentre B un metallica, o 
+APPARECCHIO non Si veda la - DISPOSITIVO DI 
+EM motivazione di SEPARAZIONE 16.5. 
+2d L'elemento A 
+rappresenta un 
+r8 ---~ 
+- CONNESSIONE 
+APPARECCHIO EM, DELLA TERRA DI 
+mentre B un Il conduttore di PROTEZIONE terra della PRESA APPARECCHIO non • 
+~ MULTIPLA è 
+aggiuntiva (per 
+EM alimentati I PRESA MULTIPLO. I A or B), o 
+entrambi interrotto . - Trasformatore di 
+attraverso una separazione . 
+PRESA MULTIPLA 
+Spina Spina 
+Non provoca il 3a Gli elementi 
+lllm A B alim, 
+indicati con A e B IEC 60601 IEC 60601 superamento dei - Non sono 
+sono APPARECCHI limiti per la necessarie altre 
+EM I Terra comune di protezione I CORRENTE DI misure . 
+DISPERSIONE. 
+- Non utilizzare un 
+s""':q;g"• 
+Spin e A causa connettore con 
+3b L'elemento A 
+" 
+etlm 
+dell'elevata custodia 
+rappresenta un I IEC 
+CORRENTE DI metallica per la 
+APPARECCHIO EM, 
+I I CONTATTO di B. PARTE DI 
+mentre B un 
+Terra comune d proie zione 
+Si veda la INGRESSO/USCITA 
+APPARECCHIO non motivazione di DEL SEGNALE, o 
+EM 
+16.5 . - DISPOSITIVO 
+3 DISEPARAZIONE. 
+3c L'elemento A 
+@:
+S,,V,• a)Differenza di - CONNESSIONE 
+rappresenta un Spina potenziale tra le DELLA TERRA DI 
+APPARECCHIO EM, .... A 1 CONNESSIONI PROTEZIONE 
+mentre B un IECOOIIOI e 
+DELLA TERRA DI aggiuntiva per X 
+APPARECCHIO EM O PROTEZIONE di A (A), o 
+un APPARECCHIO 
+I I I 
+T "''" d protezione I e B - DISPOSITIVO DI Terra comune d protezione 
+non EM con differenza di 
+b)A causa SEPARAZIONE, o potenziale 
+dell'elevata - Non utilizzare un 
+CORRENTE DI connettore con 
+CONTATTO di B. custodia 
+Si veda la metallica 
+motivazione di nell'AMBIENTE DEL 
+16.5 . PAZIENTE. 
+a Ricavata dalla IEC 60601 -1 :2005 + I EC 60601-1 :2005/A 1 :2012 . Tutti i riferimenti della presente tabella sono a paragrafi o 
+figure della IEC 60601-1:2005 + IEC 60601-1:2005/A1:2012 . 
+Copia concessa in data 2021-04-27 a Livio Sardo (Uvio.sardo@amstrento, il), da CE/. 
+Copy distributed lo Livio Sardo (livio.sardo@amstrenlo.il) 2021-04-27, by CE/. 
+59 
+
+NqRMA TECNICA ------------
+PRESA MULTIPLA 
+] .[ 
+Complesso del trasformatore che 
+incorpora una PRESA MULTIPLA 
+• 
+C_El EN ~2353 :2015-11 
+Complesso del trasformatore con 
+una presa di corrente speciale 
+Complesso del trasformatore con 
+PRESA MULTIPLA 
+collegata in modo permanente 
+1:1 
+Prese di 
+rete 
+=311,-t----t-O-f--C 
+Schema di una PM integrala 
+e del complesso del trasformatore 
+Figura H 2 - Esempi di applicazioni di PRESE MULTIPLE (PM) 
+(Questa figura è ricavata dalla IEC 60601-1:2005 + IEC 60601-1:2005/A1:2012) . 
+Copia co110-e..,c, In dola 2021-0'1-27,. [,Mo Sardo (livio,sc,rdo@amsr,.,1110,it), dc, CEL 
+Copy dlstrlb11ted IP Livio Sardo (llvlo.sardo@nmstm1to,II} 202/ -04-27, by CE/. 
+61 
+
+NORMA TECNICA 
+• 
+--~-------
+Indice dei termini definiti 
+A 
+CEI EN 62353:2015-11 
+Parte conduttrice accessibile• 10, 11, 15, 20, 21, 22, 23, 24, 25, 26, 32, 33, 39, 40, 47, 56, 
+60 
+Definizione • 1 O 
+Accessorio • 1 O, 13, 18, 19, 33, 46 
+Definizione • 1 O 
+Documentazione annessa• 9, 13, 14, 18, 19, 20, 27, 30, 53, 55 
+Definizione • 1 O 
+Parte applicata • 1 O, 11, 13, 16, 22, 23 , 24, 30, 33, 43, 50, 51, 52 
+Definizione • 1 O 
+Corrente di dispersione nella parte applicata• 26, 30, 31, 32, 33, 43, 47 
+Definizione • 1 O 
+e 
+Classe I • 24, 25, 28, 29, 30, 31, 32 
+Definizione • 1 O 
+Apparecchio • 37 
+Apparecchio em • 20 , 23, 24, 25 , 26 , 28, 29 , 33, 39, 40 , 44 , 45, 46 
+Classe Il •24, 25,28, 29, 30, 31, 32, 60 
+Definizione • 11 
+Apparecchio • 37 
+Apparecchio em • 23, 24, 25, 33, 39, 40 
+D 
+Cavo di alimentazione separabile• 15, 18, 21, 37 
+Definizione • 11 
+E 
+Corrente di dispersione verso terra• 29, 39, 50, 51 , 60 
+Definizione • 11 
+Sicurezza elettrica• 19, 36, 46 
+Definizione • 11 
+Corrente di dispersione nell'apparecchio• 26, 27, 28, 29, 30, 33, 39, 41, 42 , 46 
+F 
+Parte applicata di tipo F • 1 O, 14, 16, 17, 22, 23, 25 , 30, 31, 32, 47, 52 
+Definizione • 11 
+Parte applicata isolata di tipo F (flottante)• Si veda Parte applicata di tipo F 
+Connessione funzionale • 13, 18 
+Definizione • 12 
+I 
+Ispezione• 8, 19, 34, 36 , 37, 53, 55 
+Definizione • 12 
+Sorgente elettrica interna • 2 7, 31 , 32 
+Definizione • 12 
+L 
+Tensione tra fase e terra• 26, 38 
+Definizione • 12 
+M 
+Parte collegata alla rete• 1 O, 11, 22, 23, 24, 26, 27, 42, 43, 50 
+Definizione • 12 
+Spina di alimentazione• 15, 20, 21, 28, 29 , 31 
+Definizione • 12 
+tensione di rete• 19, 26, 28, 29 , 31 , 32, 42 , 43, 47 , 50, 52 
+Definizione • 12 
+Manutenzione • 8, 15, 19, 55 
+Definizione • 13 
+Fabbricante • 9, 13, 16, 17, 18, 19, 20, 26, 27, 30, 35, 36, 37, 38, 43, 46 , 53 
+Definizione • 13 
+Raccomandazioni per le prove funzionali • 33 
+Copia concessa In data 2021-04-27 a Livio Sardo (livio .sardo@pmslrento.il), da CEI. 
+Copy distributed to Livio Sardo (livio.sardo@pmstrento.il) 2021-04-27, by CE/. 
+63 
+
+NORMA TECNICA 
+s 
+Dispositivo di separazione • 59 
+Assistenza • 8, 55 
+Definizione • 16 
+Parte di ingresso uscita del segnale • 50, 51, 59 
+Condizione di primo guasto • 22, 26, 42, 50, 51, 52 
+Definizione • 16 
+CEI EN 6235;3:2015-11 
+Alimentazione di rete• 9, 12, 13, 14, 15, 20, 21 , 22, 23, 26, 27, 37, 41, 42, 46, 56 
+Definizione • 16 
+T 
+Descrizione tecnica • 13 
+Corrente di contatto • 27, 29, 39, 40, 42, 51, 58, 60 
+Definizione • 16 
+Parte applicata di tipo B • 16, 23, 30 
+Definizione • 16 
+Parte applicata di tipo BF • 11, 17, 43 
+Definizione • 16 
+Parte applicata di tipo CF • 11, 43, 52 
+Definizione • 17 
+Copia concessa in data 2021-04-27 a Livio Sardo (livio.sardo@omstrento.il), da CEl 
+Copy dislributed lo Livio Sardo (1ivio.sardo@amstren1'J.it) 2021-04-27, by CE/. 
+65 
+
+. _j 
+NORMA TECNICA 
+• 
+CEI EN 62353:2015-11 
+Allegato Nazionale 
+Guida alla applicazione della Norma CEI EN 62353:2015-11 
+PREMESSA 
+Lo scopo della presente guida è di fornire indicazioni operative sull'applicazione delle 
+prescrizioni della norma IEC62353 in considerazione delle diverse novità introdotte 
+soprattutto nelle modalità di misura delle correnti di dispersione. Contiene istruzioni per il 
+personale tecnico su come applicare le prescrizioni della Norma nelle prove di accettazione 
+delle apparecchiature elettromedicali e dei sistemi elettromedicali, durante le verifiche 
+periodiche o dopo gli interventi di riparazione. 
+1 Scopo 
+Commento al testo della Norma: 
+L'applicazione delle procedure della Norma non deve andare in contrasto con quanto 
+eventualmente indicato dal Fabbricante nella documentazione annessa. 
+2 Riferimenti normativi 
+Commento al testo della Norma: 
+Nessun commento 
+3 Termini e definizioni 
+Commento al testo della Norma: 
+Nessun commento 
+4 Prescrizioni 
+4.1 * Prescrizioni generali 
+TESTO NORMA: Devono essere prese in considerazione le informazioni fornite dal 
+FABBRICANTE (si veda anche 7.9.2.13 della IEC 60601-1 :2005). 
+Commento al testo della Norma: 
+Si riporta quanto indicato dalla norma IEC 60601-1 all'art. 7 .9.2.13 : 
+7.9.2.13 Manutenzione 
+Le istruzioni per l'uso devono informare i'OPERATORE o i'ORGANiZZAZiONE 
+RESPONSABILE, in modo sufficientemente dettagliato per quanto riguarda l'esame 
+preventivo, la manutenzione e la taratura a loro carico, inclusa la frequenza di tale 
+manutenzione. 
+Le istruzioni per l'uso devono fornire le informazioni per l'esecuzione in sicurezza di queste 
+manutenzioni programmate, necessarie per assicurare l'uso continuativo in sicurezza 
+dell'APPARECCHIO EM. 
+Inoltre , le istruzioni per l'uso devono identificare le parti su cui l'esame preventivo e la 
+manutenzione devono essere effettuati dal PERSONALE DI ASSISTENZA TECNICA, inclusi 
+gli intervalli previsti, ma non devono necessariamente comprendere i dettagli delle effettive 
+operazioni di tale manutenzione. 
+Per gli APPARECCHI EM che incorporano batterie ricaricabili, la cui manutenzione non sia 
+demandata al PERSONALE DI ASSISTENZA TECNICA, le istruzioni per l'uso devono 
+contenere le istruzioni per assicurare una manutenzione adeguata . 
+67 
+Copia concessa In da/a 2021-04-27 a Livio Sardo (livio.sardo@amstrenlo.il), da CEL 
+Copy dislribuled lo Livio Sardo (livio.sardo@amstrenlo.il) 2021-04-27, by CEJ 
+
+NORMA TECNICA 
+• 
+CEI EN 62353 :2015-11 -------------
+TESTO NORMA: 
+b) Nel caso di un APPARECCHIO EM o di un SISTEMA EM con CAVO DI ALIMENTAZIONE SEPARABILE, 
+la resistenza tra il connettore della terra di protezione della spina di connettore e le PARTI 
+CONDUTTRICI ACCESSIBILI PROTETTIVAMENTE MESSE A TERRA DELL'APPARECCHIO EM O DEL 
+SISTEMA EM NON DEVE SUPERARE 1 200 mo. La resistenza tra le connessioni di terra ai due 
+estremi di un cavo di alimentazione non deve superare 100 mo. Se il CAVO DI 
+ALIMENTAZIONE SEPARABILE e i' APPARECCHiO EM o il SISTEMA EM vengono misurati insieme , 
+la res istenza non deve superare 300 mo (si veda la Figura 1 ). 
+Commento al testo della Norma: 
+Nel caso venga eseguita la prova misurando insieme il cavo separabile e l'apparecchio si 
+evidenza la necessità di verificare la resistenza del conduttore di terra di protezione del cavo 
+separabile. La prova deve essere eseguita su tutte le parti conduttrici accessibili 
+protettivamente messe a terra e non limitandosi al solo morsetto di terra di protezione 
+esterno. 
+TESTO NORMA: 
+c) Nell'effettuare le misure, come indicato nella Figura 2, può essere tenuta in conto la 
+resistenza delle connessioni della terra di protezione nell'ALIMENTAZIONE di RETE . 
+Commento al testo della Norma: 
+Le modalità di misura rappresentate nella figura 2 permettono per motivi pratici di eseguire la 
+prova non dal morsetto di terra dell'apparecchiatura ma dal contatto di terra di una presa di 
+alimentazione del locale in prossimità all'apparecchiatura. Qualora il valore rilevato superi il 
+limite indicato dalla norma la prova dovrà essere eseguita comunque dal morsetto di terra 
+dell 'apparecchiatura solo se accessibile senza l'uso di un utensile . 
+TESTO NORMA: 
+d) Nel caso di un SISTEMA EM con una PRESA MULTIP LA, la resistenza totale tra il connettore 
+della terra di protezione della SPINA DI ALIME NTAZIONE della PRESA MULTIP LA e tutte le PARTI 
+CONDUTTRICI ACCESSIBILI protettivamente messe a terra, previste per essere collegate al 
+SISTEMA EM, non deve superare 300 mQ, quando collegato ad un sistema di alimentazione 
+TN a bassa tensione privo di protezione RCD . Se è prevista una protezione RCD o altre 
+misure di protezione , ad esempio un sistema di alimentazione IT, la RESISTENZA DI TERRA 
+DI PROTEZIONE non deve superare i 500 mo. 
+Commento al testo della Norma: 
+In Italia le apparecchiature EM e i SISTEMI EM sono alimentate da impianti elettrici dotati di 
+protezione differenziale (RCD) o con trasformatore di isolamento (IT-N), pertanto la misura 
+non deve superare i 500 mOhm. L'Organizzazione Responsabile dovrebbe informare i tecnici 
+verificatori sul tipo di impianto esistente. 
+TESTO NORMA: 
+5.3.4 Correnti di dispersione 
+5.3.4.1 Generalità 
+Questo si applica sia agli apparecchi em sia ai sistemi em, come pure per gli apparecchi non­
+em che si trovano nell'AMBIENTE DEL PAZIENTE. 
+Commento al testo della Norma: 
+Nel caso di apparecchiature non-EM al di fuori dell'Ambiente paziente si applicano i limiti 
+prescritti dalle norme specifiche di prodotto. Se poste invece nell 'Ambiente paziente si 
+applicano i limiti della presente norma e nel caso tali limiti vengano superati occorre adottare i 
+metodi supplementari di sicurezza previsti per i sistemi medicali. 
+Copia co11ressa /11 da/a 2021-04-27 a Livio Sardo (/ivio.sartlo@amstrenta.it), da CEI. 
+Cq,y distrlb11ted lo Livio Sardo (/ivlo.sardo@amstre11to.il) 2021-04-27, by CEl 
+69 
+
+NORMA TECNICA 
+• ~---------
+Allegato F 
+(informativo) 
+Intervalli tra le prove 
+Commento al testo della Norma: 
+C!:I EN 62353 :2015-11 
+In mancanza di informazioni sulla documentazione annessa o di un piano predisposto 
+dall'Organizzazione Responsabile si consiglia di eseguire le verifiche di sicurezza almeno una 
+volta all'anno per le apparecchiature utilizzate in sala operatoria e/o locali assimilabili come 
+definiti nella norma CEI 64-8 sez. 710 (locali di gruppo 2) ed almeno una volta ogni due anni 
+per le apparecchiature utilizzate in tutti gli altri locali (ad esempio locali di gruppo 1, gruppo O, 
+laboratori analisi). 
+Allegato H 
+(informativo) 
+Note sulle prove dei SISTEMI EM 
+Commento al testo della Norma: 
+Data la complessità della problematica relativa ai sistemi EM si rimanda la trattazione alla 
+specifica guida CEI. 
+Copio conce5'<a i11 daJa 2021-04-27 a Livio Sardo (livio.sQrdo@omslranto.il), da CEl 
+Copy dislrib111ed 10 Livio Sardo (livio.sardo@amstrento./1} 2021-04-27, by CE/. 
+71 
