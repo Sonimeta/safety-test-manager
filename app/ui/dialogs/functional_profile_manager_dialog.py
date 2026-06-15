@@ -1514,16 +1514,20 @@ class FunctionalProfileEditorDialog(QDialog):
         row._spec_key = spec.key if spec else None
         row._spec_source = spec.source if spec else None
 
-        def _sync_detail(_idx=None, r=row):
+        def _sync_detail(autofill=False, r=row):
             ft = r._type_combo.currentData()
             placeholder = detail_placeholder(ft)
             r._detail_edit.setPlaceholderText(placeholder)
             r._detail_edit.setEnabled(placeholder != "—")
+            # Quando l'utente sceglie "scelta multipla" e il dettaglio è vuoto,
+            # propone le opzioni esito più comuni: un click in meno nel caso tipico
+            if autofill and ft == "choice" and not r._detail_edit.text().strip():
+                r._detail_edit.setText("OK, KO, N.A.")
             self._on_simple_changed()
         _sync_detail()
 
         label_edit.textChanged.connect(self._on_simple_changed)
-        type_combo.currentIndexChanged.connect(_sync_detail)
+        type_combo.currentIndexChanged.connect(lambda _idx, r=row: _sync_detail(autofill=True, r=r))
         detail_edit.textChanged.connect(self._on_simple_changed)
         req_chk.toggled.connect(self._on_simple_changed)
 
@@ -1670,49 +1674,92 @@ class FunctionalProfileEditorDialog(QDialog):
             self.sections_list.addItem(item)
         self._update_preview()
     
+    def _field_control_preview(self, field) -> str:
+        """Descrizione HTML del controllo come apparirà al tecnico in verifica."""
+        import html as _html
+        ft = field.field_type
+        if ft == "header":
+            return ""  # intestazione: già resa come titolo
+        if ft in ("choice", "pass_fail"):
+            opts = field.options or (["PASS", "FAIL", "N.A."] if ft == "pass_fail" else [])
+            if opts:
+                chips = " ".join(
+                    f"<span style='background:#eef2ff;color:#4338ca;border-radius:8px;"
+                    f"padding:1px 6px;'>{_html.escape(str(o))}</span>" for o in opts
+                )
+                return chips
+            return "<span style='color:#94a3b8;'>(nessuna opzione)</span>"
+        if ft == "bool":
+            return "<span style='color:#94a3b8;'>☐ Sì / No</span>"
+        if ft == "rating":
+            n = field.rating_max or 5
+            return f"<span style='color:#eab308;'>{'★' * min(n, 10)}</span> <span style='color:#94a3b8;'>(1–{n})</span>"
+        if ft == "calculated":
+            return (f"<span style='color:#0d9488;'>∑ calcolato: "
+                    f"<code>{_html.escape(field.formula or '')}</code></span>")
+        # input testuale/numerico/data/ora: mostra una casella con eventuale unità/default
+        placeholder = ""
+        if field.default not in (None, ""):
+            placeholder = _html.escape(str(field.default))
+        box = (f"<span style='border:1px solid #cbd5e1;border-radius:4px;"
+               f"padding:1px 18px 1px 6px;color:#64748b;'>{placeholder or '&nbsp;'}</span>")
+        if field.unit:
+            box += f" <span style='color:#64748b;'>{_html.escape(field.unit)}</span>"
+        return box
+
     def _update_preview(self):
-        """Aggiorna l'anteprima del profilo (dalla guidata o dal profilo)."""
+        """Anteprima fedele: mostra il profilo come apparirà in verifica."""
+        import html as _html
         name = self.name_edit.text().strip() or "Nome Profilo"
         device_type = self.device_type_edit.text().strip()
         sections = self._current_sections()
 
-        preview_html = f"<h3>{name}</h3>"
+        html_parts = [f"<h3 style='margin-bottom:2px;'>{_html.escape(name)}</h3>"]
         if device_type:
-            preview_html += f"<p><b>Tipo:</b> {device_type}</p>"
-
-        preview_html += f"<p><b>Sezioni:</b> {len(sections)}</p>"
-        preview_html += "<hr>"
+            html_parts.append(f"<p style='color:#64748b;margin-top:0;'>{_html.escape(device_type)}</p>")
+        if not sections:
+            html_parts.append("<p style='color:#94a3b8;'><i>Nessuna sezione: aggiungi una "
+                              "checklist o un modulo campi.</i></p>")
 
         for idx, section in enumerate(sections):
-            preview_html += f"<h4>{idx + 1}. {section.title}</h4>"
-            preview_html += f"<p style='color: #64748b;'><i>Tipo: {section.section_type}</i></p>"
-            
-            if section.section_type == "fields":
-                preview_html += "<ul>"
+            html_parts.append(
+                f"<div style='margin-top:10px;'><span style='font-weight:700;color:#1e293b;'>"
+                f"{idx + 1}. {_html.escape(section.title)}</span></div>")
+            if section.description:
+                html_parts.append(
+                    f"<div style='color:#64748b;font-size:11px;'>{_html.escape(section.description)}</div>")
+
+            if section.section_type in ("fields", "form"):
+                html_parts.append("<table cellpadding='3' style='margin-left:6px;'>")
                 for field in section.fields:
-                    required = " <span style='color: red;'>*</span>" if field.required else ""
-                    type_label = FIELD_TYPE_INFO.get(field.field_type, {}).get("label", field.field_type)
-                    preview_html += f"<li>{field.label}{required} <span style='color:#94a3b8;'>({type_label})</span></li>"
-                preview_html += "</ul>"
+                    if field.field_type == "header":
+                        html_parts.append(
+                            f"<tr><td colspan='2' style='font-weight:600;color:#475569;'>"
+                            f"— {_html.escape(field.label)} —</td></tr>")
+                        continue
+                    req = " <span style='color:#dc2626;'>*</span>" if field.required else ""
+                    html_parts.append(
+                        f"<tr><td style='color:#334155;vertical-align:top;'>{_html.escape(field.label)}{req}</td>"
+                        f"<td>{self._field_control_preview(field)}</td></tr>")
+                html_parts.append("</table>")
             else:
-                preview_html += f"<p>Righe: {len(section.rows)}</p>"
-                if section.rows:
-                    preview_html += "<ul>"
-                    for row in section.rows[:5]:
-                        preview_html += f"<li>{row.label or row.key}"
-                        if row.fields:
-                            field_types = ", ".join(
-                                FIELD_TYPE_INFO.get(f.field_type, {}).get("label", f.field_type) for f in row.fields
-                            )
-                            preview_html += f" <span style='color:#94a3b8;'>({field_types})</span>"
-                        preview_html += "</li>"
-                    if len(section.rows) > 5:
-                        preview_html += f"<li>... e altre {len(section.rows) - 5}</li>"
-                    preview_html += "</ul>"
-            
-            preview_html += "<br>"
-        
-        self.preview_text.setHtml(preview_html)
+                # checklist / table: una riga per voce
+                html_parts.append("<table cellpadding='3' style='margin-left:6px;'>")
+                for row in section.rows[:8]:
+                    controls = " &nbsp; ".join(
+                        self._field_control_preview(f) for f in row.fields
+                        if self._field_control_preview(f)
+                    )
+                    html_parts.append(
+                        f"<tr><td style='color:#334155;vertical-align:top;'>"
+                        f"{_html.escape(row.label or row.key)}</td><td>{controls}</td></tr>")
+                if len(section.rows) > 8:
+                    html_parts.append(
+                        f"<tr><td colspan='2' style='color:#94a3b8;'>… e altre "
+                        f"{len(section.rows) - 8} voci</td></tr>")
+                html_parts.append("</table>")
+
+        self.preview_text.setHtml("".join(html_parts))
 
     def _capture_instrument_selection(self):
         self._selected_instrument_ids = {
