@@ -98,8 +98,9 @@ FIELD_TYPE_CATEGORIES = ["Base", "Numerico", "Selezione", "Data/Ora", "Layout", 
 
 # ─── Drag & drop ─────────────────────────────────────────────────────────────
 SECTION_PRESET_MIME = "application/x-stm-section-preset"
+FIELD_TYPE_MIME = "application/x-stm-field-type"
 
-# Blocchi trascinabili dalla palette nel profilo (chiave, etichetta, icona, colore)
+# Blocchi sezione trascinabili dalla palette (chiave, etichetta, icona, colore)
 SECTION_PRESETS = [
     ("checklist", "Checklist", "fa5s.check-square", "#16a34a"),
     ("normative", "Riferimenti normativi", "fa5s.book", "#2563eb"),
@@ -108,38 +109,50 @@ SECTION_PRESETS = [
 ]
 
 
-class SectionPalette(QListWidget):
-    """Palette di blocchi trascinabili: si trascina una voce nel profilo per
-    aggiungere quel tipo di sezione."""
-    def __init__(self, parent=None):
+def field_type_palette_entries():
+    """Voci della palette dei tipi di campo, da FIELD_TYPE_INFO."""
+    entries = []
+    for ft in FIELD_TYPES:
+        info = FIELD_TYPE_INFO.get(ft, {})
+        entries.append((ft, info.get("label", ft),
+                        info.get("icon", "fa5s.font"), info.get("color", "#64748b")))
+    return entries
+
+
+class DragPalette(QListWidget):
+    """Palette di elementi trascinabili: ogni voce porta una chiave nel formato
+    mime indicato, da rilasciare su una DragDropList compatibile."""
+    def __init__(self, mime: str, entries, tooltip: str = "", parent=None):
         super().__init__(parent)
+        self._mime = mime
         self.setDragEnabled(True)
         self.setDragDropMode(QAbstractItemView.DragOnly)
         self.setSelectionMode(QAbstractItemView.SingleSelection)
-        for key, label, icon, color in SECTION_PRESETS:
+        for key, label, icon, color in entries:
             item = QListWidgetItem(qta.icon(icon, color=color), label)
             item.setData(Qt.UserRole, key)
-            item.setToolTip("Trascina nel profilo per aggiungere questa sezione")
+            if tooltip:
+                item.setToolTip(tooltip)
             self.addItem(item)
 
     def mimeData(self, items):
         md = QMimeData()
         if items:
-            preset = str(items[0].data(Qt.UserRole) or "")
-            md.setData(SECTION_PRESET_MIME, QByteArray(preset.encode()))
+            key = str(items[0].data(Qt.UserRole) or "")
+            md.setData(self._mime, QByteArray(key.encode()))
         return md
 
 
 class DragDropList(QListWidget):
     """Lista che supporta il riordino per trascinamento e (opzionale) il drop
-    dei blocchi dalla palette. Non sposta gli item da sola: emette segnali e
-    lascia che sia il dialog a riordinare/creare i dati e a ridisegnare."""
+    di voci da una palette del mime indicato. Non sposta gli item da sola:
+    emette segnali e lascia che sia il dialog a riordinare/creare i dati."""
     reorder_requested = Signal(int, int)   # riga origine, riga destinazione
-    preset_dropped = Signal(str, int)      # chiave preset, riga destinazione
+    preset_dropped = Signal(str, int)      # chiave dalla palette, riga destinazione
 
-    def __init__(self, accept_presets: bool = False, parent=None):
+    def __init__(self, preset_mime: Optional[str] = None, parent=None):
         super().__init__(parent)
-        self._accept_presets = accept_presets
+        self._preset_mime = preset_mime
         self.setSelectionMode(QAbstractItemView.SingleSelection)
         self.setDragEnabled(True)
         self.setAcceptDrops(True)
@@ -147,10 +160,11 @@ class DragDropList(QListWidget):
         self.setDefaultDropAction(Qt.MoveAction)
         self.viewport().setAcceptDrops(True)
 
+    def _has_preset(self, event) -> bool:
+        return bool(self._preset_mime) and event.mimeData().hasFormat(self._preset_mime)
+
     def _accepts(self, event) -> bool:
-        if self._accept_presets and event.mimeData().hasFormat(SECTION_PRESET_MIME):
-            return True
-        return event.source() is self
+        return self._has_preset(event) or event.source() is self
 
     def dragEnterEvent(self, event):
         if self._accepts(event):
@@ -165,12 +179,11 @@ class DragDropList(QListWidget):
             event.ignore()
 
     def _drop_row(self, event) -> int:
-        row = self.indexAt(event.position().toPoint()).row()
-        return row
+        return self.indexAt(event.position().toPoint()).row()
 
     def dropEvent(self, event):
-        if self._accept_presets and event.mimeData().hasFormat(SECTION_PRESET_MIME):
-            preset = bytes(event.mimeData().data(SECTION_PRESET_MIME)).decode()
+        if self._has_preset(event):
+            preset = bytes(event.mimeData().data(self._preset_mime)).decode()
             row = self._drop_row(event)
             if row < 0:
                 row = self.count()
@@ -853,24 +866,46 @@ class SectionEditorDialog(QDialog):
         self.stack = QStackedWidget()
         main_layout.addWidget(self.stack, 1)
 
-        # Pannello per i campi (fields)
-        self.fields_table = QTableWidget(0, 6)
-        self.fields_table.setHorizontalHeaderLabels(["Chiave", "Etichetta", "Tipo", "Obbl.", "Sola lett.", "Formula"])
-        self.fields_table.horizontalHeader().setStretchLastSection(True)
-        self.fields_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.fields_table.setAlternatingRowColors(True)
+        # Pannello per i campi (fields): palette dei tipi a sinistra + lista
+        # trascinabile a destra. Si trascina un tipo di campo nella lista per
+        # aggiungerlo; doppio clic per rinominare; Modifica per opzioni/formule
+        self.fields_list = DragDropList(preset_mime=FIELD_TYPE_MIME)
+        self.fields_list.setAlternatingRowColors(True)
 
         fields_widget = QWidget()
         fields_layout = QVBoxLayout(fields_widget)
-        fields_label = QLabel("<b>Campi della Sezione</b>")
+        fields_label = QLabel("<b>Campi della Sezione</b>  "
+                              "<span style='color:#64748b;'>(doppio clic per rinominare, trascina per riordinare)</span>")
+        fields_label.setTextFormat(Qt.RichText)
         fields_layout.addWidget(fields_label)
-        # Aggiunta rapida inline: scrivi l'etichetta e premi Invio (campo testo;
-        # tipo e dettagli si cambiano poi col doppio clic / Modifica)
+
+        fields_dnd_row = QHBoxLayout()
+        fpal_col = QVBoxLayout()
+        fpal_col.setSpacing(2)
+        fpal_col.addWidget(QLabel("<small><b>Tipi di campo →</b></small>"))
+        self.field_palette = DragPalette(
+            FIELD_TYPE_MIME, field_type_palette_entries(),
+            tooltip="Trascina nella sezione per aggiungere un campo di questo tipo")
+        self.field_palette.setFixedWidth(200)
+        fpal_col.addWidget(self.field_palette, 1)
+        fields_dnd_row.addLayout(fpal_col)
+
+        fcanvas_col = QVBoxLayout()
+        fcanvas_col.setSpacing(2)
+        # Aggiunta rapida inline: scrivi l'etichetta e premi Invio (campo testo)
         self.field_quick_edit = QLineEdit()
-        self.field_quick_edit.setPlaceholderText("➕  Scrivi un campo e premi Invio per aggiungerlo…")
+        self.field_quick_edit.setPlaceholderText("➕  Scrivi un campo e premi Invio (campo testo)…")
         self.field_quick_edit.returnPressed.connect(self._inline_add_field)
-        fields_layout.addWidget(self.field_quick_edit)
-        fields_layout.addWidget(self.fields_table)
+        fcanvas_col.addWidget(self.field_quick_edit)
+        fcanvas_col.addWidget(self.fields_list, 1)
+        fields_dnd_row.addLayout(fcanvas_col, 1)
+        fields_layout.addLayout(fields_dnd_row)
+
+        self.fields_list.preset_dropped.connect(self._drop_field_type)
+        self.fields_list.reorder_requested.connect(self._reorder_fields)
+        self.fields_list.itemChanged.connect(self._on_field_label_edited)
+        self.fields_list.itemDoubleClicked.connect(lambda _: self.edit_field())
+
         fields_btn_layout = QHBoxLayout()
         self.field_add_btn = QPushButton(qta.icon('fa5s.plus'), " Aggiungi")
         self.field_add_btn.setObjectName("autoButton")
@@ -951,9 +986,9 @@ class SectionEditorDialog(QDialog):
         self.row_add_btn.clicked.connect(self.add_row)
         self.row_quick_add_btn.clicked.connect(lambda: self.row_quick_edit.setFocus())
         self.row_edit_btn.clicked.connect(self.edit_row)
-        # Rinomina inline delle verifiche e dei campi (doppio clic sull'elemento)
+        # Rinomina inline delle verifiche (doppio clic sull'elemento).
+        # I campi hanno la propria connessione itemChanged definita col pannello.
         self.rows_list.itemChanged.connect(self._on_row_label_edited)
-        self.fields_table.itemChanged.connect(self._on_field_cell_changed)
         self.row_dup_btn.clicked.connect(self.duplicate_row)
         self.row_remove_btn.clicked.connect(self.remove_row)
         self.row_up_btn.clicked.connect(self.move_row_up)
@@ -1003,58 +1038,80 @@ class SectionEditorDialog(QDialog):
         self._key_user_edited = True
 
     def _refresh_fields(self):
-        self.fields_table.blockSignals(True)
-        self.fields_table.setRowCount(0)
+        self.fields_list.blockSignals(True)
+        self.fields_list.clear()
         for field in self.section.fields:
-            row_idx = self.fields_table.rowCount()
-            self.fields_table.insertRow(row_idx)
             type_label = FIELD_TYPE_INFO.get(field.field_type, {}).get("label", field.field_type)
-            cells = [
-                (field.key, False),
-                (field.label, True),   # solo l'etichetta è modificabile inline
-                (type_label, False),
-                ("Sì" if field.required else "No", False),
-                ("Sì" if field.read_only else "No", False),
-                (field.formula or "", False),
-            ]
-            for col, (text, editable) in enumerate(cells):
-                item = QTableWidgetItem(text)
-                if editable:
-                    item.setToolTip("Doppio clic per rinominare")
-                else:
-                    item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                self.fields_table.setItem(row_idx, col, item)
-        self.fields_table.blockSignals(False)
+            item = QListWidgetItem(field.label or field.key)
+            item.setFlags(item.flags() | Qt.ItemIsEditable)
+            item.setData(Qt.UserRole, field)
+            info = FIELD_TYPE_INFO.get(field.field_type, {})
+            item.setIcon(qta.icon(info.get("icon", "fa5s.font"), color=info.get("color", "#64748b")))
+            extra = []
+            if field.required:
+                extra.append("obbligatorio")
+            if field.formula:
+                extra.append(f"= {field.formula}")
+            tip = f"Tipo: {type_label} · chiave: {field.key}"
+            if extra:
+                tip += " · " + " · ".join(extra)
+            item.setToolTip(tip)
+            self.fields_list.addItem(item)
+        self.fields_list.blockSignals(False)
 
-    def _on_field_cell_changed(self, item):
-        """Rinomina inline dell'etichetta di un campo (colonna 1)."""
-        if item.column() != 1:
+    def _on_field_label_edited(self, item):
+        """Rinomina inline dell'etichetta di un campo (doppio clic)."""
+        field = item.data(Qt.UserRole)
+        if field is None:
             return
-        idx = item.row()
-        if 0 <= idx < len(self.section.fields):
-            new_label = item.text().strip()
-            if new_label:
-                self.section.fields[idx].label = new_label
-            else:
-                self.fields_table.blockSignals(True)
-                item.setText(self.section.fields[idx].label)
-                self.fields_table.blockSignals(False)
+        new_label = item.text().strip()
+        if new_label:
+            field.label = new_label
+        else:
+            self.fields_list.blockSignals(True)
+            item.setText(field.label or field.key)
+            self.fields_list.blockSignals(False)
+
+    def _unique_field_key(self, base: str) -> str:
+        base = base or "campo"
+        keys = {f.key for f in self.section.fields}
+        if base not in keys:
+            return base
+        suffix = 2
+        while f"{base}_{suffix}" in keys:
+            suffix += 1
+        return f"{base}_{suffix}"
 
     def _inline_add_field(self):
         """Aggiunge un campo testo dalla riga di inserimento rapido."""
         label = self.field_quick_edit.text().strip()
         if not label:
             return
-        key = self._slugify_key(label) or f"campo_{len(self.section.fields) + 1}"
-        if any(f.key == key for f in self.section.fields):
-            suffix = 2
-            while any(f.key == f"{key}_{suffix}" for f in self.section.fields):
-                suffix += 1
-            key = f"{key}_{suffix}"
+        key = self._unique_field_key(self._slugify_key(label) or "campo")
         self.section.fields.append(FunctionalField(key=key, label=label, field_type="text"))
         self.field_quick_edit.clear()
         self._refresh_fields()
         self.field_quick_edit.setFocus()
+
+    def _drop_field_type(self, field_type: str, row: int):
+        """Crea un campo del tipo trascinato dalla palette, al punto di rilascio."""
+        type_label = FIELD_TYPE_INFO.get(field_type, {}).get("label", field_type)
+        key = self._unique_field_key(self._slugify_key(type_label) or "campo")
+        new_field = FunctionalField(key=key, label=type_label, field_type=field_type)
+        if field_type == "pass_fail":
+            new_field.options = ["PASS", "FAIL", "N.A."]
+            new_field.required = True
+        elif field_type == "choice":
+            new_field.options = ["OK", "KO", "N.A."]
+        row = max(0, min(row, len(self.section.fields)))
+        self.section.fields.insert(row, new_field)
+        self._refresh_fields()
+        self.fields_list.setCurrentRow(row)
+
+    def _reorder_fields(self, src: int, dst: int):
+        """Riordino dei campi per trascinamento."""
+        move_in_list(self.section.fields, src, dst)
+        self._refresh_fields()
 
     def _refresh_rows(self):
         self.rows_list.blockSignals(True)
@@ -1120,7 +1177,7 @@ class SectionEditorDialog(QDialog):
             self._refresh_fields()
 
     def edit_field(self):
-        row_idx = self.fields_table.currentRow()
+        row_idx = self.fields_list.currentRow()
         if row_idx < 0:
             QMessageBox.warning(self, "Selezione mancante", "Seleziona un campo da modificare.")
             return
@@ -1128,9 +1185,10 @@ class SectionEditorDialog(QDialog):
         if dialog.exec() == QDialog.Accepted:
             self.section.fields[row_idx] = dialog.field
             self._refresh_fields()
+            self.fields_list.setCurrentRow(row_idx)
 
     def remove_field(self):
-        row_idx = self.fields_table.currentRow()
+        row_idx = self.fields_list.currentRow()
         if row_idx < 0:
             QMessageBox.warning(self, "Selezione mancante", "Seleziona un campo da rimuovere.")
             return
@@ -1139,44 +1197,33 @@ class SectionEditorDialog(QDialog):
 
     def duplicate_field(self):
         """Duplica il campo selezionato con una nuova chiave."""
-        row_idx = self.fields_table.currentRow()
+        row_idx = self.fields_list.currentRow()
         if row_idx < 0:
             QMessageBox.warning(self, "Selezione mancante", "Seleziona un campo da duplicare.")
             return
         original = self.section.fields[row_idx]
         new_field = copy.deepcopy(original)
-        # Genera chiave unica
-        base_key = original.key
-        suffix = 2
-        while any(f.key == f"{base_key}_{suffix}" for f in self.section.fields):
-            suffix += 1
-        new_field.key = f"{base_key}_{suffix}"
+        new_field.key = self._unique_field_key(original.key)
         new_field.label = f"{original.label} (copia)"
         self.section.fields.insert(row_idx + 1, new_field)
         self._refresh_fields()
-        self.fields_table.selectRow(row_idx + 1)
+        self.fields_list.setCurrentRow(row_idx + 1)
 
     def move_field_up(self):
-        row_idx = self.fields_table.currentRow()
+        row_idx = self.fields_list.currentRow()
         if row_idx <= 0:
             return
-        self.section.fields[row_idx - 1], self.section.fields[row_idx] = (
-            self.section.fields[row_idx],
-            self.section.fields[row_idx - 1],
-        )
+        move_in_list(self.section.fields, row_idx, row_idx - 1)
         self._refresh_fields()
-        self.fields_table.selectRow(row_idx - 1)
+        self.fields_list.setCurrentRow(row_idx - 1)
 
     def move_field_down(self):
-        row_idx = self.fields_table.currentRow()
+        row_idx = self.fields_list.currentRow()
         if row_idx < 0 or row_idx >= len(self.section.fields) - 1:
             return
-        self.section.fields[row_idx + 1], self.section.fields[row_idx] = (
-            self.section.fields[row_idx],
-            self.section.fields[row_idx + 1],
-        )
+        move_in_list(self.section.fields, row_idx, row_idx + 2)
         self._refresh_fields()
-        self.fields_table.selectRow(row_idx + 1)
+        self.fields_list.setCurrentRow(row_idx + 1)
 
     def add_row(self):
         dialog = RowEditorDialog(parent=self)
@@ -1443,7 +1490,9 @@ class FunctionalProfileEditorDialog(QDialog):
         palette_col = QVBoxLayout()
         palette_col.setSpacing(2)
         palette_col.addWidget(QLabel("<small><b>Trascina nel profilo →</b></small>"))
-        self.section_palette = SectionPalette()
+        self.section_palette = DragPalette(
+            SECTION_PRESET_MIME, SECTION_PRESETS,
+            tooltip="Trascina nel profilo per aggiungere questa sezione")
         self.section_palette.setFixedWidth(215)
         self.section_palette.setMaximumHeight(160)
         palette_col.addWidget(self.section_palette)
@@ -1454,7 +1503,7 @@ class FunctionalProfileEditorDialog(QDialog):
         canvas_col.setSpacing(2)
         canvas_col.addWidget(QLabel("<small>Sezioni del profilo "
                                     "<span style='color:#64748b;'>(trascina per riordinare)</span></small>"))
-        self.sections_list = DragDropList(accept_presets=True)
+        self.sections_list = DragDropList(preset_mime=SECTION_PRESET_MIME)
         self.sections_list.setAlternatingRowColors(True)
         self.sections_list.preset_dropped.connect(self._drop_section_preset)
         self.sections_list.reorder_requested.connect(self._reorder_sections)
