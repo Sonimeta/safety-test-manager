@@ -6,7 +6,7 @@ import re
 import unicodedata
 from typing import Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal, QMimeData, QByteArray
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -95,6 +95,111 @@ FIELD_TYPE_INFO: dict[str, dict] = {
 
 # Ordine delle categorie per il selettore visivo
 FIELD_TYPE_CATEGORIES = ["Base", "Numerico", "Selezione", "Data/Ora", "Layout", "Avanzato"]
+
+# ─── Drag & drop ─────────────────────────────────────────────────────────────
+SECTION_PRESET_MIME = "application/x-stm-section-preset"
+
+# Blocchi trascinabili dalla palette nel profilo (chiave, etichetta, icona, colore)
+SECTION_PRESETS = [
+    ("checklist", "Checklist", "fa5s.check-square", "#16a34a"),
+    ("normative", "Riferimenti normativi", "fa5s.book", "#2563eb"),
+    ("fields", "Campi liberi", "fa5s.list", "#7c3aed"),
+    ("notes", "Note", "fa5s.sticky-note", "#f59e0b"),
+]
+
+
+class SectionPalette(QListWidget):
+    """Palette di blocchi trascinabili: si trascina una voce nel profilo per
+    aggiungere quel tipo di sezione."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setDragEnabled(True)
+        self.setDragDropMode(QAbstractItemView.DragOnly)
+        self.setSelectionMode(QAbstractItemView.SingleSelection)
+        for key, label, icon, color in SECTION_PRESETS:
+            item = QListWidgetItem(qta.icon(icon, color=color), label)
+            item.setData(Qt.UserRole, key)
+            item.setToolTip("Trascina nel profilo per aggiungere questa sezione")
+            self.addItem(item)
+
+    def mimeData(self, items):
+        md = QMimeData()
+        if items:
+            preset = str(items[0].data(Qt.UserRole) or "")
+            md.setData(SECTION_PRESET_MIME, QByteArray(preset.encode()))
+        return md
+
+
+class DragDropList(QListWidget):
+    """Lista che supporta il riordino per trascinamento e (opzionale) il drop
+    dei blocchi dalla palette. Non sposta gli item da sola: emette segnali e
+    lascia che sia il dialog a riordinare/creare i dati e a ridisegnare."""
+    reorder_requested = Signal(int, int)   # riga origine, riga destinazione
+    preset_dropped = Signal(str, int)      # chiave preset, riga destinazione
+
+    def __init__(self, accept_presets: bool = False, parent=None):
+        super().__init__(parent)
+        self._accept_presets = accept_presets
+        self.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.setDragDropMode(QAbstractItemView.DragDrop)
+        self.setDefaultDropAction(Qt.MoveAction)
+        self.viewport().setAcceptDrops(True)
+
+    def _accepts(self, event) -> bool:
+        if self._accept_presets and event.mimeData().hasFormat(SECTION_PRESET_MIME):
+            return True
+        return event.source() is self
+
+    def dragEnterEvent(self, event):
+        if self._accepts(event):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        if self._accepts(event):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def _drop_row(self, event) -> int:
+        row = self.indexAt(event.position().toPoint()).row()
+        return row
+
+    def dropEvent(self, event):
+        if self._accept_presets and event.mimeData().hasFormat(SECTION_PRESET_MIME):
+            preset = bytes(event.mimeData().data(SECTION_PRESET_MIME)).decode()
+            row = self._drop_row(event)
+            if row < 0:
+                row = self.count()
+            event.setDropAction(Qt.IgnoreAction)
+            event.accept()
+            self.preset_dropped.emit(preset, row)
+            return
+        if event.source() is self:
+            src = self.currentRow()
+            dst = self._drop_row(event)
+            if dst < 0:
+                dst = self.count() - 1
+            event.setDropAction(Qt.IgnoreAction)
+            event.accept()
+            if src >= 0 and src != dst:
+                self.reorder_requested.emit(src, dst)
+            return
+        event.ignore()
+
+
+def move_in_list(items: list, src: int, dst: int):
+    """Sposta items[src] in posizione dst (semantica 'rilascia sulla riga dst')."""
+    if src < 0 or src >= len(items) or src == dst:
+        return
+    element = items.pop(src)
+    if src < dst:
+        dst -= 1
+    dst = max(0, min(dst, len(items)))
+    items.insert(dst, element)
 
 
 class FieldEditorDialog(QDialog):
@@ -801,8 +906,9 @@ class SectionEditorDialog(QDialog):
         self.row_quick_edit.setPlaceholderText("➕  Scrivi una verifica e premi Invio per aggiungerla…")
         self.row_quick_edit.returnPressed.connect(self._inline_add_row)
         rows_layout.addWidget(self.row_quick_edit)
-        self.rows_list = QListWidget()
+        self.rows_list = DragDropList()
         self.rows_list.setAlternatingRowColors(True)
+        self.rows_list.reorder_requested.connect(self._reorder_rows)
         rows_layout.addWidget(self.rows_list)
         rows_btn_layout = QHBoxLayout()
         self.row_add_btn = QPushButton(qta.icon('fa5s.plus'), " Aggiungi")
@@ -978,6 +1084,11 @@ class SectionEditorDialog(QDialog):
             self.rows_list.blockSignals(True)
             item.setText(row.label or row.key)
             self.rows_list.blockSignals(False)
+
+    def _reorder_rows(self, src, dst):
+        """Riordino delle verifiche per trascinamento."""
+        move_in_list(self.section.rows, src, dst)
+        self._refresh_rows()
 
     def _inline_add_row(self):
         """Aggiunge una verifica con esito OK/KO/N.A. dalla riga rapida."""
@@ -1324,10 +1435,32 @@ class FunctionalProfileEditorDialog(QDialog):
         # Sezioni
         sections_group = QGroupBox("Sezioni del Profilo")
         sections_layout = QVBoxLayout(sections_group)
-        self.sections_list = QListWidget()
-        self.sections_list.setSelectionMode(QAbstractItemView.SingleSelection)
+
+        # Palette di blocchi + canvas con drag & drop: si trascina un blocco
+        # dalla palette nell'elenco per aggiungerlo, e si riordinano le sezioni
+        # trascinandole
+        dnd_row = QHBoxLayout()
+        palette_col = QVBoxLayout()
+        palette_col.setSpacing(2)
+        palette_col.addWidget(QLabel("<small><b>Trascina nel profilo →</b></small>"))
+        self.section_palette = SectionPalette()
+        self.section_palette.setFixedWidth(215)
+        self.section_palette.setMaximumHeight(160)
+        palette_col.addWidget(self.section_palette)
+        palette_col.addStretch()
+        dnd_row.addLayout(palette_col)
+
+        canvas_col = QVBoxLayout()
+        canvas_col.setSpacing(2)
+        canvas_col.addWidget(QLabel("<small>Sezioni del profilo "
+                                    "<span style='color:#64748b;'>(trascina per riordinare)</span></small>"))
+        self.sections_list = DragDropList(accept_presets=True)
         self.sections_list.setAlternatingRowColors(True)
-        sections_layout.addWidget(self.sections_list)
+        self.sections_list.preset_dropped.connect(self._drop_section_preset)
+        self.sections_list.reorder_requested.connect(self._reorder_sections)
+        canvas_col.addWidget(self.sections_list)
+        dnd_row.addLayout(canvas_col, 1)
+        sections_layout.addLayout(dnd_row)
 
         btn_row = QHBoxLayout()
         self.section_add_btn = QPushButton(qta.icon('fa5s.plus'), " Aggiungi")
@@ -1871,6 +2004,46 @@ class FunctionalProfileEditorDialog(QDialog):
             return
         self.profile.sections.pop(row)
         self._refresh_sections()
+
+    def _unique_section_key(self, base: str) -> str:
+        base = base or "sezione"
+        existing = {s.key for s in self.profile.sections}
+        if base not in existing:
+            return base
+        n = 2
+        while f"{base}_{n}" in existing:
+            n += 1
+        return f"{base}_{n}"
+
+    def _drop_section_preset(self, preset: str, row: int):
+        """Crea una sezione dal blocco trascinato dalla palette e la inserisce
+        nel punto del rilascio."""
+        from app.functional_templates import (
+            build_normative_section, build_notes_section,
+        )
+        if preset == "normative":
+            section = build_normative_section()
+        elif preset == "notes":
+            section = build_notes_section()
+        elif preset == "checklist":
+            section = FunctionalSection(key="", title="Nuova checklist",
+                                        section_type="checklist", rows=[])
+        else:  # fields
+            section = FunctionalSection(key="", title="Nuova sezione",
+                                        section_type="fields", fields=[])
+        section.key = self._unique_section_key(
+            section.key or sanitize_profile_key(section.title) or "sezione")
+        row = max(0, min(row, len(self.profile.sections)))
+        self.profile.sections.insert(row, section)
+        self._refresh_sections()
+        self.sections_list.setCurrentRow(row)
+        self._update_preview()
+
+    def _reorder_sections(self, src: int, dst: int):
+        """Riordino delle sezioni per trascinamento."""
+        move_in_list(self.profile.sections, src, dst)
+        self._refresh_sections()
+        self._update_preview()
 
     def move_section_up(self):
         row = self.sections_list.currentRow()
