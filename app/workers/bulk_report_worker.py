@@ -589,10 +589,12 @@ class BulkReportWorker(QObject):
                 c.drawRightString(width - 2*cm, 1.9*cm, created_by)
 
             # === BOX RIASSUNTO MODERNO ===
+            # Box più alto (cresce verso il basso, il bordo superiore resta sotto
+            # il titolo) per ospitare le 3 sezioni complete con i 3 punti ciascuna
             box_w = 7.5*cm
-            box_h = 13*cm
+            box_h = 16*cm
             box_x = width - box_w - 1.5*cm
-            box_y = height - 21*cm
+            box_y = height - 24*cm
             
             # Sfondo box con gradiente simulato (due rettangoli)
             c.setFillColor(COLOR_PRIMARY)
@@ -659,8 +661,6 @@ class BulkReportWorker(QObject):
                 detail_y -= 0.5*cm
 
             # ── VERIFICHE DI SISTEMA ──────────────────────────────────
-            # Forma compatta (totale + riga sintetica) per non far traboccare
-            # il box quando coesistono più tipi di verifica nello stesso fascicolo
             if sys_count > 0:
                 _section_sep(detail_y + 0.2*cm, "#fdba74")
                 detail_y -= 0.1*cm
@@ -668,10 +668,11 @@ class BulkReportWorker(QObject):
                 detail_y -= 0.65*cm
                 _bullet("#fdba74", detail_y, f"{sys_count} VERIFICHE TOTALI")
                 detail_y -= 0.58*cm
-                _bullet("#4ade80", detail_y,
-                        f"{info.get('sys_conformi_count', 0)} CONFORMI · "
-                        f"{info.get('sys_cca_count', 0)} C.C.A. · "
-                        f"{info.get('sys_nc_count', 0)} NON CONFORMI", indent=1)
+                _bullet("#4ade80",  detail_y, f"{info.get('sys_conformi_count', 0)} CONFORMI",          indent=1)
+                detail_y -= 0.55*cm
+                _bullet("#f59e0b",  detail_y, f"{info.get('sys_cca_count', 0)} CONF. CON ANNOTAZIONE", indent=1)
+                detail_y -= 0.55*cm
+                _bullet("#f87171",  detail_y, f"{info.get('sys_nc_count', 0)} NON CONFORMI",           indent=1)
                 detail_y -= 0.5*cm
 
             # ── VERIFICHE FUNZIONALI ──────────────────────────────────
