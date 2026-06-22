@@ -1464,12 +1464,16 @@ class MainWindow(QMainWindow):
         # Conteggi separati per tipo di verifica (frontespizio)
         el_verifs  = [v for v in verifications if v.get("verification_type") == "ELETTRICA"]
         fun_verifs = [v for v in verifications if v.get("verification_type") == "FUNZIONALE"]
+        sys_verifs = [v for v in verifications if v.get("verification_type") == "SISTEMA"]
         el_conformi_count  = sum(1 for v in el_verifs if _normalize_status(v.get("overall_status")) in ("PASSATO", "CONFORME"))
         el_cca_count       = sum(1 for v in el_verifs if _normalize_status(v.get("overall_status")) == "CONFORME CON ANNOTAZIONE")
         el_nc_count        = sum(1 for v in el_verifs if _normalize_status(v.get("overall_status")) in ("FALLITO", "NON CONFORME"))
         fun_conformi_count = sum(1 for v in fun_verifs if _normalize_status(v.get("overall_status")) in ("PASSATO", "CONFORME"))
         fun_cca_count      = sum(1 for v in fun_verifs if _normalize_status(v.get("overall_status")) == "CONFORME CON ANNOTAZIONE")
         fun_nc_count       = sum(1 for v in fun_verifs if _normalize_status(v.get("overall_status")) in ("FALLITO", "NON CONFORME"))
+        sys_conformi_count = sum(1 for v in sys_verifs if _normalize_status(v.get("overall_status")) in ("PASSATO", "CONFORME"))
+        sys_cca_count      = sum(1 for v in sys_verifs if _normalize_status(v.get("overall_status")) == "CONFORME CON ANNOTAZIONE")
+        sys_nc_count       = sum(1 for v in sys_verifs if _normalize_status(v.get("overall_status")) in ("FALLITO", "NON CONFORME"))
 
         return {
             "customer_name": customer_name,
@@ -1492,6 +1496,9 @@ class MainWindow(QMainWindow):
             "fun_conformi_count": fun_conformi_count,
             "fun_cca_count": fun_cca_count,
             "fun_nc_count": fun_nc_count,
+            "sys_conformi_count": sys_conformi_count,
+            "sys_cca_count": sys_cca_count,
+            "sys_nc_count": sys_nc_count,
             "logo_path": self.logo_path,
             "created_by": self.current_technician_name or "",
         }

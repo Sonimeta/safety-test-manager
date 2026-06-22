@@ -616,9 +616,10 @@ class BulkReportWorker(QObject):
             c.setFont("Helvetica", 10)
             c.drawCentredString(box_x + box_w/2, box_y + box_h - 4.2*cm, "apparecchi controllati")
             
-            # Dettagli separati: Elettriche e Funzionali
+            # Dettagli separati: Elettriche, di Sistema e Funzionali
             el_count  = info.get('electrical_count', 0)
             fun_count = info.get('functional_count', 0)
+            sys_count = info.get('system_count', 0)
 
             # indent=0 → riga principale, indent=1 → sotto-voce rientrata
             def _bullet(clr, y, text, indent=0):
@@ -655,6 +656,22 @@ class BulkReportWorker(QObject):
                 _bullet("#f59e0b",  detail_y, f"{info.get('el_cca_count', 0)} CONF. CON ANNOTAZIONE",  indent=1)
                 detail_y -= 0.55*cm
                 _bullet("#f87171",  detail_y, f"{info.get('el_nc_count', 0)} NON CONFORMI",            indent=1)
+                detail_y -= 0.5*cm
+
+            # ── VERIFICHE DI SISTEMA ──────────────────────────────────
+            # Forma compatta (totale + riga sintetica) per non far traboccare
+            # il box quando coesistono più tipi di verifica nello stesso fascicolo
+            if sys_count > 0:
+                _section_sep(detail_y + 0.2*cm, "#fdba74")
+                detail_y -= 0.1*cm
+                _section_hdr(detail_y, "VERIFICHE DI SISTEMA", "#fdba74")
+                detail_y -= 0.65*cm
+                _bullet("#fdba74", detail_y, f"{sys_count} VERIFICHE TOTALI")
+                detail_y -= 0.58*cm
+                _bullet("#4ade80", detail_y,
+                        f"{info.get('sys_conformi_count', 0)} CONFORMI · "
+                        f"{info.get('sys_cca_count', 0)} C.C.A. · "
+                        f"{info.get('sys_nc_count', 0)} NON CONFORMI", indent=1)
                 detail_y -= 0.5*cm
 
             # ── VERIFICHE FUNZIONALI ──────────────────────────────────
