@@ -261,7 +261,7 @@ class MainWindow(QMainWindow):
         menubar = self.menuBar()
 
         # ===================== MENU FILE =====================
-        file_menu = menubar.addMenu("&File")
+        file_menu = menubar.addMenu("📁 &File")
 
         self.export_inventory_action = QAction(get_icon("export", theme=self.current_theme), "Esporta Inventario Cliente...", self)
         self.export_inventory_action.triggered.connect(self.export_customer_inventory)
@@ -278,7 +278,7 @@ class MainWindow(QMainWindow):
         file_menu.addAction(self.logout_action)
 
         # ===================== MENU LAVORI =====================
-        jobs_menu = menubar.addMenu("&Lavori")
+        jobs_menu = menubar.addMenu("💼 &Lavori")
 
         self.advanced_search_action = QAction(get_icon("search", theme=self.current_theme), "Ricerca Avanzata...", self)
         self.advanced_search_action.triggered.connect(self.open_advanced_search)
@@ -295,7 +295,7 @@ class MainWindow(QMainWindow):
         jobs_menu.addAction(self.assignments_action)
 
         # ===================== MENU REPORT / ANALISI =====================
-        report_menu = menubar.addMenu("&Report / Analisi")
+        report_menu = menubar.addMenu("📊 &Report / Analisi")
 
         self.advanced_report_action = QAction(get_icon("report", theme=self.current_theme), "Genera Report...", self)
         self.advanced_report_action.triggered.connect(self.open_advanced_report_dialog)
@@ -324,7 +324,7 @@ class MainWindow(QMainWindow):
         report_menu.addAction(self.data_quality_action)
 
         # ===================== MENU SINCRONIZZAZIONE =====================
-        sync_menu = menubar.addMenu("&Sincronizzazione")
+        sync_menu = menubar.addMenu("🔄 &Sincronizzazione")
 
         self.full_sync_action = QAction(get_icon("sync", theme=self.current_theme), "Sincronizza Tutto (Reset Locale)...", self)
         self.full_sync_action.triggered.connect(lambda: self.run_synchronization(full_sync=True))
@@ -353,7 +353,7 @@ class MainWindow(QMainWindow):
         sync_menu.addAction(self.ripristina_db_action)
 
         # ===================== MENU IMPOSTAZIONI =====================
-        settings_menu = menubar.addMenu("&Impostazioni")
+        settings_menu = menubar.addMenu("⚙️ &Impostazioni")
 
         # — Hardware —
         self.set_com_port_action = QAction(get_icon("com_port", theme=self.current_theme), "Imposta Porta COM...", self)
@@ -414,7 +414,7 @@ class MainWindow(QMainWindow):
         self.update_theme_action_text()
 
         # ===================== MENU AIUTO =====================
-        help_menu = menubar.addMenu("&Aiuto")
+        help_menu = menubar.addMenu("❓ &Aiuto")
 
         self.changelog_action = QAction(get_icon("changelog", theme=self.current_theme), "Visualizza Changelog...", self)
         self.changelog_action.triggered.connect(self.show_changelog)
@@ -2934,76 +2934,62 @@ class MainWindow(QMainWindow):
             lbl.setObjectName("summaryCaptionLabel")
             summary_layout.addWidget(lbl, row, col)
 
-        # Col 0-3: dettagli dispositivo (compatti su 2 righe)
-        add_caption("Dispositivo", 0, 0)
-        self.summary_device_label = QLabel("<i>Nessuna selezione</i>")
-        self.summary_device_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_device_label, 0, 1)
-
-        add_caption("S/N", 0, 2)
-        self.summary_serial_label = QLabel("—")
-        self.summary_serial_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_serial_label, 0, 3)
-
-        add_caption("Costruttore", 1, 0)
-        self.summary_manufacturer_label = QLabel("—")
-        self.summary_manufacturer_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_manufacturer_label, 1, 1)
-
-        add_caption("Modello", 1, 2)
-        self.summary_model_label = QLabel("—")
-        self.summary_model_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_model_label, 1, 3)
-
-        add_caption("Inv. Cliente", 2, 0)
-        self.summary_customer_inventory_label = QLabel("—")
-        self.summary_customer_inventory_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_customer_inventory_label, 2, 1)
-
-        add_caption("Inv. AMS", 2, 2)
-        self.summary_ams_inventory_label = QLabel("—")
-        self.summary_ams_inventory_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_ams_inventory_label, 2, 3)
-
-        add_caption("Reparto", 3, 0)
-        self.summary_department_label = QLabel("—")
-        self.summary_department_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_department_label, 3, 1)
-
-        add_caption("Destinazione", 3, 2)
-        self.summary_destination_label = QLabel("—")
-        self.summary_destination_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_destination_label, 3, 3)
-
-        # Separatore verticale tra dettagli e profili+azioni
-        v_sep = QFrame()
-        v_sep.setFrameShape(QFrame.VLine)
-        v_sep.setObjectName("sectionDivider")
-        summary_layout.addWidget(v_sep, 0, 4, 5, 1)
-
-        # Col 5-6: profili
-        add_caption("Profilo elettrico", 0, 5)
+        # Col 0-3: dettagli dispositivo + selettori profilo
+        # (Dispositivo e Destinazione sono gia mostrati nel breadcrumb sopra)
+        # Riga 0: i due selettori di profilo affiancati
+        add_caption("⚡ Profilo elettrico", 0, 0)
         self.profile_selector = QComboBox()
         self.profile_selector.setMinimumHeight(32)
-        self.profile_selector.setMaximumWidth(260)
+        self.profile_selector.setMaximumWidth(360)
         self.profile_selector.setAutoFillBackground(False)
         self._update_summary_fields_background()
-        summary_layout.addWidget(self.profile_selector, 1, 5, 1, 2)
+        summary_layout.addWidget(self.profile_selector, 0, 1)
 
-        add_caption("Profilo funzionale", 2, 5)
+        add_caption("💜 Profilo funzionale", 0, 2)
         self.functional_profile_selector = QComboBox()
         self.functional_profile_selector.setMinimumHeight(32)
-        self.functional_profile_selector.setMaximumWidth(260)
+        self.functional_profile_selector.setMaximumWidth(360)
         self.functional_profile_selector.setAutoFillBackground(False)
-        summary_layout.addWidget(self.functional_profile_selector, 3, 5, 1, 2)
+        summary_layout.addWidget(self.functional_profile_selector, 0, 3)
+
+        # Righe 1-3: dettagli dispositivo
+        add_caption("🔢 S/N", 1, 0)
+        self.summary_serial_label = QLabel("—")
+        self.summary_serial_label.setObjectName("summaryLabel")
+        summary_layout.addWidget(self.summary_serial_label, 1, 1)
+
+        add_caption("🏭 Costruttore", 1, 2)
+        self.summary_manufacturer_label = QLabel("—")
+        self.summary_manufacturer_label.setObjectName("summaryLabel")
+        summary_layout.addWidget(self.summary_manufacturer_label, 1, 3)
+
+        add_caption("🏷️ Modello", 2, 0)
+        self.summary_model_label = QLabel("—")
+        self.summary_model_label.setObjectName("summaryLabel")
+        summary_layout.addWidget(self.summary_model_label, 2, 1)
+
+        add_caption("📋 Inv. Cliente", 2, 2)
+        self.summary_customer_inventory_label = QLabel("—")
+        self.summary_customer_inventory_label.setObjectName("summaryLabel")
+        summary_layout.addWidget(self.summary_customer_inventory_label, 2, 3)
+
+        add_caption("🗂️ Inv. AMS", 3, 0)
+        self.summary_ams_inventory_label = QLabel("—")
+        self.summary_ams_inventory_label.setObjectName("summaryLabel")
+        summary_layout.addWidget(self.summary_ams_inventory_label, 3, 1)
+
+        add_caption("🏥 Reparto", 3, 2)
+        self.summary_department_label = QLabel("—")
+        self.summary_department_label.setObjectName("summaryLabel")
+        summary_layout.addWidget(self.summary_department_label, 3, 3)
 
         QTimer.singleShot(100, self._update_summary_fields_background)
 
-        # Separatore verticale
+        # Separatore verticale tra dettagli e azioni
         v_sep2 = QFrame()
         v_sep2.setFrameShape(QFrame.VLine)
         v_sep2.setObjectName("sectionDivider")
-        summary_layout.addWidget(v_sep2, 0, 7, 5, 1)
+        summary_layout.addWidget(v_sep2, 0, 4, 4, 1)
 
         # Col 8: pulsanti azione in verticale (sempre visibili, disabilitati se non pronti)
         action_col = QVBoxLayout()
@@ -3051,13 +3037,11 @@ class MainWindow(QMainWindow):
         self.start_functional_button.clicked.connect(self.start_functional_verification)
         action_col.addWidget(self.start_functional_button)
 
-        summary_layout.addLayout(action_col, 0, 8, 5, 1)
+        summary_layout.addLayout(action_col, 0, 5, 4, 1)
 
         summary_layout.setColumnStretch(1, 2)
         summary_layout.setColumnStretch(3, 2)
-        summary_layout.setColumnStretch(5, 1)
-        summary_layout.setColumnStretch(6, 0)
-        summary_layout.setColumnStretch(8, 2)
+        summary_layout.setColumnStretch(5, 0)
 
         outer.addWidget(summary_frame)
         return panel
@@ -3457,11 +3441,7 @@ class MainWindow(QMainWindow):
             device_data = services.database.get_device_by_id(self.selected_device_id)
             if device_data:
                 dev = dict(device_data)
-                self.summary_device_label.setText(f"<b>{dev.get('description', 'N/A')}</b>")
-                self.summary_device_label.setProperty("state", "device")
-                self.summary_device_label.style().unpolish(self.summary_device_label)
-                self.summary_device_label.style().polish(self.summary_device_label)
-                
+
                 # Numero di Serie
                 serial_number = dev.get('serial_number', '—') or '—'
                 self.summary_serial_label.setText(f"<b>{serial_number}</b>")
@@ -3485,15 +3465,6 @@ class MainWindow(QMainWindow):
                 # Reparto
                 department = dev.get('department', '—') or '—'
                 self.summary_department_label.setText(f"<b>{department}</b>")
-
-                # Destinazione
-                destination = '—'
-                destination_id = dev.get('destination_id')
-                if destination_id:
-                    dest_row = services.database.get_destination_by_id(destination_id)
-                    if dest_row:
-                        destination = dict(dest_row).get('name', '—') or '—'
-                self.summary_destination_label.setText(f"<b>{destination}</b>")
             else:
                 self._clear_summary_device()
         else:
@@ -3501,17 +3472,12 @@ class MainWindow(QMainWindow):
     
     def _clear_summary_device(self):
         """Pulisce i dettagli dispositivo nel summary."""
-        self.summary_device_label.setText("<i>Nessuna selezione</i>")
-        self.summary_device_label.setProperty("state", "empty")
-        self.summary_device_label.style().unpolish(self.summary_device_label)
-        self.summary_device_label.style().polish(self.summary_device_label)
         self.summary_serial_label.setText("—")
         self.summary_manufacturer_label.setText("—")
         self.summary_model_label.setText("—")
         self.summary_customer_inventory_label.setText("—")
         self.summary_ams_inventory_label.setText("—")
         self.summary_department_label.setText("—")
-        self.summary_destination_label.setText("—")
         self.btn_edit_device.setEnabled(False)
         self.start_electrical_button.setEnabled(False)
         self.start_functional_button.setEnabled(False)

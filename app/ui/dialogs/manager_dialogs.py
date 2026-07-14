@@ -2356,9 +2356,13 @@ class DbManagerDialog(QDialog):
             interval_text = str(interval) if interval is not None else "N/A"
             self.device_table.setItem(row, 8, QTableWidgetItem(interval_text.upper()))
             self.device_table.setItem(row, 9, QTableWidgetItem(status_text.upper()))
+            last_ver_date = dev.get('last_verification_date') or "N/A"
+            self.device_table.setItem(row, 10, QTableWidgetItem(str(last_ver_date).upper()))
             if status == 'decommissioned':
                 for col in range(self.device_table.columnCount()):
-                    self.device_table.item(row, col).setForeground(QBrush(QColor("blue")))
+                    item = self.device_table.item(row, col)
+                    if item:
+                        item.setForeground(QBrush(QColor("blue")))
         self.device_table.setSortingEnabled(True)
         self.device_table.resizeRowsToContents()
         self.tabs.setCurrentWidget(self.device_tab)

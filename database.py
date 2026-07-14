@@ -2000,11 +2000,22 @@ def get_devices_verification_status_by_period(destination_id: int, start_date: s
 
 def get_all_devices_for_customer(customer_id: int, search_query=None):
     """
-    Recupera TUTTI i dispositivi di un cliente, da tutte le sue destinazioni.
+    Recupera TUTTI i dispositivi di un cliente, da tutte le sue destinazioni,
+    arricchiti con la data dell'ultima verifica (elettrica o funzionale).
     """
     with DatabaseConnection() as conn:
         query = """
-            SELECT d.* FROM devices d
+            SELECT d.*,
+                   (
+                       SELECT MAX(v2.verification_date)
+                       FROM (
+                           SELECT device_id, verification_date FROM verifications   WHERE is_deleted = 0
+                           UNION ALL
+                           SELECT device_id, verification_date FROM functional_verifications WHERE is_deleted = 0
+                       ) v2
+                       WHERE v2.device_id = d.id
+                   ) AS last_verification_date
+            FROM devices d
             JOIN destinations dest ON d.destination_id = dest.id
             WHERE dest.customer_id = ? AND d.is_deleted = 0
         """

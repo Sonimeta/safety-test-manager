@@ -632,6 +632,10 @@ def _normalize_incoming_value(table_name: str, key: str, value):
     from datetime import datetime, date
     if isinstance(value, (datetime, date)):
         return value.isoformat()
+    # device_unavailability_reports usa INTEGER per is_deleted/is_synced (non BOOLEAN)
+    # Pydantic li deserializza come bool → convertiamo in 0/1
+    if table_name == "device_unavailability_reports" and key in ("is_deleted", "is_synced") and isinstance(value, bool):
+        return int(value)
     if table_name == "signatures" and key == "signature_data" and isinstance(value, str):
         try:
             return base64.b64decode(value)
