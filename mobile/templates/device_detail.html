@@ -2,32 +2,35 @@
 
 {% block title %}{{ device.description or device.model or 'Dispositivo' }} — STM Mobile{% endblock %}
 {% block header_title %}{{ device.description or device.model or 'Dispositivo' }}{% endblock %}
-{% block header_subtitle %}<p class="text-blue-300 text-xs">{{ customer_name }} · {{ destination_name }}</p>{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">{{ customer_name }} · {{ destination_name }}</p>{% endblock %}
 
 {% block header_actions %}
-<a href="/mobile/devices/{{ device.uuid }}/new-verification"
-   class="bg-green-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg active:bg-green-600">
-    + VE
+{% if user.role in ('admin', 'moderator') %}
+<a href="/mobile/assignments/new?device_uuid={{ device.uuid }}" class="btn-sm" style="background:#7c3aed;color:#fff;" title="Assegna verifica">
+    <i class="ti ti-clipboard-plus"></i>
 </a>
-<a href="/mobile/devices/{{ device.uuid }}/edit" class="bg-white/15 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">Modifica</a>
-<form method="POST" action="/mobile/devices/{{ device.uuid }}/delete" onsubmit="return confirm('Eliminare questo dispositivo?');" class="inline">
-    <button type="submit" class="bg-red-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">Elimina</button>
+{% endif %}
+<a href="/mobile/devices/{{ device.uuid }}/edit" class="btn-sm" style="background:rgba(255,255,255,.15);color:#fff;">
+    <i class="ti ti-pencil"></i>
+</a>
+<form method="POST" action="/mobile/devices/{{ device.uuid }}/delete" onsubmit="return confirm('Eliminare questo dispositivo?');" style="display:inline">
+    <button type="submit" class="btn-sm" style="background:#ef4444;color:#fff;"><i class="ti ti-trash"></i></button>
 </form>
 {% endblock %}
 
 {% block content %}
-<div class="px-4 py-4 space-y-4" x-data="{ tab: 'info' }">
+<div class="px-4 py-4 space-y-4" x-data="{ tab: 've' }">
 
     <!-- Device info card -->
     <div class="card p-4 space-y-3">
         <div class="flex items-center justify-between mb-1">
             <span></span>
             {% if device.status == 'dismissed' %}
-            <span class="inline-flex items-center text-xs font-bold bg-red-100 text-red-700 rounded-full px-2.5 py-0.5">❌ Dismesso</span>
+            <span class="badge-fail"><i class="ti ti-x" style="margin-right:3px;"></i>Dismesso</span>
             {% elif device.status == 'maintenance' %}
-            <span class="inline-flex items-center text-xs font-bold bg-orange-100 text-orange-700 rounded-full px-2.5 py-0.5">🔧 In manutenzione</span>
+            <span class="badge-warn"><i class="ti ti-tools" style="margin-right:3px;"></i>Manutenzione</span>
             {% else %}
-            <span class="inline-flex items-center text-xs font-bold bg-green-100 text-green-700 rounded-full px-2.5 py-0.5">✅ Attivo</span>
+            <span class="badge-pass"><i class="ti ti-circle-check" style="margin-right:3px;"></i>Attivo</span>
             {% endif %}
         </div>
         <div class="grid grid-cols-2 gap-3">
@@ -135,10 +138,12 @@
                     </p>
                 </div>
                 <div class="ml-3 flex-shrink-0">
-                    {% if v.overall_status in ('PASSATO', 'PASS', 'OK') %}
-                    <span class="badge-pass">PASS</span>
-                    {% elif v.overall_status in ('NON PASSATO', 'FAIL', 'FALLITO') %}
-                    <span class="badge-fail">FAIL</span>
+                    {% if v.overall_status == 'CONFORME CON ANNOTAZIONE' %}
+                    <span class="badge-warn">C.C.A.</span>
+                    {% elif v.overall_status in ('CONFORME', 'PASSATO', 'PASS', 'OK') %}
+                    <span class="badge-pass">CONF.</span>
+                    {% elif v.overall_status in ('NON PASSATO', 'FAIL', 'FALLITO', 'NON CONFORME') %}
+                    <span class="badge-fail">N.CONF.</span>
                     {% else %}
                     <span class="badge-gray">{{ v.overall_status[:6] }}</span>
                     {% endif %}
@@ -147,15 +152,11 @@
             {% endfor %}
         </div>
         {% else %}
-        <div class="card flex flex-col items-center py-8 text-gray-400">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-            </svg>
+        <div class="card" style="display:flex;flex-direction:column;align-items:center;padding:2rem 1rem;color:#94a3b8;">
+            <i class="ti ti-clipboard-check" style="font-size:2.5rem;margin-bottom:.5rem;"></i>
             <p class="text-sm">Nessuna verifica elettrica</p>
             <a href="/mobile/devices/{{ device.uuid }}/new-verification"
-               class="mt-3 text-xs font-semibold text-blue-700 bg-blue-50 px-4 py-2 rounded-full">
-                Registra prima verifica
-            </a>
+               style="margin-top:.75rem;font-size:.75rem;font-weight:700;color:#1d4ed8;background:#eff6ff;padding:.375rem 1rem;border-radius:20px;text-decoration:none;">Registra prima verifica</a>
         </div>
         {% endif %}
     </div>
@@ -180,10 +181,12 @@
                     </p>
                 </div>
                 <div class="ml-3 flex-shrink-0">
-                    {% if fv.overall_status in ('PASSATO', 'PASS', 'OK') %}
-                    <span class="badge-pass">PASS</span>
-                    {% elif fv.overall_status in ('NON PASSATO', 'FAIL', 'FALLITO') %}
-                    <span class="badge-fail">FAIL</span>
+                    {% if fv.overall_status == 'CONFORME CON ANNOTAZIONE' %}
+                    <span class="badge-warn">C.C.A.</span>
+                    {% elif fv.overall_status in ('CONFORME', 'PASSATO', 'PASS', 'OK') %}
+                    <span class="badge-pass">CONF.</span>
+                    {% elif fv.overall_status in ('NON PASSATO', 'FAIL', 'FALLITO', 'NON CONFORME') %}
+                    <span class="badge-fail">N.CONF.</span>
                     {% else %}
                     <span class="badge-gray">{{ fv.overall_status[:6] }}</span>
                     {% endif %}
@@ -192,15 +195,11 @@
             {% endfor %}
         </div>
         {% else %}
-        <div class="card flex flex-col items-center py-8 text-gray-400">
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-10 w-10 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/>
-            </svg>
+        <div class="card" style="display:flex;flex-direction:column;align-items:center;padding:2rem 1rem;color:#94a3b8;">
+            <i class="ti ti-activity" style="font-size:2.5rem;margin-bottom:.5rem;"></i>
             <p class="text-sm">Nessuna verifica funzionale</p>
             <a href="/mobile/devices/{{ device.uuid }}/new-func-verification"
-               class="mt-3 text-xs font-semibold text-purple-700 bg-purple-50 px-4 py-2 rounded-full">
-                Registra prima verifica
-            </a>
+               style="margin-top:.75rem;font-size:.75rem;font-weight:700;color:#7c3aed;background:#f5f3ff;padding:.375rem 1rem;border-radius:20px;text-decoration:none;">Registra prima verifica</a>
         </div>
         {% endif %}
     </div>

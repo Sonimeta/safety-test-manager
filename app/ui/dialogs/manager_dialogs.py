@@ -49,7 +49,7 @@ class ColoredItemDelegate(QStyledItemDelegate):
         if color_name:
             try:
                 custom_color = QColor(color_name)
-            except:
+            except Exception:
                 pass
         
         # Fallback: prova dal ForegroundRole
@@ -171,10 +171,6 @@ class DbManagerDialog(QDialog):
         main_layout.setSpacing(15)
         main_layout.setContentsMargins(20, 20, 20, 20)
 
-        # Header con titolo e informazioni
-        header = self.create_header()
-        main_layout.addWidget(header)
-
         # Barra delle azioni principali
         top_actions_layout = self.create_top_actions()
         main_layout.addLayout(top_actions_layout)
@@ -228,25 +224,6 @@ class DbManagerDialog(QDialog):
         title_layout.addWidget(subtitle)
 
         header_layout.addLayout(title_layout)
-        header_layout.addSpacing(20)
-
-        search_layout = QHBoxLayout()
-        search_layout.setSpacing(8)
-        self.global_device_search_box = QLineEdit()
-        self.global_device_search_box.setPlaceholderText("🔎 Cerca cliente, destinazione o dispositivo...")
-        self.global_device_search_box.setMinimumWidth(320)
-        self.global_device_search_box.setClearButtonEnabled(True)
-        self.global_device_search_box.returnPressed.connect(self.perform_header_device_search)
-
-        search_button = QPushButton("Cerca")
-        search_button.setObjectName("primaryButton")
-        search_button.setMinimumWidth(110)
-        search_button.clicked.connect(self.perform_header_device_search)
-
-        search_layout.addWidget(self.global_device_search_box)
-        search_layout.addWidget(search_button)
-
-        header_layout.addLayout(search_layout)
         header_layout.addStretch()
 
         # Info utente
@@ -470,7 +447,22 @@ class DbManagerDialog(QDialog):
         
         self.device_search_box = QLineEdit()
         self.device_search_box.setPlaceholderText("🔍 Cerca dispositivo per descrizione, S/N, costruttore, modello...")
-        
+
+        self.unavail_btn = QPushButton("🚫 Non messi a disposizione")
+        self.unavail_btn.setToolTip("Visualizza e gestisci i dispositivi segnati come non messi a disposizione per questa destinazione")
+        self.unavail_btn.setStyleSheet(
+            "QPushButton { background:#7c3aed; color:#fff; border-radius:4px; padding:0 12px; font-weight:600; }"
+            "QPushButton:hover { background:#6d28d9; }"
+            "QPushButton:disabled { background:#9ca3af; color:#e5e7eb; }"
+        )
+        self.unavail_btn.setEnabled(False)
+        self.unavail_btn.clicked.connect(self.open_unavailability_manager)
+
+        search_row = QHBoxLayout()
+        search_row.setSpacing(6)
+        search_row.addWidget(self.device_search_box)
+        search_row.addWidget(self.unavail_btn)
+
         self.device_table = QTableWidget(0, 11)
         self.device_table.setObjectName("deviceTable")  # ObjectName per regole QSS specifiche
         self.device_table.setHorizontalHeaderLabels([
@@ -486,7 +478,7 @@ class DbManagerDialog(QDialog):
         buttons_layout = self.create_device_buttons()
         
         layout.addWidget(self.device_label)
-        layout.addWidget(self.device_search_box)
+        layout.addLayout(search_row)
         layout.addWidget(self.device_table)
         layout.addLayout(buttons_layout)
 
@@ -577,11 +569,14 @@ class DbManagerDialog(QDialog):
         self.view_sv_btn.setObjectName("editButton")
         self.gen_sv_pdf_btn = self.create_button("📄 PDF", self._generate_sv_pdf, "addButton", enabled=False)
         self.gen_sv_pdf_btn.setObjectName("autoButton")
+        self.print_sv_btn = self.create_button("🖨️ Stampa", self._print_sv_pdf, "addButton", enabled=False)
+        self.print_sv_btn.setObjectName("autoButton")
         self.del_sv_btn = self.create_button("🗑️ Elimina", self._delete_system_verification, "deleteButton", enabled=False)
         self.del_sv_btn.setObjectName("deleteButton")
 
         layout.addWidget(self.view_sv_btn)
         layout.addWidget(self.gen_sv_pdf_btn)
+        layout.addWidget(self.print_sv_btn)
         layout.addWidget(self.del_sv_btn)
         layout.addStretch()
 
@@ -669,11 +664,24 @@ class DbManagerDialog(QDialog):
     def create_top_actions(self):
         layout = QHBoxLayout()
         layout.setSpacing(12)
-        
+
+        # Campo ricerca globale
+        self.global_device_search_box = QLineEdit()
+        self.global_device_search_box.setPlaceholderText("🔎 Cerca cliente, destinazione o dispositivo...")
+        self.global_device_search_box.setMinimumWidth(300)
+        self.global_device_search_box.setMaximumWidth(420)
+        self.global_device_search_box.setClearButtonEnabled(True)
+        self.global_device_search_box.returnPressed.connect(self.perform_header_device_search)
+        search_button = QPushButton("Cerca")
+        search_button.setObjectName("primaryButton")
+        search_button.clicked.connect(self.perform_header_device_search)
+        layout.addWidget(self.global_device_search_box)
+        layout.addWidget(search_button)
+
         layout.addWidget(self.create_button("⬆️ Importa Dispositivi", self.import_from_file, "autoButton"))
         layout.addWidget(self.create_button("📥 Importa Archivio", self.import_from_stm, "autoButton"))
         layout.addWidget(self.create_button("💾 Esporta Verifiche", self.export_daily_verifications, "secondaryButton"))
-        
+
         layout.addStretch()
 
         # Pulsante Scanner QR (collegato alla MainWindow)
@@ -973,7 +981,7 @@ class DbManagerDialog(QDialog):
             self.customer_table.setItem(row, 1, QTableWidgetItem(customer_dict['name'].upper()))
             self.customer_table.setItem(row, 2, QTableWidgetItem(customer_dict['address'].upper()))
             self.customer_table.setItem(row, 3, QTableWidgetItem(customer_dict.get('phone', '').upper()))
-            self.customer_table.setItem(row, 4, QTableWidgetItem(customer_dict.get('email', '').upper()))
+            self.customer_table.setItem(row, 4, QTableWidgetItem((customer_dict.get('email') or '').upper()))
         
         self._center_table_items(self.customer_table)
         self.customer_table.setSortingEnabled(True)
@@ -1025,15 +1033,28 @@ class DbManagerDialog(QDialog):
         self.reset_views(level='device')
         dest_id = self.get_selected_id(self.destination_table)
         is_dest_selected = dest_id is not None
+        self._current_dest_id = dest_id  # traccia destinazione corrente
         self.set_destination_buttons_enabled(self.get_selected_id(self.customer_table) is not None, is_dest_selected)
         if dest_id:
             dest_name = self.destination_table.item(self.destination_table.currentRow(), 1).text()
             self.device_label.setText(f"DISPOSITIVI '{dest_name.upper()}'")
             self.load_devices_table(dest_id)
             self.set_device_buttons_enabled(True)
+            self.unavail_btn.setEnabled(True)
             # Carica anche le verifiche di sistema per questa destinazione
             self.system_verification_label.setText(f"VERIFICHE DI SISTEMA — '{dest_name.upper()}'")
             self._load_system_verifications(dest_id)
+
+    def open_unavailability_manager(self):
+        """Apre il dialog per gestire i dispositivi non messi a disposizione della destinazione corrente."""
+        dest_id = getattr(self, '_current_dest_id', None)
+        if not dest_id:
+            QMessageBox.information(self, "Nessuna destinazione", "Seleziona prima una destinazione.")
+            return
+        dlg = UnavailabilityManagerDialog(dest_id, parent=self)
+        dlg.exec()
+        # Ricarica la tabella dispositivi dopo eventuali rimozioni
+        self.load_devices_table(dest_id)
 
     def load_devices_table(self, destination_id):
         self.device_table.setSortingEnabled(False)
@@ -1335,7 +1356,19 @@ class DbManagerDialog(QDialog):
         dialog = CustomerDialog(parent=self)
         if dialog.exec():
             try:
-                services.add_customer(**dialog.get_data())
+                data = dialog.get_data()
+                # Controllo duplicati
+                similar = services.find_similar_customers(data['name'])
+                if similar:
+                    names = "\n".join(f"  • {c['name']}" for c in similar[:5])
+                    reply = QMessageBox.warning(
+                        self, "POSSIBILE DUPLICATO",
+                        f"Esistono già clienti con nome simile:\n{names}\n\nVuoi salvare comunque?",
+                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+                    )
+                    if reply != QMessageBox.Yes:
+                        return
+                services.add_customer(**data)
                 self.load_customers_table()
             except ValueError as e:
                 QMessageBox.warning(self, "DATI NON VALIDI", str(e).upper())
@@ -1373,6 +1406,17 @@ class DbManagerDialog(QDialog):
         if dialog.exec():
             try:
                 data = dialog.get_data()
+                # Controllo duplicati
+                similar = services.find_similar_destinations(data['name'], cust_id)
+                if similar:
+                    names = "\n".join(f"  • {d['name']}" for d in similar[:5])
+                    reply = QMessageBox.warning(
+                        self, "POSSIBILE DUPLICATO",
+                        f"Esistono già sedi con nome simile:\n{names}\n\nVuoi salvare comunque?",
+                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+                    )
+                    if reply != QMessageBox.Yes:
+                        return
                 services.add_destination(cust_id, data['name'], data['address'])
                 self.load_destinations_table(cust_id)
             except ValueError as e:
@@ -1416,6 +1460,27 @@ class DbManagerDialog(QDialog):
             try:
                 services.add_device(**dialog.get_data())
                 self.load_devices_table(dest_id)
+            except services.DuplicateActiveSerialException as e:
+                existing = e.existing_device
+                from PySide6.QtWidgets import QMessageBox as _QMB
+                dest_info = services.database.get_destination_by_id(existing.get('destination_id')) if existing.get('destination_id') else None
+                dest_name = dict(dest_info).get('name', 'N/D') if dest_info else 'N/D'
+                msg = (
+                    f"Il numero di serie {e.serial_number} è già presente nel database:\n\n"
+                    f"  Dispositivo: {existing.get('description', 'N/D')}\n"
+                    f"  Costruttore: {existing.get('manufacturer', 'N/D')}\n"
+                    f"  Modello: {existing.get('model', 'N/D')}\n"
+                    f"  Destinazione: {dest_name}\n\n"
+                    f"Vuoi inserire comunque il nuovo dispositivo con lo stesso numero di serie?"
+                )
+                reply = _QMB.question(self, "NUMERO DI SERIE DUPLICATO", msg,
+                                      _QMB.Yes | _QMB.No, _QMB.No)
+                if reply == _QMB.Yes:
+                    try:
+                        services.add_device(**dialog.get_data(), force_duplicate_serial=True)
+                        self.load_devices_table(dest_id)
+                    except Exception as ex:
+                        QMessageBox.critical(self, "ERRORE", f"IMPOSSIBILE SALVARE IL DISPOSITIVO:\n{str(ex).upper()}")
             except services.DeletedDeviceFoundException as e:
                 # Dispositivo eliminato trovato con lo stesso S/N
                 from app.ui.dialogs.reactivate_device_dialog import ReactivateDeviceDialog
@@ -1478,6 +1543,27 @@ class DbManagerDialog(QDialog):
             try:
                 services.update_device(dev_id, **dialog.get_data())
                 self.load_devices_table(dest_id)
+            except services.DuplicateActiveSerialException as e:
+                existing = e.existing_device
+                from PySide6.QtWidgets import QMessageBox as _QMB
+                dest_info = services.database.get_destination_by_id(existing.get('destination_id')) if existing.get('destination_id') else None
+                dest_name = dict(dest_info).get('name', 'N/D') if dest_info else 'N/D'
+                msg = (
+                    f"Il numero di serie {e.serial_number} è già presente nel database:\n\n"
+                    f"  Dispositivo: {existing.get('description', 'N/D')}\n"
+                    f"  Costruttore: {existing.get('manufacturer', 'N/D')}\n"
+                    f"  Modello: {existing.get('model', 'N/D')}\n"
+                    f"  Destinazione: {dest_name}\n\n"
+                    f"Vuoi salvare comunque le modifiche mantenendo questo numero di serie duplicato?"
+                )
+                reply = _QMB.question(self, "NUMERO DI SERIE DUPLICATO", msg,
+                                      _QMB.Yes | _QMB.No, _QMB.No)
+                if reply == _QMB.Yes:
+                    try:
+                        services.update_device(dev_id, **dialog.get_data(), force_duplicate_serial=True)
+                        self.load_devices_table(dest_id)
+                    except Exception as ex:
+                        QMessageBox.critical(self, "ERRORE", f"IMPOSSIBILE SALVARE IL DISPOSITIVO:\n{str(ex).upper()}")
             except ValueError as e:
                 QMessageBox.warning(self, "ERRORE VALIDAZIONE", str(e).upper())
                 return
@@ -1878,7 +1964,12 @@ class DbManagerDialog(QDialog):
         start_date, end_date = date_dialog.get_date_range()
         try:
             verified, unverified = services.database.get_devices_verification_status_by_period(dest_id, start_date, end_date)
-            results_dialog = VerificationStatusDialog(verified, unverified, self)
+            results_dialog = VerificationStatusDialog(
+                verified, unverified, self,
+                destination_id=dest_id,
+                period_start=start_date,
+                period_end=end_date,
+            )
             results_dialog.exec()
         except Exception as e:
             QMessageBox.critical(self, "ERRORE", f"IMPOSSIBILE RECUPERARE LO STATO: {str(e).upper()}")
@@ -2063,6 +2154,7 @@ class DbManagerDialog(QDialog):
         """Abilita/disabilita i pulsanti delle verifiche di sistema."""
         self.view_sv_btn.setEnabled(enabled)
         self.gen_sv_pdf_btn.setEnabled(enabled)
+        self.print_sv_btn.setEnabled(enabled)
         self.del_sv_btn.setEnabled(enabled)
 
     def _on_system_verification_selection_changed(self):
@@ -2194,6 +2286,21 @@ class DbManagerDialog(QDialog):
             logging.error(f"Errore generazione report verifica di sistema: {e}", exc_info=True)
             QMessageBox.critical(self, "Errore", f"Impossibile generare il report:\n{e}")
 
+    def _print_sv_pdf(self):
+        """Stampa il report della verifica di sistema selezionata."""
+        sv_id = self._get_selected_sv_id()
+        if sv_id is None:
+            QMessageBox.information(self, "Info", "Selezionare una verifica di sistema dalla tabella.")
+            return
+        try:
+            report_settings = {}
+            if self.main_window and hasattr(self.main_window, 'logo_path'):
+                report_settings['logo_path'] = self.main_window.logo_path
+            services.print_system_pdf_report(sv_id, report_settings, parent_widget=self)
+        except Exception as e:
+            logging.error(f"Errore stampa report verifica di sistema: {e}", exc_info=True)
+            QMessageBox.critical(self, "Errore", f"Impossibile stampare il report:\n{e}")
+
     def _delete_system_verification(self):
         """Elimina la verifica di sistema selezionata."""
         sv_id = self._get_selected_sv_id()
@@ -2249,9 +2356,13 @@ class DbManagerDialog(QDialog):
             interval_text = str(interval) if interval is not None else "N/A"
             self.device_table.setItem(row, 8, QTableWidgetItem(interval_text.upper()))
             self.device_table.setItem(row, 9, QTableWidgetItem(status_text.upper()))
+            last_ver_date = dev.get('last_verification_date') or "N/A"
+            self.device_table.setItem(row, 10, QTableWidgetItem(str(last_ver_date).upper()))
             if status == 'decommissioned':
                 for col in range(self.device_table.columnCount()):
-                    self.device_table.item(row, col).setForeground(QBrush(QColor("blue")))
+                    item = self.device_table.item(row, col)
+                    if item:
+                        item.setForeground(QBrush(QColor("blue")))
         self.device_table.setSortingEnabled(True)
         self.device_table.resizeRowsToContents()
         self.tabs.setCurrentWidget(self.device_tab)
@@ -2406,3 +2517,143 @@ class InstrumentManagerDialog(QDialog):
         if not inst_id: return
         services.set_default_instrument(inst_id)
         self.load_instruments()
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Dialog gestione "Non messi a disposizione" per una destinazione
+# ──────────────────────────────────────────────────────────────────────────────
+
+class UnavailabilityManagerDialog(QDialog):
+    """
+    Mostra tutti i record 'non messo a disposizione' per una destinazione,
+    permettendo all'utente di rimuoverli singolarmente.
+    """
+
+    def __init__(self, destination_id: int, parent=None):
+        super().__init__(parent)
+        self.destination_id = destination_id
+        self.setWindowTitle("🚫 Dispositivi non messi a disposizione")
+        self.setMinimumSize(860, 480)
+        self.resize(980, 560)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(16, 16, 16, 16)
+
+        # Titolo
+        title = QLabel("Segnalazioni attive — dispositivi non messi a disposizione")
+        title.setStyleSheet("font-size:13px; font-weight:700; margin-bottom:4px;")
+        layout.addWidget(title)
+
+        # Tabella
+        self.table = QTableWidget(0, 7)
+        self.table.setHorizontalHeaderLabels([
+            "DISPOSITIVO", "S/N", "PERIODO DAL", "AL", "MOTIVO", "TECNICO", "AZIONE"
+        ])
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeToContents)
+        self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)
+        self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setAlternatingRowColors(True)
+        layout.addWidget(self.table)
+
+        # Info sotto tabella
+        self.info_label = QLabel("")
+        self.info_label.setStyleSheet("color:#6b7280; font-size:11px;")
+        layout.addWidget(self.info_label)
+
+        # Pulsante chiudi
+        btn_row = QHBoxLayout()
+        btn_row.addStretch()
+        close_btn = QPushButton("Chiudi")
+        close_btn.setFixedWidth(100)
+        close_btn.clicked.connect(self.accept)
+        btn_row.addWidget(close_btn)
+        layout.addLayout(btn_row)
+
+        self._load()
+
+    # ── private ──────────────────────────────────────────────────────────────
+
+    def _load(self):
+        """Carica tutti i record non-disponibile attivi per la destinazione."""
+        self.table.setRowCount(0)
+        try:
+            reports = database.get_all_unavailability_reports_for_destination(self.destination_id)
+        except AttributeError:
+            # Fallback: usa la query diretta se la funzione specifica non esiste ancora
+            reports = self._fallback_load()
+
+        if not reports:
+            self.info_label.setText("Nessun dispositivo segnato come non messo a disposizione per questa destinazione.")
+            return
+
+        self.info_label.setText(f"{len(reports)} segnalazione/i trovate.")
+
+        for rep in reports:
+            row = self.table.rowCount()
+            self.table.insertRow(row)
+
+            desc = str(rep.get('device_description') or rep.get('description') or '—').upper()
+            sn   = str(rep.get('device_serial') or rep.get('serial_number') or '—').upper()
+            p_start = str(rep.get('period_start') or '—')[:10]
+            p_end   = str(rep.get('period_end')   or '—')[:10]
+            reason  = str(rep.get('reason') or '—')
+            tech    = str(rep.get('technician_name') or rep.get('technician_username') or '—')
+            uuid    = rep.get('uuid', '')
+
+            desc_item = QTableWidgetItem(desc)
+            desc_item.setData(Qt.UserRole, uuid)   # UUID salvato nell'item
+            self.table.setItem(row, 0, desc_item)
+            self.table.setItem(row, 1, QTableWidgetItem(sn))
+            self.table.setItem(row, 2, QTableWidgetItem(p_start))
+            self.table.setItem(row, 3, QTableWidgetItem(p_end))
+            self.table.setItem(row, 4, QTableWidgetItem(reason))
+            self.table.setItem(row, 5, QTableWidgetItem(tech))
+
+            del_btn = QPushButton("✅ Rimuovi")
+            del_btn.setToolTip("Rimuove la segnalazione: il dispositivo tornerà 'da verificare'")
+            del_btn.setStyleSheet(
+                "QPushButton { background:#dc2626; color:#fff; border-radius:4px; padding:2px 10px; font-weight:600; }"
+                "QPushButton:hover { background:#b91c1c; }"
+            )
+            del_btn.clicked.connect(lambda checked=False, u=uuid: self._remove(u))
+            self.table.setCellWidget(row, 6, del_btn)
+
+        self.table.resizeRowsToContents()
+
+    def _fallback_load(self) -> list:
+        """Query di fallback usando database.DatabaseConnection direttamente."""
+        import sqlite3
+        try:
+            with database.DatabaseConnection() as conn:
+                conn.row_factory = sqlite3.Row
+                rows = conn.execute(
+                    """
+                    SELECT r.*, d.description AS device_description, d.serial_number AS device_serial
+                    FROM device_unavailability_reports r
+                    JOIN devices d ON r.device_id = d.id
+                    WHERE r.destination_id = ? AND r.is_deleted = 0
+                    ORDER BY r.period_start DESC
+                    """,
+                    (self.destination_id,)
+                ).fetchall()
+            return [dict(r) for r in rows]
+        except Exception as e:
+            logging.error(f"UnavailabilityManagerDialog fallback_load: {e}")
+            return []
+
+    def _remove(self, report_uuid: str):
+        """Soft-delete della segnalazione e ricarica la tabella."""
+        reply = QMessageBox.question(
+            self, "Conferma rimozione",
+            "Rimuovere questa segnalazione?\n\nIl dispositivo tornerà tra quelli da verificare.",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+        try:
+            services.delete_unavailability_report(report_uuid)
+            self._load()   # ricostruisce tutta la tabella con indici corretti
+        except Exception as e:
+            QMessageBox.critical(self, "Errore", f"Impossibile rimuovere la segnalazione:\n{e}")

@@ -1,5 +1,6 @@
 # app/backup_manager.py
 import os
+import re
 import shutil
 import logging
 import sqlite3
@@ -83,9 +84,17 @@ def create_backup(backup_type="manual"):
     backup_path = os.path.join(BACKUP_DIR, backup_name)
 
     try:
-        # Usa copy2 per preservare i metadata del file
-        shutil.copy2(DB_FILE, backup_path)
-        
+        # Usa l'API di backup nativa di SQLite: produce una copia consistente
+        # anche se il database è aperto da altre connessioni (a differenza di
+        # una copia diretta del file, che può catturare uno stato intermedio)
+        src_conn = sqlite3.connect(DB_FILE)
+        dst_conn = sqlite3.connect(backup_path)
+        try:
+            src_conn.backup(dst_conn)
+        finally:
+            dst_conn.close()
+            src_conn.close()
+
         # Verifica l'integrità del backup
         if not os.path.exists(backup_path) or os.path.getsize(backup_path) == 0:
             logging.error(f"✗ Backup creato ma file risulta vuoto o non esistente: {backup_path}")
@@ -110,28 +119,41 @@ def create_backup(backup_type="manual"):
         if os.path.exists(backup_path):
             try:
                 os.remove(backup_path)
-            except:
+            except Exception:
                 pass
         return None
 
 def _rotate_old_backups():
-    """Mantiene solo gli ultimi BACKUP_RETENTION_COUNT backup, elimina i più vecchi."""
+    """Mantiene gli ultimi BACKUP_RETENTION_COUNT backup PER TIPO, elimina i più vecchi.
+
+    La rotazione è separata per tipo ('manual', 'pre_sync', 'pre_restore', ...):
+    così una serie di backup di un tipo non può far eliminare quelli di un altro
+    (es. i pre_restore che cancellano i pre_sync ancora utili).
+    """
     try:
         if not os.path.isdir(BACKUP_DIR):
             return
-        backups = [os.path.join(BACKUP_DIR, f) for f in os.listdir(BACKUP_DIR)
-                   if f.lower().endswith(".bak")]
-        backups.sort(key=lambda p: os.path.getmtime(p), reverse=True)
-        to_remove = backups[BACKUP_RETENTION_COUNT:]
-        if to_remove:
-            logging.info(f"Rotazione backup: {len(backups)} trovati, rimozione di {len(to_remove)} vecchi backup...")
-            for f in to_remove:
-                try:
-                    size_mb = os.path.getsize(f) / (1024 * 1024)
-                    os.remove(f)
-                    logging.info(f"Vecchio backup rimosso: {os.path.basename(f)} ({size_mb:.1f} MB)")
-                except Exception:
-                    logging.warning(f"Impossibile rimuovere backup: {f}", exc_info=True)
+        # Raggruppa per tipo, estratto dal nome 'verifiche_<tipo>_YYYYMMDD_HHMMSS.db.bak'
+        groups = {}
+        for name in os.listdir(BACKUP_DIR):
+            if not name.lower().endswith(".bak"):
+                continue
+            m = re.match(r'^.+?_(.+)_\d{8}_\d{6}\.db\.bak$', name)
+            backup_type = m.group(1) if m else "sconosciuto"
+            groups.setdefault(backup_type, []).append(os.path.join(BACKUP_DIR, name))
+
+        for backup_type, backups in groups.items():
+            backups.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+            to_remove = backups[BACKUP_RETENTION_COUNT:]
+            if to_remove:
+                logging.info(f"Rotazione backup '{backup_type}': {len(backups)} trovati, rimozione di {len(to_remove)} vecchi backup...")
+                for f in to_remove:
+                    try:
+                        size_mb = os.path.getsize(f) / (1024 * 1024)
+                        os.remove(f)
+                        logging.info(f"Vecchio backup rimosso: {os.path.basename(f)} ({size_mb:.1f} MB)")
+                    except Exception:
+                        logging.warning(f"Impossibile rimuovere backup: {f}", exc_info=True)
     except Exception:
         logging.error("Errore durante la rotazione dei vecchi backup.", exc_info=True)
 

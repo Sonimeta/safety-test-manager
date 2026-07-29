@@ -1,51 +1,89 @@
-{% set fname = "field_" ~ section.key ~ "_" ~ field.key %}
-{% if field.field_type == 'pass_fail' %}
+{# fname_prefix is set by the calling template: "fld__SECTIONKEY__ROWKEY" (table) or "fld__SECTIONKEY" (fields) #}
+{% set fname = fname_prefix ~ "__" ~ field.key %}
+
+{% if field.field_type == 'calculated' or field.formula %}
+{# Calculated / formula field: read-only, value computed by JS #}
+<div class="flex gap-2 items-center">
+    <input type="number" step="any" name="{{ fname }}" id="{{ fname }}"
+           class="form-input flex-1 bg-gray-50 text-gray-500 font-mono"
+           readonly
+           data-formula="{{ field.formula or '' }}"
+           data-precision="{{ field.precision if field.precision is not none else 2 }}"
+           {% if field.default is not none %}value="{{ field.default }}"{% endif %}
+           placeholder="—">
+    {% if field.unit %}<span class="text-xs text-gray-500 font-semibold whitespace-nowrap">{{ field.unit }}</span>{% endif %}
+</div>
+
+{% elif field.field_type == 'pass_fail' %}
 <div class="grid grid-cols-2 gap-2">
     <label class="flex items-center gap-2 px-3 py-2 border-2 border-gray-200 rounded-lg cursor-pointer has-[:checked]:border-green-500 has-[:checked]:bg-green-50">
-        <input type="radio" name="{{ fname }}" value="PASS" class="accent-green-600" {% if not field.required %}{% else %}{% endif %}>
+        <input type="radio" name="{{ fname }}" value="PASS" class="accent-green-600"
+               {% if field.default == 'PASS' %}checked{% endif %}>
         <span class="text-xs font-semibold text-green-700">✓ PASS</span>
     </label>
     <label class="flex items-center gap-2 px-3 py-2 border-2 border-gray-200 rounded-lg cursor-pointer has-[:checked]:border-red-500 has-[:checked]:bg-red-50">
-        <input type="radio" name="{{ fname }}" value="FAIL" class="accent-red-600">
+        <input type="radio" name="{{ fname }}" value="FAIL" class="accent-red-600"
+               {% if field.default == 'FAIL' %}checked{% endif %}>
         <span class="text-xs font-semibold text-red-700">✗ FAIL</span>
     </label>
 </div>
+
 {% elif field.field_type == 'bool' %}
 <div class="flex items-center gap-3">
-    <input type="checkbox" name="{{ fname }}" value="true" id="{{ fname }}" class="w-4 h-4 accent-blue-600">
+    <input type="checkbox" name="{{ fname }}" value="true" id="{{ fname }}" class="w-4 h-4 accent-blue-600"
+           {% if field.default == true or field.default == 'true' %}checked{% endif %}>
     <label for="{{ fname }}" class="text-sm text-gray-600">Sì / Conforme</label>
 </div>
+
 {% elif field.field_type == 'choice' and field.options %}
 <select name="{{ fname }}" class="form-input" {% if field.required %}required{% endif %}>
     <option value="">— Seleziona —</option>
     {% for opt in field.options %}
-    <option value="{{ opt }}">{{ opt }}</option>
+    <option value="{{ opt }}" {% if field.default == opt %}selected{% endif %}>{{ opt }}</option>
     {% endfor %}
 </select>
+
 {% elif field.field_type == 'multiline' %}
 <textarea name="{{ fname }}" class="form-input" rows="3"
           {% if field.placeholder %}placeholder="{{ field.placeholder }}"{% endif %}
-          {% if field.required %}required{% endif %}></textarea>
+          {% if field.required %}required{% endif %}>{% if field.default is not none %}{{ field.default }}{% endif %}</textarea>
+
 {% elif field.field_type in ('number', 'integer', 'percentage') %}
-<input type="number" name="{{ fname }}" class="form-input"
-       {% if field.min_value is not none %}min="{{ field.min_value }}"{% endif %}
-       {% if field.max_value is not none %}max="{{ field.max_value }}"{% endif %}
-       {% if field.step %}step="{{ field.step }}"{% endif %}
-       {% if field.placeholder %}placeholder="{{ field.placeholder }}"{% endif %}
-       {% if field.required %}required{% endif %}>
+<div class="flex gap-2 items-center">
+    <input type="number" name="{{ fname }}" id="{{ fname }}" class="form-input flex-1"
+           {% if field.min_value is not none %}min="{{ field.min_value }}"{% endif %}
+           {% if field.max_value is not none %}max="{{ field.max_value }}"{% endif %}
+           {% if field.step %}step="{{ field.step }}"{% else %}step="any"{% endif %}
+           {% if field.placeholder %}placeholder="{{ field.placeholder }}"{% endif %}
+           {% if field.default is not none %}value="{{ field.default }}"{% endif %}
+           {% if field.read_only %}readonly style="background:#f8fafc;color:#64748b;"{% endif %}
+           {% if field.required %}required{% endif %}>
+    {% if field.unit %}<span class="text-xs text-gray-500 font-semibold whitespace-nowrap">{{ field.unit }}</span>{% endif %}
+</div>
+
 {% elif field.field_type == 'date' %}
 <input type="date" name="{{ fname }}" class="form-input"
+       {% if field.default %}value="{{ field.default }}"{% endif %}
        {% if field.required %}required{% endif %}>
+
 {% elif field.field_type == 'time' %}
 <input type="time" name="{{ fname }}" class="form-input"
+       {% if field.default %}value="{{ field.default }}"{% endif %}
        {% if field.required %}required{% endif %}>
+
 {% elif field.field_type == 'rating' %}
 <input type="number" name="{{ fname }}" class="form-input"
        min="1" max="{{ field.rating_max or 5 }}"
        {% if field.placeholder %}placeholder="{{ field.placeholder }}"{% else %}placeholder="1-{{ field.rating_max or 5 }}"{% endif %}
+       {% if field.default is not none %}value="{{ field.default }}"{% endif %}
        {% if field.required %}required{% endif %}>
+
 {% else %}
-<input type="text" name="{{ fname }}" class="form-input"
+{# Default: text #}
+<input type="text" name="{{ fname }}" id="{{ fname }}" class="form-input"
        {% if field.placeholder %}placeholder="{{ field.placeholder }}"{% endif %}
+       {% if field.default is not none %}value="{{ field.default }}"{% endif %}
+       {% if field.read_only %}readonly style="background:#f8fafc;color:#64748b;"{% endif %}
        {% if field.required %}required{% endif %}>
 {% endif %}
+

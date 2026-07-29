@@ -9,6 +9,7 @@ dist/
 build/
 *.spec
 *.zip
+*.exe
 
 # ===== Virtual Environment =====
 .venv/
@@ -49,6 +50,6 @@ data/udi_cache.json
 # ===== Deploy compilato (non caricare EXE e dipendenze) =====
 server_deploy/DEPLOY_PACKAGE/
 server_deploy/.env
-
+tailwindcss.exe
 # ===== SSL chiave privata (MAI caricare!) =====
 ssl/server.key

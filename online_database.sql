@@ -85,7 +85,9 @@ CREATE TABLE IF NOT EXISTS verifications (
     technician_username TEXT,
     last_modified TIMESTAMPTZ NOT NULL,
     is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
-    is_synced BOOLEAN NOT NULL DEFAULT TRUE
+    is_synced BOOLEAN NOT NULL DEFAULT TRUE,
+    verification_code TEXT,
+    notes TEXT
 );
 
 -- --- 4b) Functional Verifications (dipende da devices) ---
@@ -217,10 +219,8 @@ CREATE INDEX IF NOT EXISTS idx_verifications_device_id ON verifications(device_i
 CREATE INDEX IF NOT EXISTS idx_functional_verifications_device_id ON functional_verifications(device_id);
 CREATE INDEX IF NOT EXISTS idx_profile_tests_profile_id ON profile_tests(profile_id);
 
--- Unicità del seriale SOLO quando valorizzato E NON CANCELLATO
-CREATE UNIQUE INDEX IF NOT EXISTS idx_devices_serial_unique
-    ON devices(serial_number)
-    WHERE serial_number IS NOT NULL AND serial_number <> '' AND is_deleted = FALSE;
+-- Unicità del seriale rimossa: i duplicati vengono gestiti a livello applicativo con avviso utente.
+-- DROP INDEX IF EXISTS idx_devices_serial_unique;  -- eseguire manualmente su DB esistenti
 
 -- Unicità profile_key SOLO per profili NON cancellati
 CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_profile_key_unique
@@ -299,3 +299,75 @@ CREATE TABLE IF NOT EXISTS hard_deletes (
 
 CREATE INDEX IF NOT EXISTS idx_hard_deletes_deleted_at ON hard_deletes(deleted_at);
 CREATE INDEX IF NOT EXISTS idx_hard_deletes_table_uuid ON hard_deletes(table_name, record_uuid);
+
+-- --- 12) Verification Assignments ---
+-- Tabella per l'assegnazione di verifiche da parte dei responsabili ai tecnici.
+-- Il responsabile (admin/moderator) seleziona un dispositivo, sceglie il tecnico,
+-- imposta priorità e scadenza. Il tecnico vede la lista e aggiorna lo stato.
+
+CREATE TABLE IF NOT EXISTS verification_assignments (
+    id              SERIAL PRIMARY KEY,
+    uuid            TEXT        NOT NULL UNIQUE,
+    device_id       INTEGER     NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    assigned_to     TEXT        NOT NULL,   -- username del tecnico assegnato
+    assigned_by     TEXT        NOT NULL,   -- username del responsabile che crea l'assegnazione
+    notes           TEXT,                   -- istruzioni per il tecnico
+    priority        TEXT        NOT NULL DEFAULT 'normal'
+                        CHECK (priority IN ('low', 'normal', 'high', 'urgent')),
+    due_date        DATE,                   -- data scadenza (opzionale)
+    status          TEXT        NOT NULL DEFAULT 'pending'
+                        CHECK (status IN ('pending', 'in_progress', 'completed', 'cancelled')),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at    TIMESTAMPTZ,
+    is_deleted      BOOLEAN     NOT NULL DEFAULT FALSE,
+    last_modified   TIMESTAMPTZ NOT NULL DEFAULT NOW()  -- usato per la sincronizzazione incrementale
+);
+
+-- Indici per query frequenti
+CREATE INDEX IF NOT EXISTS idx_assignments_assigned_to ON verification_assignments(assigned_to);
+CREATE INDEX IF NOT EXISTS idx_assignments_status      ON verification_assignments(status);
+CREATE INDEX IF NOT EXISTS idx_assignments_device_id   ON verification_assignments(device_id);
+CREATE INDEX IF NOT EXISTS idx_assignments_due_date    ON verification_assignments(due_date);
+CREATE INDEX IF NOT EXISTS idx_assignments_created_at  ON verification_assignments(created_at DESC);
+
+-- Funzione per aggiornare automaticamente updated_at ad ogni modifica
+CREATE OR REPLACE FUNCTION update_assignments_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    NEW.last_modified = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger che esegue la funzione prima di ogni UPDATE sulla tabella
+DROP TRIGGER IF EXISTS trg_assignments_updated_at ON verification_assignments;
+CREATE TRIGGER trg_assignments_updated_at
+    BEFORE UPDATE ON verification_assignments
+    FOR EACH ROW
+    EXECUTE FUNCTION update_assignments_updated_at();
+
+CREATE INDEX IF NOT EXISTS idx_assignments_last_modified ON verification_assignments(last_modified);
+-- SEGNALAZIONI "NON MESSO A DISPOSIZIONE"
+CREATE TABLE IF NOT EXISTS device_unavailability_reports (
+    id                  SERIAL PRIMARY KEY,
+    uuid                TEXT    NOT NULL UNIQUE,
+    device_id           INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+    destination_id      INTEGER NOT NULL REFERENCES destinations(id) ON DELETE CASCADE,
+    period_start        TEXT    NOT NULL,
+    period_end          TEXT    NOT NULL,
+    report_date         TEXT    NOT NULL,
+    reason              TEXT    NOT NULL,
+    technician_name     TEXT,
+    technician_username TEXT,
+    created_at          TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    last_modified       TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    is_deleted          INTEGER NOT NULL DEFAULT 0,
+    is_synced           INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE INDEX IF NOT EXISTS idx_unavailability_device_id ON device_unavailability_reports(device_id);
+CREATE INDEX IF NOT EXISTS idx_unavailability_destination ON device_unavailability_reports(destination_id);
+CREATE INDEX IF NOT EXISTS idx_unavailability_period ON device_unavailability_reports(period_start, period_end);
+CREATE INDEX IF NOT EXISTS idx_unavailability_last_modified ON device_unavailability_reports(last_modified);

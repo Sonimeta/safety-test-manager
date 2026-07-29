@@ -25,13 +25,7 @@ from dotenv import load_dotenv
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, InvalidHash
 from jose import JWTError, ExpiredSignatureError, jwt
-from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicKey
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.backends import default_backend
-from cryptography.x509 import load_pem_x509_certificate
-import base64 as _base64
-from cryptography.hazmat.primitives.asymmetric import padding as _padding
-from cryptography.hazmat.primitives import hashes as _hashes
+from markupsafe import escape as html_escape
 import httpx
 
 # --- CARICAMENTO .env ROBUSTO (compatibile con PyInstaller) ---
@@ -185,7 +179,7 @@ class RateLimiter:
         self.blocked_ips = {}
         
         # Limiti configurabili
-        self.GENERAL_LIMIT = 60       # richieste/minuto generiche
+        self.GENERAL_LIMIT = 300      # richieste/minuto generiche
         self.GENERAL_WINDOW = 60      # finestra in secondi
         self.LOGIN_FAIL_LIMIT = 5     # tentativi FALLITI/minuto
         self.LOGIN_WINDOW = 60        # finestra in secondi (fallimenti login)
@@ -389,8 +383,8 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         client_ip = _get_real_client_ip(request)
         path = request.url.path
 
-        # Rate limit generico (escluso /health per monitoring)
-        if path != "/health":
+        # Rate limit generico (escluso /health e /mobile/static per file statici)
+        if path != "/health" and not path.startswith("/mobile/static") and not path.startswith("/mobile/pwa-manifest") and path != "/mobile/sw.js":
             if not rate_limiter.check_general(client_ip):
                 retry_after = rate_limiter.get_retry_after(client_ip)
                 logger.warning(f"⚠️ Rate limit GENERALE superato per IP {client_ip}")
@@ -408,9 +402,32 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
-        response.headers["Pragma"] = "no-cache"
-        response.headers["Expires"] = "0"
+        # CSP: blocca il caricamento di script/risorse da origini esterne.
+        # 'unsafe-inline'/'unsafe-eval' sono necessari ad Alpine.js e HTMX
+        # (attributi x-data/hx-* valutati inline), quindi la protezione XSS
+        # principale resta l'escaping nei template; la CSP impedisce comunque
+        # esfiltrazione verso domini terzi e script remoti iniettati.
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' 'unsafe-eval'; "
+            "style-src 'self' 'unsafe-inline'; "
+            "img-src 'self' data: blob:; "
+            "font-src 'self'; "
+            "connect-src 'self'; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'; "
+            "frame-ancestors 'none'"
+        )
+        if path.startswith("/mobile/static"):
+            # File statici (font, css, js): cacheabili, altrimenti ogni pagina
+            # mobile riscarica ~3 MB di asset. Il service worker (/mobile/sw.js)
+            # non rientra in questo ramo e resta no-store per aggiornarsi subito.
+            response.headers["Cache-Control"] = "public, max-age=86400"
+        else:
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
         # Rimuovi completamente l'header Server per non rivelare alcuna tecnologia
         if "server" in response.headers:
             del response.headers["server"]
@@ -615,6 +632,10 @@ def _normalize_incoming_value(table_name: str, key: str, value):
     from datetime import datetime, date
     if isinstance(value, (datetime, date)):
         return value.isoformat()
+    # device_unavailability_reports usa INTEGER per is_deleted/is_synced (non BOOLEAN)
+    # Pydantic li deserializza come bool → convertiamo in 0/1
+    if table_name == "device_unavailability_reports" and key in ("is_deleted", "is_synced") and isinstance(value, bool):
+        return int(value)
     if table_name == "signatures" and key == "signature_data" and isinstance(value, str):
         try:
             return base64.b64decode(value)
@@ -646,6 +667,14 @@ ALLOWED_ROLES = {"admin", "moderator", "technician", "seg"}
 MAX_USERNAME_LENGTH = 50
 MIN_PASSWORD_LENGTH = 8
 MAX_SIGNATURE_SIZE = 512 * 1024  # 512 KB
+MAX_ATTACHMENT_SIZE = 10 * 1024 * 1024  # 10 MB per allegato mobile
+# Mime type che possono essere mostrati inline nel browser: tutto il resto
+# viene servito come download per impedire l'esecuzione di HTML/JS caricato
+# come allegato (stored XSS)
+INLINE_ATTACHMENT_MIMES = {
+    "image/png", "image/jpeg", "image/gif", "image/webp", "image/bmp",
+    "application/pdf",
+}
 ALLOWED_IMAGE_MIMES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
 # Magic bytes per i formati immagine più comuni
 IMAGE_MAGIC_BYTES = {
@@ -740,6 +769,8 @@ class SyncChanges(BaseModel):
     verification_attachments: List[SyncRecord] = []
     system_verifications: List[SyncRecord] = []
     system_verification_devices: List[SyncRecord] = []
+    verification_assignments: List[SyncRecord] = []
+    device_unavailability_reports: List[SyncRecord] = []
     audit_log: List[SyncRecord] = []
 
 class SyncPayload(BaseModel):
@@ -857,8 +888,6 @@ try:
 except Exception as e:
     logger.warning(f"Impossibile creare tabella hard_deletes all'avvio: {e}")
 
-# In real_server.py
-
 def process_client_changes(conn_or_cursor, table_name: str, records: list[dict], user_role: str, server_timestamp: datetime):
     try:
         cursor = conn_or_cursor.cursor(cursor_factory=RealDictCursor)
@@ -912,34 +941,25 @@ def process_client_changes(conn_or_cursor, table_name: str, records: list[dict],
                 normalized_serial = raw_serial.upper()
                 r["serial_number"] = normalized_serial
 
-            # --- GESTIONE CONFLITTO: numero di serie già esistente ---
-            # Se esiste già un dispositivo ATTIVO con lo stesso serial_number ma UUID diverso,
-            # non generiamo un errore 500 ma un conflitto esplicito.
-            # Skip: non controlliamo i record in fase di eliminazione (is_deleted)
+            # --- AVVISO duplicato numero di serie (non bloccante) ---
+            # Il seriale non è più univoco: i duplicati sono permessi per scelta applicativa.
+            # Logghiamo solo un avviso informativo senza interrompere la sincronizzazione.
             if normalized_serial and not r.get('is_deleted'):
                 cursor.execute(
                     """
-                    SELECT * FROM devices
+                    SELECT uuid, description FROM devices
                     WHERE serial_number = %s
                       AND is_deleted = FALSE
                       AND uuid <> %s
                     """,
                     (normalized_serial, r.get("uuid")),
                 )
-                existing = cursor.fetchone()
-                if existing:
-                    conflict = {
-                        "table": "devices",
-                        "uuid": r.get("uuid"),
-                        "reason": "serial_conflict",
-                        "message": f"Il numero di serie '{normalized_serial}' esiste già su un altro dispositivo sul server.",
-                        "client_version": r,
-                        "server_version": existing,
-                    }
-                    logging.warning(f"Conflitto di numero di serie rilevato durante sync: {conflict}")
-                    conflicts.append(conflict)
-                    # Salta questo record: non verrà upsertato
-                    continue
+                existing_dup = cursor.fetchone()
+                if existing_dup:
+                    logging.info(
+                        f"[sync] Numero di serie '{normalized_serial}' già presente su un altro dispositivo "
+                        f"(uuid={existing_dup.get('uuid')}) — duplicato permesso, sync prosegue."
+                    )
 
         elif table_name == "profile_tests":
             prof_uuid = r.pop("profile_uuid", None)
@@ -1022,6 +1042,37 @@ def process_client_changes(conn_or_cursor, table_name: str, records: list[dict],
                     r["file_data"] = None
             # Rimuovi file_path (campo locale del client, il server usa file_data BYTEA)
             r.pop("file_path", None)
+
+        elif table_name == "verification_assignments":
+            dev_uuid = r.pop("device_uuid", None)
+            if dev_uuid:
+                cursor.execute("SELECT id FROM devices WHERE uuid=%s AND is_deleted=FALSE", (dev_uuid,))
+                row = cursor.fetchone()
+                if not row:
+                    logging.warning(f"Salto assignment: device {dev_uuid} assente sul server.")
+                    continue
+                r["device_id"] = row["id"]
+            # Rimuovi colonne locali-only che non esistono sul server
+            r.pop("is_synced", None)
+
+        elif table_name == "device_unavailability_reports":
+            dev_uuid = r.pop("device_uuid", None)
+            dest_uuid = r.pop("destination_uuid", None)
+            r.pop("is_synced", None)
+            if dev_uuid:
+                cursor.execute("SELECT id FROM devices WHERE uuid=%s AND is_deleted=FALSE", (dev_uuid,))
+                row = cursor.fetchone()
+                if not row:
+                    logging.warning(f"Salto unavailability report: device {dev_uuid} assente sul server.")
+                    continue
+                r["device_id"] = row["id"]
+            if dest_uuid:
+                cursor.execute("SELECT id FROM destinations WHERE uuid=%s AND is_deleted=FALSE", (dest_uuid,))
+                row = cursor.fetchone()
+                if not row:
+                    logging.warning(f"Salto unavailability report: destination {dest_uuid} assente sul server.")
+                    continue
+                r["destination_id"] = row["id"]
 
         for k, v in list(r.items()):
             r[k] = _normalize_incoming_value(table_name, k, v)
@@ -1347,7 +1398,8 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                 changes_dict = payload.changes.model_dump()
                 tables_order = ["customers", "mti_instruments", "profiles", "profile_tests", "functional_profiles",
                                 "destinations", "devices", "verifications", "functional_verifications", "verification_attachments",
-                                "system_verifications", "system_verification_devices", "signatures", "audit_log"]
+                                "system_verifications", "system_verification_devices", "verification_assignments",
+                                "device_unavailability_reports", "signatures", "audit_log"]
 
                 for table in tables_order:
                     records = changes_dict.get(table, [])
@@ -1504,7 +1556,29 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                         WHERE svd.is_deleted = FALSE
                     """)
                     changes_to_send["system_verification_devices"] = cursor.fetchall()
-                else:
+
+                    # Verification assignments (prima sync: tutti)
+                    _ensure_assignments_table(cursor)
+                    cursor.execute("""
+                        SELECT a.*, d.uuid as device_uuid
+                        FROM verification_assignments a
+                        LEFT JOIN devices d ON d.id = a.device_id
+                        WHERE a.is_deleted = FALSE
+                    """)
+                    changes_to_send["verification_assignments"] = cursor.fetchall()
+
+                    # Device unavailability reports (prima sync: tutti)
+                    _ensure_unavailability_table(cursor)
+                    cursor.execute("""
+                        SELECT r.*, d.uuid as device_uuid, dest.uuid as destination_uuid
+                        FROM device_unavailability_reports r
+                        JOIN devices d ON d.id = r.device_id
+                        JOIN destinations dest ON dest.id = r.destination_id
+                        WHERE r.is_deleted = 0
+                    """)
+                    changes_to_send["device_unavailability_reports"] = cursor.fetchall()
+
+                else:  # sync incrementale
                     last_sync_ts = payload.last_sync_timestamp
                     if last_sync_ts is None:
                         raise HTTPException(status_code=400, detail="last_sync_timestamp must not be None for incremental sync.")
@@ -1594,16 +1668,37 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                     """, (last_sync_dt, new_sync_timestamp))
                     changes_to_send["system_verification_devices"] = cursor.fetchall()
 
+                    # Verification assignments (incrementale)
+                    _ensure_assignments_table(cursor)
+                    cursor.execute("""
+                        SELECT a.*, d.uuid as device_uuid
+                        FROM verification_assignments a
+                        LEFT JOIN devices d ON d.id = a.device_id
+                        WHERE a.last_modified > %s AND a.last_modified <= %s
+                    """, (last_sync_dt, new_sync_timestamp))
+                    changes_to_send["verification_assignments"] = cursor.fetchall()
+
+                    # Device unavailability reports (incrementale)
+                    _ensure_unavailability_table(cursor)
+                    cursor.execute("""
+                        SELECT r.*, d.uuid as device_uuid, dest.uuid as destination_uuid
+                        FROM device_unavailability_reports r
+                        JOIN devices d ON d.id = r.device_id
+                        JOIN destinations dest ON dest.id = r.destination_id
+                        WHERE r.last_modified > %s AND r.last_modified <= %s
+                    """, (last_sync_dt, new_sync_timestamp))
+                    changes_to_send["device_unavailability_reports"] = cursor.fetchall()
+
                 if "signatures" in changes_to_send:
                     for signature_record in changes_to_send["signatures"]:
                         if signature_record.get("signature_data"):
                             signature_record["signature_data"] = base64.b64encode(signature_record["signature_data"]).decode('utf-8')
 
-                # Base64 encode file_data degli allegati per il trasferimento JSON
+                # Non inviare file_data nella sync: i client desktop scaricano on-demand
+                # via GET /api/attachments/{uuid}. Riduce drasticamente la dimensione del payload.
                 if "verification_attachments" in changes_to_send:
                     for att_record in changes_to_send["verification_attachments"]:
-                        if att_record.get("file_data"):
-                            att_record["file_data"] = base64.b64encode(att_record["file_data"]).decode('utf-8')
+                        att_record.pop("file_data", None)
 
                 for _, rows in changes_to_send.items():
                     for row in rows:
@@ -2171,8 +2266,88 @@ _MOBILE_STATIC    = os.path.join(_THIS_DIR, "mobile", "static")
 
 mobile_templates = Jinja2Templates(directory=_MOBILE_TEMPLATES)
 
+# Aggiunge la data odierna come globale Jinja2 (usata nei template che chiamano today())
+from datetime import date as _date_cls
+mobile_templates.env.globals["today"] = _date_cls.today  # callable: usare today() nei template
+
+
+def _get_pending_assignments_count(username: str, role: str) -> int:
+    """Conta i lavori pendenti/in corso per il badge nella nav."""
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_assignments_table(cur)
+        conn.commit()
+        if role in ("admin", "moderator"):
+            cur.execute("SELECT COUNT(*) as cnt FROM verification_assignments WHERE status IN ('pending','in_progress') AND is_deleted = FALSE")
+        else:
+            cur.execute("SELECT COUNT(*) as cnt FROM verification_assignments WHERE assigned_to = %s AND status IN ('pending','in_progress') AND is_deleted = FALSE", (username,))
+        cnt = cur.fetchone()["cnt"]
+        conn.close()
+        return cnt
+    except Exception:
+        return 0
+
+# ─── manifest.json con Content-Type corretto — DEVE stare PRIMA del mount StaticFiles ─
+@app.get("/mobile/static/manifest.json", response_class=FastAPIResponse, include_in_schema=False)
+def mobile_manifest_json():
+    manifest_path = os.path.join(_MOBILE_STATIC, "manifest.json")
+    try:
+        content = open(manifest_path, "rb").read()
+    except Exception:
+        content = b'{}'
+    return FastAPIResponse(
+        content=content,
+        media_type="application/manifest+json",
+        headers={
+            "Cache-Control": "no-cache",
+            "Access-Control-Allow-Origin": "*",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
 if os.path.isdir(_MOBILE_STATIC):
     app.mount("/mobile/static", StaticFiles(directory=_MOBILE_STATIC), name="mobile_static")
+
+# ─── Explicit manifest.json endpoint (bypasses Cloudflare Access auth check) ─
+# Cloudflare Access intercepts /mobile/static/manifest.json with a redirect
+# to its login page, breaking PWA installation. This dedicated route adds
+# Cache-Control and Cf-Access-Skip-App-Auth headers, and should be exempted
+# in the CF Access policy (add a "Bypass" rule for path /mobile/pwa-manifest).
+@app.get("/mobile/pwa-manifest", response_class=FastAPIResponse, include_in_schema=False)
+def mobile_pwa_manifest():
+    manifest_path = os.path.join(_MOBILE_STATIC, "manifest.json")
+    try:
+        content = open(manifest_path, "rb").read()
+    except Exception:
+        content = b'{}'
+    return FastAPIResponse(
+        content=content,
+        media_type="application/manifest+json",
+        headers={
+            "Cache-Control": "public, max-age=86400",
+            "Access-Control-Allow-Origin": "*",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+# Service Worker served from /mobile/sw.js so its default scope is /mobile/
+# The Service-Worker-Allowed header extends the scope to /mobile/
+@app.get("/mobile/sw.js", response_class=FastAPIResponse, include_in_schema=False)
+def mobile_service_worker():
+    sw_path = os.path.join(_MOBILE_STATIC, "sw.js")
+    try:
+        content = open(sw_path, "rb").read()
+    except Exception:
+        content = b''
+    return FastAPIResponse(
+        content=content,
+        media_type="application/javascript",
+        headers={
+            "Service-Worker-Allowed": "/mobile/",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+        },
+    )
 
 # ─── Auth helpers ────────────────────────────────────────────────────────────
 
@@ -2207,7 +2382,9 @@ def _set_mobile_cookie(response: RedirectResponse, token: str):
         httponly=True,
         samesite="lax",
         max_age=int(ACCESS_TOKEN_EXPIRE_MINUTES * 60),
-        secure=False,  # Set True if served over HTTPS
+        # Il cookie viaggia solo su HTTPS; i browser trattano localhost come
+        # origine sicura, quindi i test locali continuano a funzionare
+        secure=True,
     )
 
 
@@ -2268,9 +2445,6 @@ def mobile_dashboard(request: Request, mobile_session: Optional[str] = Cookie(No
     user = _mobile_user_from_cookie(mobile_session)
     if not user:
         return _mobile_redirect_login()
-
-    today = date.today().isoformat()
-    threshold = (date.today() + timedelta(days=30)).isoformat()
 
     try:
         conn = get_db_connection()
@@ -2338,6 +2512,24 @@ def mobile_dashboard(request: Request, mobile_session: Optional[str] = Cookie(No
             LIMIT 5
         """)
         recent_func_verifications = cur.fetchall()
+
+        # Assegnazioni pendenti per questo utente
+        _ensure_assignments_table(cur)
+        conn.commit()
+        is_manager = user.role in ("admin", "moderator")
+        if is_manager:
+            cur.execute("SELECT COUNT(*) as cnt FROM verification_assignments WHERE status IN ('pending','in_progress') AND is_deleted = FALSE")
+        else:
+            cur.execute("SELECT COUNT(*) as cnt FROM verification_assignments WHERE assigned_to = %s AND status IN ('pending','in_progress') AND is_deleted = FALSE", (user.username,))
+        pending_assignments_count = cur.fetchone()["cnt"]
+
+        # Ultime assegnazioni pendenti (max 3) per la card dashboard
+        if is_manager:
+            cur.execute(_ASSIGNMENT_SELECT + f" WHERE a.is_deleted = FALSE AND a.status IN ('pending','in_progress') ORDER BY {_PRIORITY_ORDER}, a.due_date ASC NULLS LAST LIMIT 3")
+        else:
+            cur.execute(_ASSIGNMENT_SELECT + f" WHERE a.is_deleted = FALSE AND a.assigned_to = %s AND a.status IN ('pending','in_progress') ORDER BY {_PRIORITY_ORDER}, a.due_date ASC NULLS LAST LIMIT 3", (user.username,))
+        pending_assignments = cur.fetchall()
+
         conn.close()
     except Exception as e:
         logger.error(f"[mobile] dashboard error: {e}", exc_info=True)
@@ -2345,6 +2537,8 @@ def mobile_dashboard(request: Request, mobile_session: Optional[str] = Cookie(No
         pass_count = fail_count = 0
         recent_verifications = []
         recent_func_verifications = []
+        pending_assignments_count = 0
+        pending_assignments = []
 
     return mobile_templates.TemplateResponse("dashboard.html", {
         "request": request, "user": user, "active_nav": "dashboard",
@@ -2354,6 +2548,8 @@ def mobile_dashboard(request: Request, mobile_session: Optional[str] = Cookie(No
         "overdue": overdue, "expiring_soon": expiring_soon,
         "recent_verifications": recent_verifications,
         "recent_func_verifications": recent_func_verifications,
+        "pending_assignments_count": pending_assignments_count,
+        "pending_assignments": pending_assignments,
     })
 
 
@@ -2383,6 +2579,7 @@ def mobile_customers(request: Request, mobile_session: Optional[str] = Cookie(No
     return mobile_templates.TemplateResponse("customers.html", {
         "request": request, "user": user, "active_nav": "customers",
         "customers": customers, "total": total, "back_url": "/mobile/dashboard",
+        "pending_assignments_count": _get_pending_assignments_count(user.username, user.role),
     })
 
 
@@ -2421,6 +2618,33 @@ async def mobile_customer_create(request: Request, mobile_session: Optional[str]
             "form_action": "/mobile/customers/new", "back_url": "/mobile/customers",
             "error": "Il nome del cliente è obbligatorio.",
         })
+
+    # Controlla duplicati (solo se non è già confermato dall'utente)
+    confirm = form.get("confirm_duplicate", "") == "1"
+    if not confirm:
+        import difflib as _difflib
+        try:
+            conn_ck = get_db_connection()
+            cur_ck = conn_ck.cursor(cursor_factory=RealDictCursor)
+            cur_ck.execute("SELECT name FROM customers WHERE is_deleted = FALSE ORDER BY name")
+            all_names = [r["name"] for r in cur_ck.fetchall()]
+            conn_ck.close()
+        except Exception:
+            all_names = []
+        name_low = name.lower().strip()
+        similar = [
+            n for n in all_names
+            if _difflib.SequenceMatcher(None, name_low, n.lower().strip()).ratio() >= 0.75
+            or name_low in n.lower() or n.lower() in name_low
+        ]
+        if similar:
+            return mobile_templates.TemplateResponse("customer_form.html", {
+                "request": request, "user": user, "active_nav": "customers",
+                "mode": "create",
+                "customer": {"name": name, "address": address, "phone": phone, "email": email},
+                "form_action": "/mobile/customers/new", "back_url": "/mobile/customers",
+                "duplicate_warning": similar,
+            })
 
     try:
         conn = get_db_connection()
@@ -2651,6 +2875,39 @@ async def mobile_destination_create(customer_uuid: str, request: Request, mobile
             "error": "Il nome della sede è obbligatorio.",
         })
 
+    # Controlla duplicati (solo se non è già confermato dall'utente)
+    confirm = form.get("confirm_duplicate", "") == "1"
+    if not confirm:
+        import difflib as _difflib
+        try:
+            conn_ck = get_db_connection()
+            cur_ck = conn_ck.cursor(cursor_factory=RealDictCursor)
+            cur_ck.execute(
+                "SELECT d.name FROM destinations d JOIN customers c ON c.id = d.customer_id "
+                "WHERE c.uuid = %s AND d.is_deleted = FALSE ORDER BY d.name",
+                (customer_uuid,)
+            )
+            all_names = [r["name"] for r in cur_ck.fetchall()]
+            conn_ck.close()
+        except Exception:
+            all_names = []
+        name_low = name.lower().strip()
+        similar = [
+            n for n in all_names
+            if _difflib.SequenceMatcher(None, name_low, n.lower().strip()).ratio() >= 0.75
+            or name_low in n.lower() or n.lower() in name_low
+        ]
+        if similar:
+            return mobile_templates.TemplateResponse("destination_form.html", {
+                "request": request, "user": user, "active_nav": "customers",
+                "mode": "create",
+                "customer": {"uuid": customer_uuid},
+                "destination": {"name": name, "address": address},
+                "form_action": f"/mobile/customers/{customer_uuid}/destinations/new",
+                "back_url": f"/mobile/customers/{customer_uuid}",
+                "duplicate_warning": similar,
+            })
+
     try:
         conn = get_db_connection()
         cur = conn.cursor()
@@ -2847,6 +3104,7 @@ async def mobile_device_create(destination_uuid: str, request: Request, mobile_s
     device_status = (form.get("status") or "active").strip()
     if device_status not in ("active", "dismissed", "maintenance"):
         device_status = "active"
+    force_duplicate_serial = form.get("force_duplicate_serial", "0") == "1"
 
     try:
         conn = get_db_connection()
@@ -2856,6 +3114,62 @@ async def mobile_device_create(destination_uuid: str, request: Request, mobile_s
         if not destination_row:
             conn.close()
             raise HTTPException(status_code=404, detail="Destinazione non trovata")
+
+        # Controllo duplicato numero di serie (non bloccante)
+        if serial and not force_duplicate_serial:
+            normalized = serial.upper()
+            cur2 = conn.cursor(cursor_factory=RealDictCursor)
+            cur2.execute(
+                """
+                SELECT d.description, d.manufacturer, d.model, dest.name AS destination_name
+                FROM devices d
+                LEFT JOIN destinations dest ON dest.id = d.destination_id
+                WHERE d.serial_number = %s AND d.is_deleted = FALSE
+                LIMIT 1
+                """,
+                (normalized,),
+            )
+            dup = cur2.fetchone()
+            if dup:
+                conn.close()
+                # Ricarica dati form per rimostrare il template con avviso
+                conn2 = get_db_connection()
+                cur3 = conn2.cursor(cursor_factory=RealDictCursor)
+                cur3.execute("SELECT * FROM destinations WHERE uuid = %s", (destination_uuid,))
+                destination = cur3.fetchone()
+                cur3.execute("SELECT profile_key, name FROM profiles WHERE is_deleted = FALSE ORDER BY name")
+                profiles = cur3.fetchall()
+                cur3.execute("SELECT profile_key, name FROM functional_profiles WHERE is_deleted = FALSE ORDER BY name")
+                functional_profiles = cur3.fetchall()
+                conn2.close()
+                device_prefill = {
+                    "serial_number": serial, "description": description,
+                    "manufacturer": manufacturer, "model": model,
+                    "department": department, "customer_inventory": customer_inventory,
+                    "ams_inventory": ams_inventory, "verification_interval": int(verification_interval) if verification_interval else None,
+                    "default_profile_key": default_profile_key,
+                    "default_functional_profile_key": default_functional_profile_key,
+                    "status": device_status,
+                    "applied_parts_json": applied_parts,
+                }
+                # I valori vengono escapati singolarmente perché il template
+                # rende questo messaggio con "| safe" (serve per il <strong>)
+                dup_d = dict(dup)
+                dup_warning = (
+                    f"Il numero di serie <strong>{html_escape(serial.upper())}</strong> è già presente nel database: "
+                    f"{html_escape(dup_d.get('description') or 'N/D')} — {html_escape(dup_d.get('manufacturer') or 'N/D')} "
+                    f"{html_escape(dup_d.get('model') or 'N/D')} ({html_escape(dup_d.get('destination_name') or 'N/D')}). "
+                    f"Vuoi inserire comunque il nuovo dispositivo?"
+                )
+                return mobile_templates.TemplateResponse("device_form.html", {
+                    "request": request, "user": user, "active_nav": "customers",
+                    "mode": "create", "destination": destination, "device": device_prefill,
+                    "profiles": profiles, "functional_profiles": functional_profiles,
+                    "form_action": f"/mobile/destinations/{destination_uuid}/devices/new",
+                    "back_url": f"/mobile/destinations/{destination_uuid}",
+                    "duplicate_warning": dup_warning,
+                    "pa_count_prefill": pa_count,
+                })
 
         cur.execute(
             """
@@ -2867,7 +3181,8 @@ async def mobile_device_create(destination_uuid: str, request: Request, mobile_s
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, FALSE, TRUE, %s)
             """,
             (
-                str(__import__("uuid").uuid4()), destination_row[0], serial, description, manufacturer, model,
+                str(__import__("uuid").uuid4()), destination_row[0], serial.upper() if serial else None,
+                description, manufacturer, model,
                 department, customer_inventory, ams_inventory, applied_parts_json,
                 int(verification_interval) if verification_interval else None, default_profile_key,
                 default_functional_profile_key, datetime.now(timezone.utc), device_status,
@@ -2962,11 +3277,75 @@ async def mobile_device_update(uuid: str, request: Request, mobile_session: Opti
     upd_status = (form.get("status") or "active").strip()
     if upd_status not in ("active", "dismissed", "maintenance"):
         upd_status = "active"
+    force_duplicate_serial = form.get("force_duplicate_serial", "0") == "1"
 
     try:
         conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute(
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Controllo duplicato numero di serie (non bloccante per l'update)
+        if serial and not force_duplicate_serial:
+            normalized = serial.upper()
+            cur.execute(
+                """
+                SELECT d.description, d.manufacturer, d.model, dest.name AS destination_name
+                FROM devices d
+                LEFT JOIN destinations dest ON dest.id = d.destination_id
+                WHERE d.serial_number = %s AND d.is_deleted = FALSE AND d.uuid <> %s
+                LIMIT 1
+                """,
+                (normalized, uuid),
+            )
+            dup = cur.fetchone()
+            if dup:
+                cur.execute("""
+                    SELECT d.*, dest.uuid AS destination_uuid, dest.name AS destination_name,
+                           c.uuid AS customer_uuid, c.name AS customer_name
+                    FROM devices d
+                    JOIN destinations dest ON dest.id = d.destination_id
+                    JOIN customers c ON c.id = dest.customer_id
+                    WHERE d.uuid = %s AND d.is_deleted = FALSE
+                """, (uuid,))
+                device_row = cur.fetchone()
+                cur.execute("SELECT profile_key, name FROM profiles WHERE is_deleted = FALSE ORDER BY name")
+                profiles = cur.fetchall()
+                cur.execute("SELECT profile_key, name FROM functional_profiles WHERE is_deleted = FALSE ORDER BY name")
+                functional_profiles = cur.fetchall()
+                conn.close()
+                device_prefill = dict(device_row) if device_row else {}
+                device_prefill.update({
+                    "serial_number": serial, "description": description,
+                    "manufacturer": manufacturer, "model": model,
+                    "department": department, "customer_inventory": customer_inventory,
+                    "ams_inventory": ams_inventory,
+                    "verification_interval": int(verification_interval) if verification_interval else None,
+                    "default_profile_key": default_profile_key,
+                    "default_functional_profile_key": default_functional_profile_key,
+                    "status": upd_status, "applied_parts_json": applied_parts,
+                })
+                dup_d = dict(dup)
+                # I valori vengono escapati singolarmente perché il template
+                # rende questo messaggio con "| safe" (serve per il <strong>)
+                dup_warning = (
+                    f"Il numero di serie <strong>{html_escape(serial.upper())}</strong> è già presente nel database: "
+                    f"{html_escape(dup_d.get('description') or 'N/D')} — {html_escape(dup_d.get('manufacturer') or 'N/D')} "
+                    f"{html_escape(dup_d.get('model') or 'N/D')} ({html_escape(dup_d.get('destination_name') or 'N/D')}). "
+                    f"Vuoi salvare comunque le modifiche?"
+                )
+                destination = {"uuid": device_prefill.get("destination_uuid"), "name": device_prefill.get("destination_name")}
+                return mobile_templates.TemplateResponse("device_form.html", {
+                    "request": request, "user": user, "active_nav": "customers",
+                    "mode": "edit", "device": device_prefill,
+                    "destination": destination,
+                    "profiles": profiles, "functional_profiles": functional_profiles,
+                    "form_action": f"/mobile/devices/{uuid}/edit",
+                    "back_url": f"/mobile/devices/{uuid}",
+                    "duplicate_warning": dup_warning,
+                    "pa_count_prefill": pa_count,
+                })
+
+        cur2 = conn.cursor()
+        cur2.execute(
             """
             UPDATE devices
             SET serial_number = %s,
@@ -2978,6 +3357,10 @@ async def mobile_device_update(uuid: str, request: Request, mobile_session: Opti
                 ams_inventory = %s,
                 applied_parts_json = %s,
                 verification_interval = %s,
+                next_verification_date = CASE
+                    WHEN %s IS NULL THEN NULL
+                    ELSE next_verification_date
+                END,
                 default_profile_key = %s,
                 default_functional_profile_key = %s,
                 status = %s,
@@ -2985,8 +3368,9 @@ async def mobile_device_update(uuid: str, request: Request, mobile_session: Opti
             WHERE uuid = %s AND is_deleted = FALSE
             """,
             (
-                serial, description, manufacturer, model, department,
+                serial.upper() if serial else None, description, manufacturer, model, department,
                 customer_inventory, ams_inventory, applied_parts_json,
+                int(verification_interval) if verification_interval else None,
                 int(verification_interval) if verification_interval else None,
                 default_profile_key, default_functional_profile_key, upd_status,
                 datetime.now(timezone.utc), uuid,
@@ -3068,10 +3452,162 @@ def mobile_destination_detail(uuid: str, request: Request, mobile_session: Optio
         "destination": destination, "customer_name": destination["customer_name"],
         "devices": devices, "back_url": f"/mobile/customers/{destination['customer_uuid']}",
         "today": today_str, "expiry_threshold": threshold_str,
+        "is_manager": user.role in ("admin", "moderator"),
+    })
+
+
+# ─── Verification Round (chiudi giro / non messi a disposizione) ─────────────
+
+@app.get("/mobile/destinations/{uuid}/verification-round", response_class=HTMLResponse)
+def mobile_verification_round_form(uuid: str, request: Request, mobile_session: Optional[str] = Cookie(None)):
+    """Mostra il form di selezione periodo per il giro verifiche."""
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_unavailability_table(cur)
+        conn.commit()
+        cur.execute("""
+            SELECT d.*, c.name AS customer_name
+            FROM destinations d JOIN customers c ON c.id = d.customer_id
+            WHERE d.uuid = %s AND d.is_deleted = FALSE
+        """, (uuid,))
+        destination = cur.fetchone()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] verification-round form error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+    if not destination:
+        raise HTTPException(status_code=404, detail="Destinazione non trovata")
+    today_str = date.today().isoformat()
+    return mobile_templates.TemplateResponse("verification_round.html", {
+        "request": request, "user": user,
+        "destination": destination, "customer_name": destination["customer_name"],
+        "show_results": False, "today": today_str,
+    })
+
+
+@app.post("/mobile/destinations/{uuid}/verification-round", response_class=HTMLResponse)
+async def mobile_verification_round_post(
+    uuid: str, request: Request,
+    mobile_session: Optional[str] = Cookie(None),
+):
+    """Gestisce: mostra stato, segna non disponibile, rimuovi segnalazione."""
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    form = await request.form()
+    action = form.get("action", "show")
+    period_start = (form.get("period_start") or "").strip()
+    period_end   = (form.get("period_end")   or "").strip()
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_unavailability_table(cur)
+        conn.commit()
+        cur.execute("""
+            SELECT d.*, c.name AS customer_name
+            FROM destinations d JOIN customers c ON c.id = d.customer_id
+            WHERE d.uuid = %s AND d.is_deleted = FALSE
+        """, (uuid,))
+        destination = cur.fetchone()
+        if not destination:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Destinazione non trovata")
+        dest_id = destination["id"]
+
+        if action == "mark":
+            # Segna un dispositivo come non messo a disposizione
+            device_uuid = (form.get("device_uuid") or "").strip()
+            reason      = (form.get("reason") or "").strip()
+            if device_uuid and reason and period_start and period_end:
+                cur.execute("SELECT id FROM devices WHERE uuid = %s AND is_deleted = FALSE", (device_uuid,))
+                dev_row = cur.fetchone()
+                if dev_row:
+                    import uuid as _uuid_mod
+                    report_uuid = str(_uuid_mod.uuid4())
+                    now_str = datetime.utcnow().isoformat()
+                    tech_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or user.username
+                    cur.execute("""
+                        INSERT INTO device_unavailability_reports
+                            (uuid, device_id, destination_id, period_start, period_end,
+                             report_date, reason, technician_name, technician_username,
+                             created_at, last_modified, is_deleted, is_synced)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,0,0)
+                    """, (
+                        report_uuid, dev_row["id"], dest_id,
+                        period_start, period_end,
+                        period_start[:10],
+                        reason,
+                        tech_name, user.username,
+                        now_str, now_str,
+                    ))
+                    conn.commit()
+
+        elif action == "remove":
+            report_uuid = (form.get("report_uuid") or "").strip()
+            if report_uuid:
+                cur.execute(
+                    "UPDATE device_unavailability_reports SET is_deleted = 1, last_modified = %s WHERE uuid = %s",
+                    (datetime.utcnow().isoformat(), report_uuid),
+                )
+                conn.commit()
+
+        # Recupera stato verifiche per il periodo
+        cur.execute("""
+            SELECT id, uuid, description, serial_number, model
+            FROM devices WHERE destination_id = %s AND is_deleted = FALSE ORDER BY description
+        """, (dest_id,))
+        all_devices = {row["id"]: dict(row) for row in cur.fetchall()}
+
+        verified_ids: set = set()
+        if period_start and period_end:
+            cur.execute("""
+                SELECT DISTINCT device_id FROM verifications
+                WHERE device_id = ANY(SELECT id FROM devices WHERE destination_id = %s)
+                  AND verification_date BETWEEN %s AND %s AND is_deleted = FALSE
+            """, (dest_id, period_start, period_end))
+            verified_ids = {r["device_id"] for r in cur.fetchall()}
+
+        # Segnalazioni esistenti per il periodo
+        cur.execute("""
+            SELECT r.*, d.description, d.serial_number
+            FROM device_unavailability_reports r
+            JOIN devices d ON d.id = r.device_id
+            WHERE r.destination_id = %s AND r.period_start = %s AND r.period_end = %s AND r.is_deleted = 0
+        """, (dest_id, period_start, period_end))
+        unavailable_reports = [dict(r) for r in cur.fetchall()]
+        unavailable_device_ids = {r["device_id"] for r in unavailable_reports}
+
+        conn.close()
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[mobile] verification-round post error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    verified   = [all_devices[did] for did in verified_ids if did in all_devices]
+    unverified = [d for did, d in all_devices.items()
+                  if did not in verified_ids and did not in unavailable_device_ids]
+
+    today_str = date.today().isoformat()
+    return mobile_templates.TemplateResponse("verification_round.html", {
+        "request": request, "user": user,
+        "destination": destination, "customer_name": destination["customer_name"],
+        "show_results": bool(period_start and period_end),
+        "period_start": period_start, "period_end": period_end,
+        "verified": verified, "unverified": unverified, "unavailable": unavailable_reports,
+        "today": today_str,
     })
 
 
 # ─── Devices ─────────────────────────────────────────────────────────────────
+
 
 @app.get("/mobile/devices/{uuid}", response_class=HTMLResponse)
 def mobile_device_detail(uuid: str, request: Request, mobile_session: Optional[str] = Cookie(None)):
@@ -3148,6 +3684,236 @@ def mobile_device_detail(uuid: str, request: Request, mobile_session: Optional[s
     })
 
 
+# ─── Attachments (mobile) ────────────────────────────────────────────────────
+
+@app.get("/mobile/attachments/{ver_uuid}", response_class=HTMLResponse)
+def mobile_attachments_list(ver_uuid: str, request: Request,
+                            ver_type: str = "functional",
+                            mobile_session: Optional[str] = Cookie(None)):
+    """Ritorna il partial HTML con la lista allegati di una verifica (HTMX)."""
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return HTMLResponse("", status_code=401)
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        # Risolvi verification_id
+        if ver_type == "functional":
+            cur.execute("SELECT id FROM functional_verifications WHERE uuid=%s AND is_deleted=FALSE", (ver_uuid,))
+        else:
+            cur.execute("SELECT id FROM verifications WHERE uuid=%s AND is_deleted=FALSE", (ver_uuid,))
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            return HTMLResponse("", status_code=404)
+        ver_id = row["id"]
+        cur.execute("""
+            SELECT uuid, filename, mime_type, file_size, description, created_at
+            FROM verification_attachments
+            WHERE verification_id=%s AND verification_type=%s AND is_deleted=FALSE
+            ORDER BY created_at DESC
+        """, (ver_id, ver_type))
+        attachments = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] attachments list error: {e}", exc_info=True)
+        return HTMLResponse("", status_code=500)
+    return mobile_templates.TemplateResponse("partials/attachments.html", {
+        "request": request,
+        "attachments": attachments,
+        "ver_uuid": ver_uuid,
+        "ver_type": ver_type,
+    })
+
+
+@app.post("/mobile/attachments/{ver_uuid}/upload", response_class=HTMLResponse)
+async def mobile_attachments_upload(ver_uuid: str, request: Request,
+                                    mobile_session: Optional[str] = Cookie(None)):
+    """Upload di un allegato (file o foto) per una verifica."""
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return HTMLResponse("", status_code=401)
+    try:
+        form = await request.form()
+        ver_type    = form.get("ver_type", "functional")
+        description = (form.get("description") or "").strip()
+        file_obj    = form.get("file")
+        if not file_obj or not hasattr(file_obj, "filename"):
+            return HTMLResponse("<p class='text-red-500 text-sm px-4'>Nessun file ricevuto.</p>", status_code=400)
+        filename  = file_obj.filename or "allegato"
+        # Legge al massimo MAX_ATTACHMENT_SIZE + 1 byte: se arriva il byte in
+        # più il file è oltre il limite, senza doverlo caricare tutto in RAM
+        file_data = await file_obj.read(MAX_ATTACHMENT_SIZE + 1)
+        if len(file_data) > MAX_ATTACHMENT_SIZE:
+            return HTMLResponse(
+                f"<p class='text-red-500 text-sm px-4'>File troppo grande (max {MAX_ATTACHMENT_SIZE // (1024 * 1024)} MB).</p>",
+                status_code=413,
+            )
+        mime_type = file_obj.content_type or "application/octet-stream"
+        if not file_data:
+            return HTMLResponse("<p class='text-red-500 text-sm px-4'>File vuoto.</p>", status_code=400)
+
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        if ver_type == "functional":
+            cur.execute("SELECT id FROM functional_verifications WHERE uuid=%s AND is_deleted=FALSE", (ver_uuid,))
+        else:
+            cur.execute("SELECT id FROM verifications WHERE uuid=%s AND is_deleted=FALSE", (ver_uuid,))
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            return HTMLResponse("<p class='text-red-500 text-sm px-4'>Verifica non trovata.</p>", status_code=404)
+        ver_id = row["id"]
+
+        att_uuid  = str(__import__("uuid").uuid4())
+        timestamp = datetime.now(timezone.utc)
+        cur.execute("""
+            INSERT INTO verification_attachments
+                (uuid, verification_id, verification_type, filename, file_data,
+                 mime_type, file_size, description, created_at, last_modified, is_synced, is_deleted)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,TRUE,FALSE)
+        """, (att_uuid, ver_id, ver_type, filename,
+              psycopg2.Binary(file_data), mime_type, len(file_data),
+              description or None, timestamp, timestamp))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] attachments upload error: {e}", exc_info=True)
+        return HTMLResponse("<p class='text-red-500 text-sm px-4'>Errore durante l'upload.</p>", status_code=500)
+
+    # Ritorna lista aggiornata via HTMX
+    return RedirectResponse(
+        url=f"/mobile/attachments/{ver_uuid}?ver_type={ver_type}",
+        status_code=303
+    )
+
+
+@app.get("/mobile/attachments/{att_uuid}/view")
+def mobile_attachment_view(att_uuid: str, mobile_session: Optional[str] = Cookie(None)):
+    """Serve il file binario dell'allegato (inline per immagini)."""
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return HTMLResponse("", status_code=401)
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT filename, file_data, mime_type FROM verification_attachments
+            WHERE uuid=%s AND is_deleted=FALSE
+        """, (att_uuid,))
+        row = cur.fetchone()
+        conn.close()
+        if not row or not row["file_data"]:
+            raise HTTPException(status_code=404)
+        raw = row["file_data"]
+        if isinstance(raw, memoryview):
+            raw = bytes(raw)
+        mime_type = row["mime_type"] or "application/octet-stream"
+        # Solo immagini e PDF vengono mostrati inline: qualunque altro tipo
+        # (es. HTML caricato come allegato) viene forzato come download per
+        # impedirne l'esecuzione nel contesto dell'app (stored XSS)
+        disposition = "inline" if mime_type in INLINE_ATTACHMENT_MIMES else "attachment"
+        # Sanitizza il filename: niente path, virgolette o caratteri di
+        # controllo che permetterebbero di manipolare l'header
+        safe_name = os.path.basename(row["filename"] or "allegato")
+        safe_name = re.sub(r'[\x00-\x1f"\\]', "_", safe_name).strip() or "allegato"
+        from fastapi.responses import Response as FastAPIResponse
+        return FastAPIResponse(
+            content=raw,
+            media_type=mime_type,
+            headers={"Content-Disposition": f'{disposition}; filename="{safe_name[:150]}"'},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[mobile] attachment view error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+
+@app.post("/mobile/attachments/{att_uuid}/delete", response_class=HTMLResponse)
+async def mobile_attachment_delete(att_uuid: str, request: Request,
+                                   mobile_session: Optional[str] = Cookie(None)):
+    """Soft-delete di un allegato."""
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return HTMLResponse("", status_code=401)
+    try:
+        form     = await request.form()
+        ver_uuid = form.get("ver_uuid", "")
+        ver_type = form.get("ver_type", "functional")
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Autorizzazione: admin/moderator possono eliminare qualunque allegato;
+        # un tecnico solo quelli delle verifiche eseguite da lui
+        if user.role not in ("admin", "moderator"):
+            cur.execute("""
+                SELECT verification_id, verification_type FROM verification_attachments
+                WHERE uuid=%s AND is_deleted=FALSE
+            """, (att_uuid,))
+            att = cur.fetchone()
+            if not att:
+                conn.close()
+                return HTMLResponse("<p class='text-red-500 text-sm px-4'>Allegato non trovato.</p>", status_code=404)
+            parent_table = "functional_verifications" if att["verification_type"] == "functional" else "verifications"
+            cur.execute(
+                f"SELECT technician_username FROM {parent_table} WHERE id=%s",
+                (att["verification_id"],),
+            )
+            ver = cur.fetchone()
+            if not ver or (ver["technician_username"] or "") != user.username:
+                conn.close()
+                return HTMLResponse(
+                    "<p class='text-red-500 text-sm px-4'>Non autorizzato: puoi eliminare solo gli allegati delle tue verifiche.</p>",
+                    status_code=403,
+                )
+
+        cur.execute("""
+            UPDATE verification_attachments
+            SET is_deleted=TRUE, last_modified=%s
+            WHERE uuid=%s
+        """, (datetime.now(timezone.utc), att_uuid))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] attachment delete error: {e}", exc_info=True)
+        return HTMLResponse("<p class='text-red-500 text-sm px-4'>Errore eliminazione.</p>", status_code=500)
+    return RedirectResponse(
+        url=f"/mobile/attachments/{ver_uuid}?ver_type={ver_type}",
+        status_code=303
+    )
+
+
+# ─── Desktop API: download allegato on-demand ────────────────────────────────
+
+@app.get("/api/attachments/{att_uuid}")
+def api_download_attachment(att_uuid: str, current_user: User = Depends(get_current_user)):
+    """Scarica i byte di un allegato per i client desktop (autenticato con JWT Bearer)."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT filename, file_data, mime_type FROM verification_attachments
+            WHERE uuid=%s AND is_deleted=FALSE
+        """, (att_uuid,))
+        row = cur.fetchone()
+        conn.close()
+        if not row or not row["file_data"]:
+            raise HTTPException(status_code=404, detail="Allegato non trovato o privo di dati")
+        raw = bytes(row["file_data"]) if isinstance(row["file_data"], memoryview) else row["file_data"]
+        from fastapi.responses import Response as FastAPIResponse
+        return FastAPIResponse(
+            content=raw,
+            media_type=row["mime_type"] or "application/octet-stream",
+            headers={"Content-Disposition": f'inline; filename="{row["filename"]}"'},
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[api] attachment download error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+
 # ─── Verifications ───────────────────────────────────────────────────────────
 
 @app.get("/mobile/verifications/{uuid}", response_class=HTMLResponse)
@@ -3179,16 +3945,32 @@ def mobile_verification_detail(uuid: str, request: Request, mobile_session: Opti
         try:
             raw_res = json.loads(verification.get("results_json") or "{}")
             if isinstance(raw_res, list):
-                # Formato lista: [{"name": "Test", "status": "PASS", "value": ...}, ...]
-                results = {
-                    item.get("name", f"Test {i}"): {
-                        "status": item.get("status", ""),
-                        "value":  item.get("value"),
-                        "unit":   item.get("unit"),
-                        "limit":  item.get("limit"),
+                # Formato lista: [{"name": ..., "passed": bool, "value": ..., "ap_name": ...}, ...]
+                # Duplicate names (AP tests) → append index to key
+                seen = {}
+                for i, item in enumerate(raw_res):
+                    if not isinstance(item, dict):
+                        continue
+                    base_name = item.get("name", f"Test {i}")
+                    ap_name   = item.get("ap_name") or ""
+                    key = f"{base_name} — {ap_name}" if ap_name else base_name
+                    # Ensure uniqueness
+                    if key in seen:
+                        seen[key] += 1
+                        key = f"{key} ({seen[key]})"
+                    else:
+                        seen[key] = 1
+                    # Normalizza status: accetta sia "status" che "passed" (bool)
+                    raw_status = item.get("status", "")
+                    if not raw_status and "passed" in item:
+                        raw_status = "PASS" if item["passed"] else "FAIL"
+                    results[key] = {
+                        "status":  raw_status,
+                        "value":   item.get("value"),
+                        "unit":    item.get("unit"),
+                        "limit":   item.get("limit") or item.get("limit_value"),
+                        "ap_name": ap_name or None,
                     }
-                    for i, item in enumerate(raw_res) if isinstance(item, dict)
-                }
             elif isinstance(raw_res, dict):
                 results = raw_res
         except Exception:
@@ -3243,6 +4025,7 @@ def mobile_func_verification_detail(uuid: str, request: Request, mobile_session:
         section_titles = {}
         field_labels   = {}  # {section_key: {field_key: label}}
         section_types  = {}  # {section_key: section_type}
+        row_labels     = {}  # {section_key: {row_key: label}}
         try:
             cur.execute("SELECT name, schema_json FROM functional_profiles WHERE profile_key = %s AND is_deleted = FALSE LIMIT 1", (fv["profile_key"],))
             fp_row = cur.fetchone()
@@ -3256,74 +4039,130 @@ def mobile_func_verification_detail(uuid: str, request: Request, mobile_session:
                         section_titles[sk] = s.get("title", sk)
                         section_types[sk]  = s.get("section_type", "fields")
                         lbl_map = {}
+                        row_lbl_map = {}
                         for field in s.get("fields", []):
                             lbl_map[field.get("key", "")] = field.get("label") or field.get("key", "")
                         for row in s.get("rows", []):
+                            rk = row.get("key", "")
+                            row_lbl_map[rk] = row.get("label") or rk
                             for field in row.get("fields", []):
                                 lbl_map[field.get("key", "")] = field.get("label") or field.get("key", "")
                         field_labels[sk] = lbl_map
+                        row_labels[sk]   = row_lbl_map
         except Exception:
             pass
 
-        # Parse results_json into sections, resolving field keys to human-readable labels
+        # Parse results: prefer structured_results_json (has labels embedded),
+        # fall back to results_json + schema lookup
         sections = []
         try:
-            raw_results = json.loads(fv.get("results_json") or "{}")
-            for section_key, section_data in raw_results.items():
-                if not isinstance(section_data, dict):
+            structured_raw = fv.get("structured_results_json") or ""
+            structured_data = json.loads(structured_raw) if structured_raw else {}
+        except Exception:
+            structured_data = {}
+
+        if structured_data and isinstance(structured_data, dict):
+            # structured_results_json format:
+            # {sk: {title, section_type, fields:[{key,label,value}], rows:[{key,label,values:[{key,label,value}]}]}}
+            for sk, sec in structured_data.items():
+                if not isinstance(sec, dict):
                     continue
-                lbl_map = field_labels.get(section_key, {})
-                sec_type = section_types.get(section_key, "fields")
-
-                # --- detect actual data dict ---
-                # Desktop format A: {"fields": [...], "rows": {field_key: {"esito": val}}}
-                # Desktop format B: {"fields": [...], "rows": [{"key":...,"values":{...}}]}
-                # Mobile format:    {field_key: value_string}
-                if "rows" in section_data and isinstance(section_data["rows"], dict):
-                    actual_data = section_data["rows"]
-                elif "rows" in section_data and isinstance(section_data["rows"], list):
-                    # rows as list of objects
-                    actual_data = {}
-                    for row_obj in section_data["rows"]:
-                        if isinstance(row_obj, dict):
-                            rk = row_obj.get("key") or row_obj.get("label", "")
-                            rv = row_obj.get("value") or row_obj.get("esito") or row_obj.get("result", "")
-                            if rk:
-                                actual_data[rk] = rv
-                elif "fields" in section_data and set(section_data.keys()) <= {"fields", "rows", "section_type"}:
-                    # Only metadata keys — try fields list for saved values
-                    actual_data = {}
-                    for f in section_data.get("fields", []):
-                        if isinstance(f, dict):
-                            fk2 = f.get("key", "")
-                            fv2 = f.get("value") or f.get("esito") or f.get("result")
-                            if fk2 and fv2 is not None:
-                                actual_data[fk2] = fv2
-                else:
-                    # Mobile-saved flat dict
-                    actual_data = {k: v for k, v in section_data.items()
-                                   if k not in ("fields", "rows", "section_type")}
-
-                # Resolve keys → labels, and unwrap nested dicts {"esito": val}
+                sec_type = sec.get("section_type", "fields")
                 resolved = {}
-                for fk, fv_v in actual_data.items():
-                    label = lbl_map.get(fk, fk)
-                    if isinstance(fv_v, dict):
-                        val = (fv_v.get("esito") or fv_v.get("value") or
-                               fv_v.get("result") or fv_v.get("stato") or str(fv_v))
-                    else:
-                        val = fv_v
-                    if val is not None and val != "":
-                        resolved[label] = val
+
+                # Extract from fields list
+                for f in sec.get("fields", []):
+                    if isinstance(f, dict):
+                        lbl = f.get("label") or f.get("key", "")
+                        val = f.get("value")
+                        if lbl and val is not None and val != "":
+                            resolved[lbl] = val
+
+                # Extract from rows list
+                for r in sec.get("rows", []):
+                    if not isinstance(r, dict):
+                        continue
+                    row_lbl = r.get("label") or r.get("key", "")
+                    for v in r.get("values", []):
+                        if not isinstance(v, dict):
+                            continue
+                        fk2  = v.get("key", "")
+                        flbl = v.get("label") or fk2
+                        val  = v.get("value")
+                        if val is not None and val != "":
+                            if fk2 in ("esito", "result", "stato"):
+                                label = row_lbl
+                            else:
+                                label = f"{row_lbl} — {flbl}" if row_lbl else flbl
+                            resolved[label] = val
 
                 if resolved:
                     sections.append({
-                        "title": section_titles.get(section_key, section_key),
+                        "title":        sec.get("title", sk),
                         "section_type": sec_type,
-                        "data": resolved,
+                        "data":         resolved,
                     })
-        except Exception as ex:
-            logger.error(f"[mobile] fv detail parse error: {ex}", exc_info=True)
+        else:
+            # Fallback: parse results_json with schema label lookup
+            try:
+                raw_results = json.loads(fv.get("results_json") or "{}")
+                for section_key, section_data in raw_results.items():
+                    if not isinstance(section_data, dict):
+                        continue
+                    lbl_map  = field_labels.get(section_key, {})
+                    sec_type = section_types.get(section_key, "fields")
+
+                    if "rows" in section_data and isinstance(section_data["rows"], dict):
+                        actual_data = section_data["rows"]
+                    elif "rows" in section_data and isinstance(section_data["rows"], list):
+                        actual_data = {}
+                        for row_obj in section_data["rows"]:
+                            if isinstance(row_obj, dict):
+                                rk = row_obj.get("key") or row_obj.get("label", "")
+                                rv = row_obj.get("value") or row_obj.get("esito") or row_obj.get("result", "")
+                                if rk:
+                                    actual_data[rk] = rv
+                    elif "fields" in section_data and set(section_data.keys()) <= {"fields", "rows", "section_type"}:
+                        actual_data = {}
+                        for f in section_data.get("fields", []):
+                            if isinstance(f, dict):
+                                fk2 = f.get("key", "")
+                                fv2 = f.get("value") or f.get("esito") or f.get("result")
+                                if fk2 and fv2 is not None:
+                                    actual_data[fk2] = fv2
+                    else:
+                        actual_data = {k: v for k, v in section_data.items()
+                                       if k not in ("fields", "rows", "section_type")}
+
+                    resolved = {}
+                    r_lbl_map = row_labels.get(section_key, {})
+                    for fk, fv_v in actual_data.items():
+                        if "__" in fk:
+                            rk2, fk2 = fk.split("__", 1)
+                            row_label = r_lbl_map.get(rk2, rk2)
+                            if fk2 in ("esito", "result", "stato"):
+                                label = row_label
+                            else:
+                                field_label = lbl_map.get(fk2, fk2)
+                                label = f"{row_label} — {field_label}"
+                        else:
+                            label = lbl_map.get(fk, fk)
+                        if isinstance(fv_v, dict):
+                            val = (fv_v.get("esito") or fv_v.get("value") or
+                                   fv_v.get("result") or fv_v.get("stato") or str(fv_v))
+                        else:
+                            val = fv_v
+                        if val is not None and val != "":
+                            resolved[label] = val
+
+                    if resolved:
+                        sections.append({
+                            "title":        section_titles.get(section_key, section_key),
+                            "section_type": sec_type,
+                            "data":         resolved,
+                        })
+            except Exception as ex:
+                logger.error(f"[mobile] fv detail parse error: {ex}", exc_info=True)
 
         conn.close()
     except HTTPException:
@@ -3335,6 +4174,10 @@ def mobile_func_verification_detail(uuid: str, request: Request, mobile_session:
     return mobile_templates.TemplateResponse("func_verification_detail.html", {
         "request": request, "user": user,
         "fv": fv, "device": device, "sections": sections,
+        "used_instruments": json.loads(fv.get("used_instruments_json") or "[]") or (
+            [{"instrument": fv.get("mti_instrument"), "serial": fv.get("mti_serial"), "cal_date": str(fv.get("mti_cal_date") or "")}]
+            if fv.get("mti_instrument") else []
+        ),
         "profile_name": profile_name,
         "back_url": f"/mobile/devices/{device['uuid']}",
     })
@@ -3361,118 +4204,32 @@ def mobile_func_verification_report(uuid: str, request: Request, mobile_session:
             conn.close()
             raise HTTPException(status_code=404)
 
-        device = {
-            "uuid": fv["device_uuid"], "description": fv["description"],
-            "manufacturer": fv["manufacturer"], "model": fv["model"],
-            "serial_number": fv["device_serial"],
-            "customer_inventory": fv["customer_inventory"],
-            "ams_inventory": fv["ams_inventory"],
-        }
-
         cur.execute("""
             SELECT dest.name AS dest_name, c.name AS cust_name
             FROM devices d
             JOIN destinations dest ON dest.id = d.destination_id
             JOIN customers c ON c.id = dest.customer_id
             WHERE d.uuid = %s
-        """, (device["uuid"],))
+        """, (fv["device_uuid"],))
         loc_row = cur.fetchone()
-        customer    = {"name": loc_row["cust_name"]} if loc_row else None
-        destination = {"name": loc_row["dest_name"]} if loc_row else None
 
+        # Profile display name
         profile_name = fv["profile_key"]
-        section_titles = {}
-        field_labels_r  = {}
-        section_types_r = {}
         try:
-            cur.execute("SELECT name, schema_json FROM functional_profiles WHERE profile_key = %s AND is_deleted = FALSE LIMIT 1", (fv["profile_key"],))
+            cur.execute("SELECT name FROM functional_profiles WHERE profile_key = %s AND is_deleted = FALSE LIMIT 1",
+                        (fv["profile_key"],))
             fp_row = cur.fetchone()
-            if fp_row:
-                profile_name = fp_row["name"] or fv["profile_key"]
-                if fp_row["schema_json"]:
-                    raw_schema = json.loads(fp_row["schema_json"])
-                    secs = raw_schema if isinstance(raw_schema, list) else raw_schema.get("sections", [])
-                    for s in secs:
-                        sk = s.get("key", "")
-                        section_titles[sk]   = s.get("title", sk)
-                        section_types_r[sk]  = s.get("section_type", "fields")
-                        lbl_map = {}
-                        for field in s.get("fields", []):
-                            lbl_map[field.get("key", "")] = field.get("label") or field.get("key", "")
-                        for row in s.get("rows", []):
-                            if isinstance(row, dict):
-                                for field in row.get("fields", []):
-                                    lbl_map[field.get("key", "")] = field.get("label") or field.get("key", "")
-                        field_labels_r[sk] = lbl_map
+            if fp_row and fp_row["name"]:
+                profile_name = fp_row["name"]
         except Exception:
             pass
 
-        sections = []
-        try:
-            raw_results = json.loads(fv.get("results_json") or "{}")
-            for section_key, section_data in raw_results.items():
-                if not isinstance(section_data, dict):
-                    continue
-                lbl_map  = field_labels_r.get(section_key, {})
-                sec_type = section_types_r.get(section_key, "fields")
-
-                if "rows" in section_data and isinstance(section_data["rows"], dict):
-                    actual_data = section_data["rows"]
-                elif "rows" in section_data and isinstance(section_data["rows"], list):
-                    actual_data = {}
-                    for row_obj in section_data["rows"]:
-                        if isinstance(row_obj, dict):
-                            rk = row_obj.get("key") or row_obj.get("label", "")
-                            rv = row_obj.get("value") or row_obj.get("esito") or row_obj.get("result", "")
-                            if rk:
-                                actual_data[rk] = rv
-                elif "fields" in section_data and set(section_data.keys()) <= {"fields", "rows", "section_type"}:
-                    actual_data = {}
-                    for f in section_data.get("fields", []):
-                        if isinstance(f, dict):
-                            fk2 = f.get("key", "")
-                            fv2 = f.get("value") or f.get("esito") or f.get("result")
-                            if fk2 and fv2 is not None:
-                                actual_data[fk2] = fv2
-                else:
-                    actual_data = {k: v for k, v in section_data.items()
-                                   if k not in ("fields", "rows", "section_type")}
-
-                resolved = {}
-                for fk, fv_v in actual_data.items():
-                    label = lbl_map.get(fk, fk)
-                    if isinstance(fv_v, dict):
-                        val = (fv_v.get("esito") or fv_v.get("value") or
-                               fv_v.get("result") or fv_v.get("stato") or str(fv_v))
-                    else:
-                        val = fv_v
-                    if val is not None and val != "":
-                        resolved[label] = val
-
-                if resolved:
-                    sections.append({
-                        "title": section_titles.get(section_key, section_key),
-                        "section_type": sec_type,
-                        "data": resolved,
-                    })
-        except Exception:
-            pass
-
-        signature_img = None
-        try:
-            cur.execute("SELECT signature_data FROM signatures WHERE username = %s AND is_deleted = FALSE LIMIT 1",
-                        (fv.get("technician_username"),))
-            sig_row = cur.fetchone()
-            if sig_row and sig_row.get("signature_data"):
-                import base64
-                sig_bytes = sig_row["signature_data"]
-                if isinstance(sig_bytes, (bytes, bytearray)):
-                    signature_img = base64.b64encode(sig_bytes).decode()
-                elif isinstance(sig_bytes, str):
-                    signature_img = sig_bytes
-        except Exception:
-            pass
-
+        _sig_username = fv.get("technician_username") or user.get("username")
+        cur.execute(
+            "SELECT signature_data FROM signatures WHERE username = %s LIMIT 1",
+            (_sig_username,)
+        )
+        sig_row = cur.fetchone()
         conn.close()
     except HTTPException:
         raise
@@ -3480,12 +4237,118 @@ def mobile_func_verification_report(uuid: str, request: Request, mobile_session:
         logger.error(f"[mobile] func verification report error: {e}", exc_info=True)
         raise HTTPException(status_code=500)
 
-    return mobile_templates.TemplateResponse("func_verification_report.html", {
-        "request": request, "user": user,
-        "fv": fv, "device": device, "customer": customer, "destination": destination,
-        "profile_name": profile_name, "sections": sections,
-        "signature_img": signature_img,
-    })
+    # Build structured_results for PDF (same format as desktop functional_results)
+    functional_results = {}
+    try:
+        raw = fv.get("structured_results_json") or ""
+        functional_results = json.loads(raw) if raw else {}
+    except Exception:
+        pass
+    # Fallback: results_json
+    if not functional_results:
+        try:
+            functional_results = json.loads(fv.get("results_json") or "{}") or {}
+        except Exception:
+            pass
+
+    device_info = {
+        "uuid":               fv["device_uuid"],
+        "description":        fv.get("description")        or "",
+        "manufacturer":       fv.get("manufacturer")       or "",
+        "model":              fv.get("model")               or "",
+        "serial_number":      fv.get("device_serial")      or "",
+        "customer_inventory": fv.get("customer_inventory") or "",
+        "ams_inventory":      fv.get("ams_inventory")      or "",
+        "department":         "",
+    }
+    customer_info    = {"name": loc_row["cust_name"]} if loc_row else {"name": "N/D"}
+    destination_info = {"name": loc_row["dest_name"]} if loc_row else {"name": "N/D"}
+
+    mti_info = {
+        "instrument": fv.get("mti_instrument") or "",
+        "serial":     fv.get("mti_serial")     or "",
+        "version":    "",
+        "cal_date":   str(fv.get("mti_cal_date") or ""),
+    }
+    # Preferisci la lista multi-strumenti se disponibile
+    try:
+        _ui_raw = fv.get("used_instruments_json") or ""
+        _ui_list = json.loads(_ui_raw) if _ui_raw else []
+    except Exception:
+        _ui_list = []
+    if _ui_list:
+        used_instruments = _ui_list
+    else:
+        used_instruments = [mti_info] if mti_info.get("instrument") else []
+
+    verification_data = {
+        "date":                   str(fv.get("verification_date") or ""),
+        "profile_name":           profile_name,
+        "overall_status":         fv.get("overall_status") or "",
+        "results":                [],
+        "visual_inspection_data": {"notes": fv.get("notes") or ""},
+        "verification_code":      fv.get("verification_code") or "N/A",
+        "functional_results":     functional_results,
+        "used_instruments":       used_instruments,
+    }
+
+    # Signature: base64 string / bytes / memoryview → bytes
+    signature_data = None
+    if sig_row and sig_row.get("signature_data"):
+        raw_sig = sig_row["signature_data"]
+        if isinstance(raw_sig, memoryview):
+            signature_data = bytes(raw_sig)
+        elif isinstance(raw_sig, (bytes, bytearray)):
+            signature_data = bytes(raw_sig)
+        elif isinstance(raw_sig, str):
+            try:
+                signature_data = base64.b64decode(raw_sig)
+            except Exception:
+                pass
+
+    from app import config as _app_cfg
+    logo_path = None
+    # 1. Immagine di intestazione specifica per il mobile (in mobile/static/)
+    for _ln in ("report_header.png", "report_header.jpg", "report_header.jpeg"):
+        _lp = os.path.join(_MOBILE_STATIC, _ln)
+        if os.path.exists(_lp):
+            logo_path = _lp
+            break
+    # 2. Fallback: logo desktop nella cartella del programma
+    if not logo_path:
+        for _ln in ("logo.png", "logo.jpg"):
+            _lp = os.path.join(_app_cfg.BASE_DIR, _ln)
+            if os.path.exists(_lp):
+                logo_path = _lp
+                break
+    report_settings = {"logo_path": logo_path}
+
+    technician_name = fv.get("technician_name") or "N/D"
+    ver_code = fv.get("verification_code") or "report"
+
+    import tempfile
+    import server_report_generator as _srg
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".pdf", prefix="vf_report_")
+    os.close(tmp_fd)
+    try:
+        _srg.create_report(
+            tmp_path, device_info, customer_info, destination_info,
+            mti_info, report_settings, verification_data,
+            technician_name, signature_data,
+        )
+        with open(tmp_path, "rb") as f:
+            pdf_bytes = f.read()
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+    return FastAPIResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="VF_{ver_code}.pdf"'},
+    )
 
 
 # ─── Instruments ─────────────────────────────────────────────────────────────
@@ -3512,78 +4375,21 @@ def mobile_verification_report(uuid: str, request: Request, mobile_session: Opti
             conn.close()
             raise HTTPException(status_code=404)
 
-        # Parse applied parts
-        raw_ap = verification.get("applied_parts_json")
-        applied_parts = []
-        if raw_ap:
-            try:
-                applied_parts = json.loads(raw_ap) if isinstance(raw_ap, str) else raw_ap
-            except Exception:
-                pass
-
-        nvd = verification.get("next_verification_date")
-        device = {
-            "uuid": verification["device_uuid"],
-            "description": verification["description"],
-            "manufacturer": verification["manufacturer"],
-            "model": verification["model"],
-            "serial_number": verification["device_serial"],
-            "customer_inventory": verification.get("customer_inventory"),
-            "ams_inventory": verification.get("ams_inventory"),
-            "department": verification.get("department"),
-            "applied_parts": applied_parts,
-            "next_verification_date": nvd.isoformat() if nvd and not isinstance(nvd, str) else nvd,
-        }
-
-        # Get destination & customer
         cur.execute("""
             SELECT dest.name AS dest_name, c.name AS cust_name
             FROM devices d
             JOIN destinations dest ON dest.id = d.destination_id
             JOIN customers c ON c.id = dest.customer_id
             WHERE d.uuid = %s
-        """, (device["uuid"],))
+        """, (verification["device_uuid"],))
         loc_row = cur.fetchone()
-        customer    = {"name": loc_row["cust_name"]}    if loc_row else None
-        destination = {"name": loc_row["dest_name"]}    if loc_row else None
 
-        # Parse results
-        results = {}
-        try:
-            raw_res = json.loads(verification.get("results_json") or "{}")
-            if isinstance(raw_res, list):
-                results = {item.get("name", f"Test {i}"): {
-                    "status": item.get("status",""), "value": item.get("value"),
-                    "unit": item.get("unit"), "limit": item.get("limit"),
-                } for i, item in enumerate(raw_res) if isinstance(item, dict)}
-            elif isinstance(raw_res, dict):
-                results = raw_res
-        except Exception:
-            pass
-
-        # Parse visual inspection
-        visual_inspection = {}
-        try:
-            visual_inspection = json.loads(verification.get("visual_inspection_json") or "{}")
-        except Exception:
-            pass
-
-        # Try to load signature image (base64)
-        signature_img = None
-        try:
-            cur.execute("SELECT signature_data FROM signatures WHERE username = %s AND is_deleted = FALSE LIMIT 1",
-                        (verification.get("technician_username"),))
-            sig_row = cur.fetchone()
-            if sig_row and sig_row.get("signature_data"):
-                import base64
-                sig_bytes = sig_row["signature_data"]
-                if isinstance(sig_bytes, (bytes, bytearray)):
-                    signature_img = base64.b64encode(sig_bytes).decode()
-                elif isinstance(sig_bytes, str):
-                    signature_img = sig_bytes
-        except Exception:
-            pass
-
+        _sig_username = verification.get("technician_username") or user.get("username")
+        cur.execute(
+            "SELECT signature_data FROM signatures WHERE username = %s LIMIT 1",
+            (_sig_username,)
+        )
+        sig_row = cur.fetchone()
         conn.close()
     except HTTPException:
         raise
@@ -3591,14 +4397,114 @@ def mobile_verification_report(uuid: str, request: Request, mobile_session: Opti
         logger.error(f"[mobile] verification report error: {e}", exc_info=True)
         raise HTTPException(status_code=500)
 
-    return mobile_templates.TemplateResponse("verification_report.html", {
-        "request": request, "user": user,
-        "verification": verification, "device": device,
-        "customer": customer, "destination": destination,
-        "results": results, "visual_inspection": visual_inspection,
-        "signature_img": signature_img,
-        "now_date": date.today().isoformat(),
-    })
+    # Build report data structures (same as desktop services.py)
+    device_info = {
+        "uuid":               verification["device_uuid"],
+        "description":        verification.get("description") or "",
+        "manufacturer":       verification.get("manufacturer") or "",
+        "model":              verification.get("model") or "",
+        "serial_number":      verification.get("device_serial") or "",
+        "customer_inventory": verification.get("customer_inventory") or "",
+        "ams_inventory":      verification.get("ams_inventory") or "",
+        "department":         verification.get("department") or "",
+    }
+    customer_info    = {"name": loc_row["cust_name"]} if loc_row else {"name": "N/D"}
+    destination_info = {"name": loc_row["dest_name"]} if loc_row else {"name": "N/D"}
+
+    mti_info = {
+        "instrument": verification.get("mti_instrument") or "",
+        "serial":     verification.get("mti_serial")     or "",
+        "version":    "",
+        "cal_date":   str(verification.get("mti_cal_date") or ""),
+    }
+
+    # Parse results list
+    results = []
+    try:
+        raw_res = json.loads(verification.get("results_json") or "[]")
+        if isinstance(raw_res, list):
+            results = raw_res
+        elif isinstance(raw_res, dict):
+            results = [{"name": k, **v} for k, v in raw_res.items()]
+    except Exception:
+        pass
+
+    # Parse visual inspection
+    visual_inspection_data = {}
+    try:
+        visual_inspection_data = json.loads(verification.get("visual_inspection_json") or "{}")
+    except Exception:
+        pass
+
+    verification_data = {
+        "date":                 str(verification.get("verification_date") or ""),
+        "profile_name":         verification.get("profile_name") or "",
+        "overall_status":       verification.get("overall_status") or "",
+        "results":              results,
+        "visual_inspection_data": visual_inspection_data,
+        "verification_code":    verification.get("verification_code") or "N/A",
+        "functional_results":   {},
+    }
+
+    # Signature: base64 string / bytes / memoryview → bytes
+    signature_data = None
+    if sig_row and sig_row.get("signature_data"):
+        raw_sig = sig_row["signature_data"]
+        if isinstance(raw_sig, memoryview):
+            signature_data = bytes(raw_sig)
+        elif isinstance(raw_sig, (bytes, bytearray)):
+            signature_data = bytes(raw_sig)
+        elif isinstance(raw_sig, str):
+            try:
+                signature_data = base64.b64decode(raw_sig)
+            except Exception:
+                pass
+
+    # Logo
+    from app import config as _app_cfg
+    logo_path = None
+    # 1. Immagine di intestazione specifica per il mobile (in mobile/static/)
+    for _ln in ("report_header.png", "report_header.jpg", "report_header.jpeg"):
+        _lp = os.path.join(_MOBILE_STATIC, _ln)
+        if os.path.exists(_lp):
+            logo_path = _lp
+            break
+    # 2. Fallback: logo desktop nella cartella del programma
+    if not logo_path:
+        for _ln in ("logo.png", "logo.jpg"):
+            _lp = os.path.join(_app_cfg.BASE_DIR, _ln)
+            if os.path.exists(_lp):
+                logo_path = _lp
+                break
+    report_settings = {"logo_path": logo_path}
+
+    technician_name = verification.get("technician_name") or "N/D"
+    ver_code = verification.get("verification_code") or "report"
+
+    # Generate PDF
+    import tempfile
+    import server_report_generator as _srg
+    tmp_fd, tmp_path = tempfile.mkstemp(suffix=".pdf", prefix="ve_report_")
+    os.close(tmp_fd)
+    try:
+        _srg.create_report(
+            tmp_path, device_info, customer_info, destination_info,
+            mti_info, report_settings, verification_data,
+            technician_name, signature_data,
+        )
+        with open(tmp_path, "rb") as f:
+            pdf_bytes = f.read()
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+    return FastAPIResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="VE_{ver_code}.pdf"'},
+    )
 
 
 @app.get("/mobile/instruments", response_class=HTMLResponse)
@@ -3622,11 +4528,30 @@ def mobile_instruments_list(request: Request, mobile_session: Optional[str] = Co
         logger.error(f"[mobile] instruments list error: {e}", exc_info=True)
         instruments = []
 
+    today = date.today()
+    warn_threshold = today + timedelta(days=60)
+    # Convert to plain dicts and compute expiry_date = calibration_date + 1 year
+    instruments_out = []
+    for instr in instruments:
+        d = dict(instr)
+        cal = d.get("calibration_date")
+        if cal:
+            try:
+                cal_d = cal if isinstance(cal, date) else date.fromisoformat(str(cal)[:10])
+                exp_d = cal_d.replace(year=cal_d.year + 1)
+                d["expiry_date"] = exp_d.isoformat()
+            except Exception:
+                d["expiry_date"] = None
+        else:
+            d["expiry_date"] = None
+        instruments_out.append(d)
+
     return mobile_templates.TemplateResponse("instruments.html", {
         "request": request, "user": user, "active_nav": "instruments",
-        "instruments": instruments,
-        "today": date.today().isoformat(),
-        "warn_threshold": (date.today() + timedelta(days=60)).isoformat(),
+        "instruments": instruments_out,
+        "today": today.isoformat(),
+        "warn_threshold": warn_threshold.isoformat(),
+        "pending_assignments_count": _get_pending_assignments_count(user.username, user.role),
     })
 
 
@@ -3911,7 +4836,16 @@ async def mobile_save_verification(device_uuid: str, request: Request,
 
     verification_date = form.get("verification_date") or date.today().isoformat()
     profile_key       = form.get("profile_key", "").strip()
-    overall_status    = form.get("overall_status", "PASSATO")
+    overall_status    = form.get("overall_status", "CONFORME")
+    # Normalize to consistent values used by desktop app
+    _PASS_NORM = {"PASS", "PASSATO", "OK", "CONFORME"}
+    _ANNOT_NORM = {"CONFORME CON ANNOTAZIONE"}
+    if overall_status.upper() in _ANNOT_NORM or overall_status == "CONFORME CON ANNOTAZIONE":
+        overall_status = "CONFORME CON ANNOTAZIONE"
+    elif overall_status.upper() in _PASS_NORM:
+        overall_status = "CONFORME"
+    else:
+        overall_status = "NON CONFORME"
     instrument_uuid   = form.get("instrument_uuid", "").strip()
     notes             = form.get("notes", "").strip() or None
     test_count        = int(form.get("test_count", 0) or 0)
@@ -3949,14 +4883,43 @@ async def mobile_save_verification(device_uuid: str, request: Request,
             "back_url": f"/mobile/devices/{device_uuid}",
         })
 
-    # Build results dict from form fields
-    results: Dict[str, Any] = {}
+    # Build results list from form fields (list preserves duplicates/order)
+    _PASS_VALUES = {"PASS", "PASSATO", "OK", "CONFORME"}
+    results_list = []
+    missing_values = []
     for i in range(test_count):
         test_name   = form.get(f"test_name_{i}", "").strip()
         test_status = form.get(f"test_status_{i}", "PASS")
         test_value  = form.get(f"test_value_{i}", "").strip()
+        test_limit  = form.get(f"test_limit_{i}", "").strip()
+        test_unit   = form.get(f"test_unit_{i}", "").strip()
+        test_ap     = form.get(f"test_ap_name_{i}", "").strip()
         if test_name:
-            results[test_name] = {"status": test_status, "value": test_value or None}
+            # Tutti i valori di misura sono obbligatori: un test senza valore
+            # non può essere registrato (le pause non hanno valore)
+            if "PAUSA" not in test_name.upper() and not test_value:
+                missing_values.append(test_ap and f"{test_name} ({test_ap})" or test_name)
+            results_list.append({
+                "name":        test_name,
+                "passed":      test_status.upper() in _PASS_VALUES,
+                "value":       test_value or None,
+                "unit":        test_unit  or None,
+                "limit_value": test_limit or None,
+                "status":      test_status,
+                "ap_name":     test_ap or None,
+            })
+
+    if missing_values:
+        elenco = ", ".join(missing_values[:3]) + ("…" if len(missing_values) > 3 else "")
+        conn = get_db_connection()
+        device, profiles, instruments = _load_form_data(conn)
+        return mobile_templates.TemplateResponse("new_verification.html", {
+            "request": request, "user": user,
+            "device": device, "profiles": profiles, "instruments": instruments,
+            "today": verification_date, "selected_profile": profile_key,
+            "error": f"Inserire il valore misurato per TUTTI i test. Mancanti: {len(missing_values)} ({elenco}).",
+            "back_url": f"/mobile/devices/{device_uuid}",
+        })
 
     # Build visual inspection JSON
     VI_ITEMS = [
@@ -4032,10 +4995,10 @@ async def mobile_save_verification(device_uuid: str, request: Request,
                 mti_instrument, mti_serial, mti_cal_date,
                 technician_name, technician_username, verification_code, notes,
                 last_modified, is_deleted, is_synced
-            ) VALUES (%s,%s,%s,%s, %s,%s,%s, %s,%s,%s, %s,%s,%s,%s, %s,FALSE,TRUE)
+            ) VALUES (%s,%s,%s,%s, %s,%s,%s, %s,%s,%s, %s,%s,%s,%s, %s,FALSE,FALSE)
         """, (
             new_uuid, device_row["id"], verification_date, profile_name,
-            json.dumps(results), overall_status, visual_inspection_json,
+            json.dumps(results_list), overall_status, visual_inspection_json,
             mti_instrument, mti_serial, mti_cal_date,
             tech_name, user.username, verification_code, notes,
             now_ts,
@@ -4133,18 +5096,44 @@ async def mobile_save_func_verification(device_uuid: str, request: Request,
     form = await request.form()
     verification_date = form.get("verification_date") or date.today().isoformat()
     profile_key       = form.get("profile_key", "").strip()
-    overall_status    = form.get("overall_status", "PASSATO")
+    overall_status    = form.get("overall_status", "CONFORME")
+    # Normalize to consistent values used by desktop app
+    _PASS_NORM = {"PASS", "PASSATO", "OK", "CONFORME"}
+    _ANNOT_NORM = {"CONFORME CON ANNOTAZIONE"}
+    if overall_status.upper() in _ANNOT_NORM or overall_status == "CONFORME CON ANNOTAZIONE":
+        overall_status = "CONFORME CON ANNOTAZIONE"
+    elif overall_status.upper() in _PASS_NORM:
+        overall_status = "CONFORME"
+    else:
+        overall_status = "NON CONFORME"
     notes             = form.get("notes", "").strip() or None
-    instrument_uuid   = form.get("instrument_uuid", "").strip()
     results: Dict[str, Any] = {}
     for key, value in form.items():
-        if key.startswith("field_") and value:
-            parts = key.split("_", 2)  # field_SECTION_FIELD
+        # Table/checklist naming: fld__SECTIONKEY__ROWKEY__FIELDKEY  (3 parts)
+        # Generic fields naming:  fld__SECTIONKEY__FIELDKEY           (2 parts)
+        if key.startswith("fld__") and value:
+            tail = key[5:]  # strip "fld__"
+            parts = tail.split("__", 2)  # at most: SECTIONKEY, ROWKEY_OR_FIELDKEY, FIELDKEY
             if len(parts) == 3:
-                _, section_key, field_key = parts
-                if section_key not in results:
-                    results[section_key] = {}
-                results[section_key][field_key] = value
+                sk, rk, fk = parts
+                if sk not in results:
+                    results[sk] = {}
+                entry_key = f"{rk}__{fk}" if rk else fk
+                results[sk][entry_key] = value
+            elif len(parts) == 2:
+                # Generic field: fld__SK__FK
+                sk, fk = parts
+                if sk not in results:
+                    results[sk] = {}
+                results[sk][fk] = value
+        # Legacy naming (field_SECTION_FIELD) – kept for backward compat
+        elif key.startswith("field_") and value:
+            parts = key.split("_", 2)
+            if len(parts) == 3:
+                _, sk, fk = parts
+                if sk not in results:
+                    results[sk] = {}
+                results[sk][fk] = value
 
     try:
         conn = get_db_connection()
@@ -4155,14 +5144,89 @@ async def mobile_save_func_verification(device_uuid: str, request: Request,
             conn.close()
             raise HTTPException(status_code=404)
 
-        # Look up instrument
-        mti_instrument = None; mti_serial = None; mti_cal_date = None
-        if instrument_uuid:
-            cur.execute("SELECT instrument_name, serial_number, calibration_date FROM mti_instruments WHERE uuid = %s AND is_deleted = FALSE", (instrument_uuid,))
+        # Look up instruments (multiple instrument_uuid values supported)
+        instrument_uuids = form.getlist("instrument_uuid") if hasattr(form, "getlist") else []
+        if not instrument_uuids:
+            single = form.get("instrument_uuid", "").strip()
+            if single:
+                instrument_uuids = [single]
+
+        used_instruments = []
+        for iuuid in instrument_uuids:
+            iuuid = iuuid.strip()
+            if not iuuid:
+                continue
+            cur.execute(
+                "SELECT instrument_name, serial_number, calibration_date FROM mti_instruments WHERE uuid = %s AND is_deleted = FALSE",
+                (iuuid,)
+            )
             instr_row = cur.fetchone()
-            mti_instrument = instr_row["instrument_name"] if instr_row else None
-            mti_serial     = instr_row["serial_number"]   if instr_row else None
-            mti_cal_date   = instr_row["calibration_date"] if instr_row else None
+            if instr_row:
+                used_instruments.append({
+                    "instrument": instr_row["instrument_name"] or "",
+                    "serial":     instr_row["serial_number"]   or "",
+                    "cal_date":   str(instr_row["calibration_date"] or ""),
+                })
+
+        # Backward-compat single fields: use first instrument
+        mti_instrument = used_instruments[0]["instrument"] if used_instruments else None
+        mti_serial     = used_instruments[0]["serial"]     if used_instruments else None
+        mti_cal_date   = used_instruments[0]["cal_date"]   if used_instruments else None
+        used_instruments_json = json.dumps(used_instruments) if used_instruments else None
+
+        # Build structured_results_json in the format expected by the desktop/report:
+        # {section_key: {title, section_type, order, show_in_summary, fields:[{key,label,value}], rows:[{key,label,values:[{key,label,value}]}]}}
+        structured = {}
+        try:
+            cur.execute("SELECT schema_json FROM functional_profiles WHERE profile_key = %s AND is_deleted = FALSE LIMIT 1", (profile_key,))
+            fp_schema_row = cur.fetchone()
+            if fp_schema_row and fp_schema_row["schema_json"]:
+                raw_schema = json.loads(fp_schema_row["schema_json"])
+                schema_sections = raw_schema if isinstance(raw_schema, list) else raw_schema.get("sections", [])
+                for sec_idx, s in enumerate(schema_sections):
+                    sk = s.get("key", "")
+                    sec_data = results.get(sk, {})
+                    sec_type = s.get("section_type", "fields")
+                    rows_out  = []
+                    fields_out = []
+                    # Build rows from schema rows
+                    for r in s.get("rows", []):
+                        rk = r.get("key", "")
+                        values_out = []
+                        for f in r.get("fields", []):
+                            fk = f.get("key", "")
+                            composite = f"{rk}__{fk}" if rk else fk
+                            val = sec_data.get(composite)
+                            values_out.append({
+                                "key":   fk,
+                                "label": f.get("label") or fk,
+                                "value": val if val is not None else "",
+                            })
+                        rows_out.append({
+                            "key":    rk,
+                            "label":  r.get("label") or rk,
+                            "values": values_out,
+                        })
+                    # Build fields from schema fields (direct fields sections)
+                    for f in s.get("fields", []):
+                        fk = f.get("key", "")
+                        val = sec_data.get(fk)
+                        fields_out.append({
+                            "key":   fk,
+                            "label": f.get("label") or fk,
+                            "value": val if val is not None else "",
+                        })
+                    structured[sk] = {
+                        "title":           s.get("title", sk),
+                        "section_type":    sec_type,
+                        "order":           sec_idx,
+                        "show_in_summary": s.get("show_in_summary", False),
+                        "fields":          fields_out,
+                        "rows":            rows_out,
+                    }
+        except Exception as _e:
+            logger.warning(f"[mobile] structured_results build error: {_e}")
+            structured = results  # fallback to flat results
 
         new_uuid = str(__import__("uuid").uuid4())
         now_ts   = datetime.now(timezone.utc)
@@ -4201,15 +5265,15 @@ async def mobile_save_func_verification(device_uuid: str, request: Request,
                 technician_name, technician_username,
                 mti_instrument, mti_serial, mti_cal_date,
                 results_json, structured_results_json, overall_status, notes,
-                verification_code,
+                verification_code, used_instruments_json,
                 last_modified, is_deleted, is_synced
-            ) VALUES (%s,%s,%s,%s, %s,%s, %s,%s,%s, %s,%s,%s,%s, %s, %s,FALSE,TRUE)
+            ) VALUES (%s,%s,%s,%s, %s,%s, %s,%s,%s, %s,%s,%s,%s, %s,%s, %s,FALSE,FALSE)
         """, (
             new_uuid, device_row["id"], profile_key, verification_date,
             tech_name, user.username,
             mti_instrument, mti_serial, mti_cal_date,
-            json.dumps(results), json.dumps(results), overall_status, notes,
-            verification_code_vf,
+            json.dumps(results), json.dumps(structured), overall_status, notes,
+            verification_code_vf, used_instruments_json,
             now_ts,
         ))
         conn.commit()
@@ -4244,6 +5308,7 @@ async def mobile_save_func_verification(device_uuid: str, request: Request,
 
 @app.get("/mobile/partials/profile-tests", response_class=HTMLResponse)
 def mobile_profile_tests_partial(request: Request, profile_key: str = "",
+                                  device_uuid: str = "",
                                   mobile_session: Optional[str] = Cookie(None)):
     user = _mobile_user_from_cookie(mobile_session)
     if not user:
@@ -4262,19 +5327,61 @@ def mobile_profile_tests_partial(request: Request, profile_key: str = "",
                 ORDER BY pt.id
             """, (profile_key,))
             raw_tests = cur.fetchall()
+
+            # Fetch device applied parts
+            applied_parts = []
+            if device_uuid:
+                cur.execute(
+                    "SELECT applied_parts_json FROM devices WHERE uuid = %s AND is_deleted = FALSE",
+                    (device_uuid,)
+                )
+                dev_row = cur.fetchone()
+                if dev_row and dev_row.get("applied_parts_json"):
+                    try:
+                        applied_parts = json.loads(dev_row["applied_parts_json"]) or []
+                    except Exception:
+                        pass
+
             conn.close()
+
             for t in raw_tests:
                 limits = {}
                 try:
                     limits = json.loads(t["limits_json"] or "{}")
                 except Exception:
                     pass
-                tests.append({
-                    "name": t["name"],
-                    "parameter": t["parameter"],
-                    "is_applied_part_test": t["is_applied_part_test"],
-                    "limits": limits,  # dict: {"::ST": {"unit": "mA", "high_value": 0.5}, ...}
-                })
+
+                if t["is_applied_part_test"]:
+                    if not applied_parts:
+                        # No applied parts defined on device: skip AP tests (same as desktop)
+                        continue
+                    # Expand one row per matching applied part (same logic as desktop _build_test_plan)
+                    for ap in applied_parts:
+                        limit_key = f"::{ap.get('part_type', 'BF')}"
+                        if limit_key in limits:
+                            tests.append({
+                                "name":               t["name"],
+                                "parameter":          t["parameter"],
+                                "is_applied_part_test": True,
+                                "ap_name":            ap.get("name", ""),
+                                "ap_type":            ap.get("part_type", ""),
+                                "limit_key":          limit_key,
+                                "limits":             limits,
+                            })
+                else:
+                    # Standard test
+                    # Determine the primary limit key (first key in the limits dict)
+                    primary_key = next(iter(limits), "::ST") if limits else "::ST"
+                    tests.append({
+                        "name":               t["name"],
+                        "parameter":          t["parameter"],
+                        "is_applied_part_test": False,
+                        "ap_name":            None,
+                        "ap_type":            None,
+                        "limit_key":          primary_key,
+                        "limits":             limits,
+                    })
+
         except Exception as e:
             logger.error(f"[mobile] profile tests partial error: {e}", exc_info=True)
 
@@ -4314,17 +5421,25 @@ def mobile_func_profile_schema_partial(request: Request, profile_key: str = "",
 
     # Convert to dataclass-like dicts for template
     def _parse_field(f):
+        formula_val = (str(f.get("formula")).strip() or None) if f.get("formula") else None
+        read_only = bool(f.get("read_only", False)) or bool(formula_val)
         return type("F", (), {
-            "key": f.get("key",""), "label": f.get("label",""),
+            "key":        f.get("key",""),
+            "label":      f.get("label",""),
             "field_type": f.get("field_type","text"),
-            "required": f.get("required", False),
-            "unit": f.get("unit"), "options": f.get("options",[]),
-            "placeholder": f.get("placeholder"),
-            "help_text": f.get("help_text"),
-            "min_value": f.get("min_value"),
-            "max_value": f.get("max_value"),
-            "step": f.get("step"),
+            "required":   f.get("required", False),
+            "unit":       f.get("unit"),
+            "options":    f.get("options") or [],
+            "placeholder":f.get("placeholder"),
+            "help_text":  f.get("help_text"),
+            "min_value":  f.get("min_value"),
+            "max_value":  f.get("max_value"),
+            "step":       f.get("step"),
             "rating_max": f.get("rating_max", 5),
+            "default":    f.get("default"),
+            "formula":    formula_val,
+            "read_only":  read_only,
+            "precision":  f.get("precision"),
         })()
 
     parsed_sections = []
@@ -4357,6 +5472,7 @@ def mobile_search_page(request: Request, mobile_session: Optional[str] = Cookie(
         return _mobile_redirect_login()
     return mobile_templates.TemplateResponse("search.html", {
         "request": request, "user": user, "active_nav": "search",
+        "pending_assignments_count": _get_pending_assignments_count(user.username, user.role),
     })
 
 
@@ -4429,6 +5545,7 @@ def mobile_profile_page(request: Request, mobile_session: Optional[str] = Cookie
         return _mobile_redirect_login()
     return mobile_templates.TemplateResponse("profile_page.html", {
         "request": request, "user": user, "active_nav": "profile",
+        "pending_assignments_count": _get_pending_assignments_count(user.username, user.role),
     })
 
 
@@ -4523,6 +5640,612 @@ def mobile_expiring(request: Request, mobile_session: Optional[str] = Cookie(Non
         "overdue_devices": overdue_devices, "expiring_devices": expiring_devices,
         "back_url": "/mobile/dashboard",
     })
+
+
+# ─── Assegnazioni Verifiche ───────────────────────────────────────────────────
+
+def _ensure_assignments_table(cur):
+    """Crea la tabella verification_assignments su PostgreSQL se non esiste.
+    Esegue anche le migrazioni per DB già esistenti (aggiunta colonne mancanti).
+    """
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS verification_assignments (
+            id              SERIAL PRIMARY KEY,
+            uuid            TEXT        NOT NULL UNIQUE,
+            device_id       INTEGER     REFERENCES devices(id) ON DELETE CASCADE,
+            assigned_to     TEXT        NOT NULL,
+            assigned_by     TEXT        NOT NULL,
+            notes           TEXT,
+            priority        TEXT        NOT NULL DEFAULT 'normal',
+            due_date        DATE,
+            status          TEXT        NOT NULL DEFAULT 'pending',
+            created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            completed_at    TIMESTAMPTZ,
+            is_deleted      BOOLEAN     NOT NULL DEFAULT FALSE,
+            last_modified   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+    """)
+    # --- Migrazioni per tabelle già esistenti ---
+    # Aggiunge last_modified se mancante (tabella creata con versione precedente)
+    cur.execute("""
+        ALTER TABLE verification_assignments
+        ADD COLUMN IF NOT EXISTS last_modified TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    """)
+    # Aggiunge destination_id per assignment a livello di sede
+    cur.execute("""
+        ALTER TABLE verification_assignments
+        ADD COLUMN IF NOT EXISTS destination_id INTEGER REFERENCES destinations(id) ON DELETE CASCADE
+    """)
+    # Rende device_id nullable (era NOT NULL nelle versioni precedenti)
+    cur.execute("""
+        ALTER TABLE verification_assignments ALTER COLUMN device_id DROP NOT NULL
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_assign_to     ON verification_assignments(assigned_to)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_assign_status  ON verification_assignments(status)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_assign_device  ON verification_assignments(device_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_assign_dest    ON verification_assignments(destination_id)")
+
+
+def _ensure_unavailability_table(cur):
+    """Crea la tabella device_unavailability_reports su PostgreSQL se non esiste."""
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS device_unavailability_reports (
+            id                  SERIAL PRIMARY KEY,
+            uuid                TEXT        NOT NULL UNIQUE,
+            device_id           INTEGER     NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+            destination_id      INTEGER     NOT NULL REFERENCES destinations(id) ON DELETE CASCADE,
+            period_start        TEXT        NOT NULL,
+            period_end          TEXT        NOT NULL,
+            report_date         TEXT        NOT NULL,
+            reason              TEXT        NOT NULL,
+            technician_name     TEXT,
+            technician_username TEXT,
+            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            last_modified       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            is_deleted          INTEGER     NOT NULL DEFAULT 0,
+            is_synced           INTEGER     NOT NULL DEFAULT 0
+        )
+    """)
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_unavail_device  ON device_unavailability_reports(device_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_unavail_dest    ON device_unavailability_reports(destination_id)")
+    cur.execute("CREATE INDEX IF NOT EXISTS idx_unavail_period  ON device_unavailability_reports(period_start, period_end)")
+
+
+_ASSIGNMENT_SELECT = """
+    SELECT a.*,
+           d.description, d.serial_number, d.manufacturer, d.model,
+           d.department, d.uuid AS device_uuid,
+           COALESCE(dest_d.name, dest_a.name)  AS destination_name,
+           COALESCE(c_d.name,    c_a.name)     AS customer_name,
+           COALESCE(dest_d.uuid, dest_a.uuid)  AS destination_uuid
+    FROM verification_assignments a
+    LEFT JOIN devices      d      ON d.id      = a.device_id
+    LEFT JOIN destinations dest_d ON dest_d.id = d.destination_id
+    LEFT JOIN customers    c_d    ON c_d.id    = dest_d.customer_id
+    LEFT JOIN destinations dest_a ON dest_a.id = a.destination_id
+    LEFT JOIN customers    c_a    ON c_a.id    = dest_a.customer_id
+"""
+
+_PRIORITY_ORDER = "CASE a.priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END"
+
+
+@app.get("/mobile/assignments", response_class=HTMLResponse)
+def mobile_assignments(request: Request, status: Optional[str] = None,
+                       mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    is_manager = user.role in ("admin", "moderator")
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_assignments_table(cur)
+        conn.commit()
+
+        params = []
+        if is_manager:
+            q = _ASSIGNMENT_SELECT + " WHERE a.is_deleted = FALSE"
+        else:
+            q = _ASSIGNMENT_SELECT + " WHERE a.is_deleted = FALSE AND a.assigned_to = %s"
+            params.append(user.username)
+
+        if status:
+            q += " AND a.status = %s"
+            params.append(status)
+
+        q += f" ORDER BY {_PRIORITY_ORDER}, a.due_date ASC NULLS LAST, a.created_at DESC"
+        cur.execute(q, params)
+        assignments = cur.fetchall()
+
+        # Contatori per badge filtri
+        if is_manager:
+            cur.execute("SELECT status, COUNT(*) AS cnt FROM verification_assignments WHERE is_deleted=FALSE GROUP BY status")
+        else:
+            cur.execute("SELECT status, COUNT(*) AS cnt FROM verification_assignments WHERE is_deleted=FALSE AND assigned_to=%s GROUP BY status", (user.username,))
+        counts = {r["status"]: r["cnt"] for r in cur.fetchall()}
+
+        # Lista tecnici per il form di assegnazione (solo per manager)
+        technicians = []
+        if is_manager:
+            cur.execute("SELECT username, first_name, last_name FROM users WHERE role IN ('technician','moderator','admin') ORDER BY username")
+            technicians = cur.fetchall()
+
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] assignments error: {e}", exc_info=True)
+        assignments = []; counts = {}; technicians = []
+
+    return mobile_templates.TemplateResponse("assignments.html", {
+        "request": request, "user": user, "active_nav": "assignments",
+        "assignments": assignments, "counts": counts,
+        "is_manager": is_manager, "technicians": technicians,
+        "current_status": status or "",
+        "back_url": "/mobile/dashboard",
+        "pending_assignments_count": sum(v for k, v in counts.items() if k in ("pending", "in_progress")),
+        "today": _date_cls.today(),
+    })
+
+
+@app.get("/mobile/assignments/new", response_class=HTMLResponse)
+def mobile_assignment_new_form(request: Request, device_uuid: Optional[str] = None,
+                                destination_uuid: Optional[str] = None,
+                                mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+    if user.role not in ("admin", "moderator"):
+        return RedirectResponse(url="/mobile/assignments", status_code=302)
+
+    device = None
+    destination = None
+    destinations = []
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_assignments_table(cur)
+        conn.commit()
+
+        cur.execute("SELECT username, first_name, last_name FROM users WHERE role IN ('technician','moderator','admin') ORDER BY username")
+        technicians = cur.fetchall()
+
+        if device_uuid:
+            cur.execute("""
+                SELECT d.*, dest.name AS destination_name, c.name AS customer_name
+                FROM devices d
+                LEFT JOIN destinations dest ON dest.id = d.destination_id
+                LEFT JOIN customers c ON c.id = dest.customer_id
+                WHERE d.uuid = %s AND d.is_deleted = FALSE
+            """, (device_uuid,))
+            device = cur.fetchone()
+
+        if destination_uuid:
+            cur.execute("""
+                SELECT dest.*, c.name AS customer_name
+                FROM destinations dest
+                LEFT JOIN customers c ON c.id = dest.customer_id
+                WHERE dest.uuid = %s AND dest.is_deleted = FALSE
+            """, (destination_uuid,))
+            destination = cur.fetchone()
+
+        # Carica tutte le sedi per il selettore
+        cur.execute("""
+            SELECT dest.uuid, dest.name, c.name AS customer_name
+            FROM destinations dest
+            LEFT JOIN customers c ON c.id = dest.customer_id
+            WHERE dest.is_deleted = FALSE
+            ORDER BY c.name, dest.name
+        """)
+        destinations = cur.fetchall()
+
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] assignment new form error: {e}", exc_info=True)
+        technicians = []
+
+    return mobile_templates.TemplateResponse("assignment_form.html", {
+        "request": request, "user": user,
+        "technicians": technicians, "device": device,
+        "destination": destination, "destinations": destinations,
+        "back_url": "/mobile/assignments",
+    })
+
+
+@app.post("/mobile/assignments/new", response_class=HTMLResponse)
+async def mobile_assignment_create(request: Request,
+                                    mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+    if user.role not in ("admin", "moderator"):
+        return RedirectResponse(url="/mobile/assignments", status_code=302)
+
+    form = await request.form()
+    device_uuid      = (form.get("device_uuid") or "").strip()
+    destination_uuid = (form.get("destination_uuid") or "").strip()
+    assigned_to      = (form.get("assigned_to") or "").strip()
+    notes            = (form.get("notes") or "").strip() or None
+    priority         = (form.get("priority") or "normal").strip()
+    due_date         = (form.get("due_date") or "").strip() or None
+
+    if not (device_uuid or destination_uuid) or not assigned_to:
+        return RedirectResponse(url="/mobile/assignments/new", status_code=302)
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_assignments_table(cur)
+
+        device_id = None
+        dest_id   = None
+
+        if device_uuid:
+            cur.execute("SELECT id FROM devices WHERE uuid = %s AND is_deleted = FALSE", (device_uuid,))
+            dev_row = cur.fetchone()
+            if not dev_row:
+                conn.close()
+                return RedirectResponse(url="/mobile/assignments/new", status_code=302)
+            device_id = dev_row["id"]
+        elif destination_uuid:
+            cur.execute("SELECT id FROM destinations WHERE uuid = %s AND is_deleted = FALSE", (destination_uuid,))
+            dest_row = cur.fetchone()
+            if not dest_row:
+                conn.close()
+                return RedirectResponse(url="/mobile/assignments/new", status_code=302)
+            dest_id = dest_row["id"]
+
+        import uuid as _uuid_mod
+        new_uuid = str(_uuid_mod.uuid4())
+        cur.execute("""
+            INSERT INTO verification_assignments
+                (uuid, device_id, destination_id, assigned_to, assigned_by, notes, priority, due_date, status, last_modified)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending', NOW())
+        """, (new_uuid, device_id, dest_id, assigned_to, user.username, notes, priority, due_date))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] assignment create error: {e}", exc_info=True)
+
+    return RedirectResponse(url="/mobile/assignments", status_code=302)
+
+
+@app.get("/mobile/assignments/{assignment_uuid}", response_class=HTMLResponse)
+def mobile_assignment_detail(assignment_uuid: str, request: Request,
+                              mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_assignments_table(cur)
+        conn.commit()
+
+        cur.execute(
+            _ASSIGNMENT_SELECT + " WHERE a.uuid = %s AND a.is_deleted = FALSE",
+            (assignment_uuid,)
+        )
+        assignment = cur.fetchone()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] assignment detail error: {e}", exc_info=True)
+        assignment = None
+
+    if not assignment:
+        return RedirectResponse(url="/mobile/assignments", status_code=302)
+
+    is_manager = user.role in ("admin", "moderator")
+    # Solo il tecnico assegnato o un manager possono vedere il dettaglio
+    if not is_manager and assignment["assigned_to"] != user.username:
+        return RedirectResponse(url="/mobile/assignments", status_code=302)
+
+    return mobile_templates.TemplateResponse("assignment_detail.html", {
+        "request": request, "user": user,
+        "assignment": assignment, "is_manager": is_manager,
+        "back_url": "/mobile/assignments",
+    })
+
+
+@app.post("/mobile/assignments/{assignment_uuid}/status", response_class=HTMLResponse)
+async def mobile_assignment_update_status(assignment_uuid: str, request: Request,
+                                           mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    form = await request.form()
+    new_status = (form.get("status") or "").strip()
+    allowed_statuses = {"pending", "in_progress", "completed", "cancelled"}
+    if new_status not in allowed_statuses:
+        return RedirectResponse(url=f"/mobile/assignments/{assignment_uuid}", status_code=302)
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_assignments_table(cur)
+
+        # Verifica permessi: solo assegnatario o manager possono cambiare stato
+        cur.execute("SELECT assigned_to FROM verification_assignments WHERE uuid = %s AND is_deleted = FALSE", (assignment_uuid,))
+        row = cur.fetchone()
+        if row and (user.role in ("admin", "moderator") or row["assigned_to"] == user.username):
+            cur.execute("""
+                UPDATE verification_assignments
+                SET status = %s, updated_at = NOW(), last_modified = NOW(),
+                    completed_at = CASE WHEN %s = 'completed' THEN COALESCE(completed_at, NOW()) ELSE completed_at END
+                WHERE uuid = %s AND is_deleted = FALSE
+            """, (new_status, new_status, assignment_uuid))
+            conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] assignment status update error: {e}", exc_info=True)
+
+    return RedirectResponse(url=f"/mobile/assignments/{assignment_uuid}", status_code=302)
+
+
+@app.post("/mobile/assignments/{assignment_uuid}/start", response_class=HTMLResponse)
+async def mobile_assignment_start(assignment_uuid: str, request: Request,
+                                   mobile_session: Optional[str] = Cookie(None)):
+    """Imposta il lavoro come 'in corso' e reindirizza al dispositivo/sede per le verifiche."""
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    redirect_url = f"/mobile/assignments/{assignment_uuid}"
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_assignments_table(cur)
+
+        cur.execute("""
+            SELECT a.uuid, a.device_id, a.destination_id, a.assigned_to, a.status,
+                   d.uuid AS device_uuid,
+                   COALESCE(dest_d.uuid, dest_a.uuid) AS destination_uuid
+            FROM verification_assignments a
+            LEFT JOIN devices d           ON d.id      = a.device_id
+            LEFT JOIN destinations dest_d ON dest_d.id = d.destination_id
+            LEFT JOIN destinations dest_a ON dest_a.id = a.destination_id
+            WHERE a.uuid = %s AND a.is_deleted = FALSE
+        """, (assignment_uuid,))
+        row = cur.fetchone()
+
+        if row and (user.role in ("admin", "moderator") or row["assigned_to"] == user.username):
+            if row["status"] not in ("completed", "cancelled"):
+                cur.execute("""
+                    UPDATE verification_assignments
+                    SET status = 'in_progress', updated_at = NOW(), last_modified = NOW()
+                    WHERE uuid = %s AND is_deleted = FALSE
+                """, (assignment_uuid,))
+                conn.commit()
+            # Reindirizza al dispositivo o alla sede
+            if row.get("device_uuid"):
+                redirect_url = f"/mobile/devices/{row['device_uuid']}"
+            elif row.get("destination_uuid"):
+                redirect_url = f"/mobile/destinations/{row['destination_uuid']}"
+
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] assignment start error: {e}", exc_info=True)
+
+    return RedirectResponse(url=redirect_url, status_code=302)
+
+
+@app.post("/mobile/assignments/{assignment_uuid}/delete", response_class=HTMLResponse)
+async def mobile_assignment_delete(assignment_uuid: str, request: Request,
+                                    mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+    if user.role not in ("admin", "moderator"):
+        return RedirectResponse(url="/mobile/assignments", status_code=302)
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_assignments_table(cur)
+        cur.execute(
+            "UPDATE verification_assignments SET is_deleted = TRUE, updated_at = NOW(), last_modified = NOW() WHERE uuid = %s",
+            (assignment_uuid,)
+        )
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] assignment delete error: {e}", exc_info=True)
+
+    return RedirectResponse(url="/mobile/assignments", status_code=302)
+
+
+# Endpoint per ricerca dispositivi (usato dal form di assegnazione via HTMX)
+@app.get("/mobile/assignments/api/search-devices", response_class=HTMLResponse)
+def mobile_assignments_search_devices(q: str = "", request: Request = None,
+                                       mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user or user.role not in ("admin", "moderator"):
+        return HTMLResponse("")
+
+    results = []
+    if len(q) >= 2:
+        try:
+            conn = get_db_connection()
+            cur  = conn.cursor(cursor_factory=RealDictCursor)
+            pattern = f"%{q}%"
+            cur.execute("""
+                SELECT d.uuid, d.description, d.serial_number, d.manufacturer, d.model,
+                       dest.name AS destination_name, c.name AS customer_name
+                FROM devices d
+                LEFT JOIN destinations dest ON dest.id = d.destination_id
+                LEFT JOIN customers c ON c.id = dest.customer_id
+                WHERE d.is_deleted = FALSE AND d.status = 'active'
+                  AND (d.description ILIKE %s OR d.serial_number ILIKE %s
+                       OR d.manufacturer ILIKE %s OR d.model ILIKE %s
+                       OR c.name ILIKE %s)
+                ORDER BY d.description
+                LIMIT 20
+            """, (pattern, pattern, pattern, pattern, pattern))
+            results = cur.fetchall()
+            conn.close()
+        except Exception as e:
+            logger.error(f"[mobile] search devices error: {e}", exc_info=True)
+
+    # Restituisce frammento HTML per HTMX
+    items_html = ""
+    for r in results:
+        label = r.get("description") or r.get("model") or "Dispositivo"
+        sub = " · ".join(filter(None, [r.get("manufacturer"), r.get("serial_number"), r.get("customer_name"), r.get("destination_name")]))
+        items_html += f"""
+        <button type="button" onclick="selectDevice('{r['uuid']}', '{label.replace("'","\\'")} — {sub.replace("'","\\'")}')\"
+                class="w-full text-left px-4 py-3 hover:bg-blue-50 border-b border-gray-100 last:border-0">
+            <p class="text-sm font-semibold text-gray-900">{label}</p>
+            <p class="text-xs text-gray-500">{sub}</p>
+        </button>"""
+
+    if not items_html:
+        items_html = '<p class="text-sm text-gray-400 text-center py-3">Nessun risultato</p>'
+
+    return HTMLResponse(f'<div class="card overflow-hidden">{items_html}</div>')
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# INTEGRAZIONE ESTERNA — endpoint richiamabile da altri gestionali (es. TechBusiness_PRO)
+# Autenticazione via API Key (header X-STM-API-Key)
+# ════════════════════════════════════════════════════════════════════════════════
+
+_STM_EXTERNAL_API_KEY = os.getenv("STM_EXTERNAL_API_KEY", "")
+
+
+class ExternalAssignmentRequest(BaseModel):
+    """Payload inviato dal gestionale esterno per creare un assignment STM."""
+    assigned_to: str                     # username tecnico STM
+    serial_number: Optional[str] = None  # matricola/seriale per trovare il device
+    device_description: Optional[str] = None  # descrizione come fallback
+    destination_name: Optional[str] = None    # nome sede (fallback se nessun device trovato)
+    notes: Optional[str] = None
+    priority: Optional[str] = "normal"        # low / normal / high / urgent
+    due_date: Optional[str] = None            # ISO date string YYYY-MM-DD
+    # Campi informativi extra (vengono appesi alle note)
+    titolo: Optional[str] = None
+    apparecchiatura: Optional[str] = None
+    cliente: Optional[str] = None
+    indirizzo: Optional[str] = None
+    rdi: Optional[str] = None
+    gestionale_id: Optional[int] = None       # ID record nel gestionale esterno
+
+
+@app.post("/api/v1/external/create-assignment", tags=["external"])
+def external_create_assignment(
+    payload: ExternalAssignmentRequest,
+    request: Request,
+):
+    """
+    Crea un assignment STM a partire da un evento del gestionale esterno.
+    Richiede l'header HTTP:  X-STM-API-Key: <STM_EXTERNAL_API_KEY>
+    """
+    # --- Verifica API Key ---
+    api_key = request.headers.get("X-STM-API-Key", "")
+    if not _STM_EXTERNAL_API_KEY:
+        raise HTTPException(status_code=503, detail="Integrazione esterna non configurata (STM_EXTERNAL_API_KEY mancante)")
+    if api_key != _STM_EXTERNAL_API_KEY:
+        logger.warning(f"[external] Tentativo con API key errata da {request.client.host}")
+        raise HTTPException(status_code=401, detail="API Key non valida")
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_assignments_table(cur)
+
+        # --- Ricerca device per serial_number ---
+        device_id  = None
+        dest_id    = None
+
+        if payload.serial_number:
+            cur.execute(
+                "SELECT id FROM devices WHERE serial_number ILIKE %s AND is_deleted = FALSE LIMIT 1",
+                (payload.serial_number.strip(),)
+            )
+            row = cur.fetchone()
+            if row:
+                device_id = row["id"]
+
+        # Fallback: ricerca per descrizione dispositivo
+        if device_id is None and payload.device_description:
+            cur.execute(
+                "SELECT id FROM devices WHERE description ILIKE %s AND is_deleted = FALSE LIMIT 1",
+                (f"%{payload.device_description.strip()}%",)
+            )
+            row = cur.fetchone()
+            if row:
+                device_id = row["id"]
+
+        # Fallback ulteriore: ricerca per nome sede
+        if device_id is None and payload.destination_name:
+            cur.execute(
+                "SELECT id FROM destinations WHERE name ILIKE %s AND is_deleted = FALSE LIMIT 1",
+                (f"%{payload.destination_name.strip()}%",)
+            )
+            row = cur.fetchone()
+            if row:
+                dest_id = row["id"]
+
+        if device_id is None and dest_id is None:
+            conn.close()
+            raise HTTPException(
+                status_code=404,
+                detail="Nessun dispositivo o sede trovata con i dati forniti"
+            )
+
+        # --- Verifica che il tecnico esista ---
+        cur.execute("SELECT username FROM users WHERE username = %s AND is_deleted = FALSE LIMIT 1", (payload.assigned_to,))
+        if not cur.fetchone():
+            conn.close()
+            raise HTTPException(status_code=404, detail=f"Tecnico '{payload.assigned_to}' non trovato in STM")
+
+        # --- Costruzione note arricchite ---
+        note_parts = []
+        if payload.titolo:
+            note_parts.append(f"Intervento: {payload.titolo}")
+        if payload.apparecchiatura:
+            note_parts.append(f"Apparecchiatura: {payload.apparecchiatura}")
+        if payload.cliente:
+            note_parts.append(f"Cliente: {payload.cliente}")
+        if payload.indirizzo:
+            note_parts.append(f"Indirizzo: {payload.indirizzo}")
+        if payload.rdi:
+            note_parts.append(f"RDI: {payload.rdi}")
+        if payload.gestionale_id:
+            note_parts.append(f"ID gestionale: {payload.gestionale_id}")
+        if payload.notes:
+            note_parts.append(payload.notes)
+        final_notes = " | ".join(note_parts) if note_parts else None
+
+        # --- Due date ---
+        due_date_val = None
+        if payload.due_date:
+            try:
+                due_date_val = date.fromisoformat(payload.due_date)
+            except ValueError:
+                pass
+
+        import uuid as _uuid_mod
+        new_uuid = str(_uuid_mod.uuid4())
+        cur.execute("""
+            INSERT INTO verification_assignments
+                (uuid, device_id, destination_id, assigned_to, assigned_by,
+                 notes, priority, due_date, status, last_modified)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pending', NOW())
+        """, (new_uuid, device_id, dest_id, payload.assigned_to,
+              "techbusiness_pro", final_notes, payload.priority or "normal", due_date_val))
+        conn.commit()
+        conn.close()
+
+        logger.info(f"[external] Assignment creato da TechBusiness_PRO: uuid={new_uuid}, tecnico={payload.assigned_to}")
+        return {"status": "ok", "assignment_uuid": new_uuid}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[external] Errore creazione assignment: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ════════════════════════════════════════════════════════════════════════════════

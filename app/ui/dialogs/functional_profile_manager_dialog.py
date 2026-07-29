@@ -6,7 +6,7 @@ import re
 import unicodedata
 from typing import Optional
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal, QMimeData, QByteArray
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -26,17 +26,26 @@ from PySide6.QtWidgets import (
     QPushButton,
     QScrollArea,
     QStackedWidget,
+    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
     QSpinBox,
-    QWizard,
-    QWizardPage,
     QTextEdit,
+    QPlainTextEdit,
 )
 
 from app import config, services
+from app.functional_builder import (
+    OutlineView,
+    SimpleFunctionalOptions,
+    build_sections,
+    default_new_profile_blocks,
+    options_from_outline_view,
+    outline_view_from_options,
+    parse_profile_sections,
+)
 from app.functional_models import (
     FunctionalField,
     FunctionalProfile,
@@ -86,6 +95,124 @@ FIELD_TYPE_INFO: dict[str, dict] = {
 
 # Ordine delle categorie per il selettore visivo
 FIELD_TYPE_CATEGORIES = ["Base", "Numerico", "Selezione", "Data/Ora", "Layout", "Avanzato"]
+
+# ─── Drag & drop ─────────────────────────────────────────────────────────────
+SECTION_PRESET_MIME = "application/x-stm-section-preset"
+FIELD_TYPE_MIME = "application/x-stm-field-type"
+
+# Blocchi sezione trascinabili dalla palette (chiave, etichetta, icona, colore)
+SECTION_PRESETS = [
+    ("checklist", "Checklist", "fa5s.check-square", "#16a34a"),
+    ("normative", "Riferimenti normativi", "fa5s.book", "#2563eb"),
+    ("fields", "Campi liberi", "fa5s.list", "#7c3aed"),
+    ("notes", "Note", "fa5s.sticky-note", "#f59e0b"),
+]
+
+
+def field_type_palette_entries():
+    """Voci della palette dei tipi di campo, da FIELD_TYPE_INFO."""
+    entries = []
+    for ft in FIELD_TYPES:
+        info = FIELD_TYPE_INFO.get(ft, {})
+        entries.append((ft, info.get("label", ft),
+                        info.get("icon", "fa5s.font"), info.get("color", "#64748b")))
+    return entries
+
+
+class DragPalette(QListWidget):
+    """Palette di elementi trascinabili: ogni voce porta una chiave nel formato
+    mime indicato, da rilasciare su una DragDropList compatibile."""
+    def __init__(self, mime: str, entries, tooltip: str = "", parent=None):
+        super().__init__(parent)
+        self._mime = mime
+        self.setDragEnabled(True)
+        self.setDragDropMode(QAbstractItemView.DragOnly)
+        self.setSelectionMode(QAbstractItemView.SingleSelection)
+        for key, label, icon, color in entries:
+            item = QListWidgetItem(qta.icon(icon, color=color), label)
+            item.setData(Qt.UserRole, key)
+            if tooltip:
+                item.setToolTip(tooltip)
+            self.addItem(item)
+
+    def mimeData(self, items):
+        md = QMimeData()
+        if items:
+            key = str(items[0].data(Qt.UserRole) or "")
+            md.setData(self._mime, QByteArray(key.encode()))
+        return md
+
+
+class DragDropList(QListWidget):
+    """Lista che supporta il riordino per trascinamento e (opzionale) il drop
+    di voci da una palette del mime indicato. Non sposta gli item da sola:
+    emette segnali e lascia che sia il dialog a riordinare/creare i dati."""
+    reorder_requested = Signal(int, int)   # riga origine, riga destinazione
+    preset_dropped = Signal(str, int)      # chiave dalla palette, riga destinazione
+
+    def __init__(self, preset_mime: Optional[str] = None, parent=None):
+        super().__init__(parent)
+        self._preset_mime = preset_mime
+        self.setSelectionMode(QAbstractItemView.SingleSelection)
+        self.setDragEnabled(True)
+        self.setAcceptDrops(True)
+        self.setDragDropMode(QAbstractItemView.DragDrop)
+        self.setDefaultDropAction(Qt.MoveAction)
+        self.viewport().setAcceptDrops(True)
+
+    def _has_preset(self, event) -> bool:
+        return bool(self._preset_mime) and event.mimeData().hasFormat(self._preset_mime)
+
+    def _accepts(self, event) -> bool:
+        return self._has_preset(event) or event.source() is self
+
+    def dragEnterEvent(self, event):
+        if self._accepts(event):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event):
+        if self._accepts(event):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def _drop_row(self, event) -> int:
+        return self.indexAt(event.position().toPoint()).row()
+
+    def dropEvent(self, event):
+        if self._has_preset(event):
+            preset = bytes(event.mimeData().data(self._preset_mime)).decode()
+            row = self._drop_row(event)
+            if row < 0:
+                row = self.count()
+            event.setDropAction(Qt.IgnoreAction)
+            event.accept()
+            self.preset_dropped.emit(preset, row)
+            return
+        if event.source() is self:
+            src = self.currentRow()
+            dst = self._drop_row(event)
+            if dst < 0:
+                dst = self.count() - 1
+            event.setDropAction(Qt.IgnoreAction)
+            event.accept()
+            if src >= 0 and src != dst:
+                self.reorder_requested.emit(src, dst)
+            return
+        event.ignore()
+
+
+def move_in_list(items: list, src: int, dst: int):
+    """Sposta items[src] in posizione dst (semantica 'rilascia sulla riga dst')."""
+    if src < 0 or src >= len(items) or src == dst:
+        return
+    element = items.pop(src)
+    if src < dst:
+        dst -= 1
+    dst = max(0, min(dst, len(items)))
+    items.insert(dst, element)
 
 
 class FieldEditorDialog(QDialog):
@@ -739,18 +866,46 @@ class SectionEditorDialog(QDialog):
         self.stack = QStackedWidget()
         main_layout.addWidget(self.stack, 1)
 
-        # Pannello per i campi (fields)
-        self.fields_table = QTableWidget(0, 6)
-        self.fields_table.setHorizontalHeaderLabels(["Chiave", "Etichetta", "Tipo", "Obbl.", "Sola lett.", "Formula"])
-        self.fields_table.horizontalHeader().setStretchLastSection(True)
-        self.fields_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self.fields_table.setAlternatingRowColors(True)
+        # Pannello per i campi (fields): palette dei tipi a sinistra + lista
+        # trascinabile a destra. Si trascina un tipo di campo nella lista per
+        # aggiungerlo; doppio clic per rinominare; Modifica per opzioni/formule
+        self.fields_list = DragDropList(preset_mime=FIELD_TYPE_MIME)
+        self.fields_list.setAlternatingRowColors(True)
 
         fields_widget = QWidget()
         fields_layout = QVBoxLayout(fields_widget)
-        fields_label = QLabel("<b>Campi della Sezione</b>")
+        fields_label = QLabel("<b>Campi della Sezione</b>  "
+                              "<span style='color:#64748b;'>(doppio clic per rinominare, trascina per riordinare)</span>")
+        fields_label.setTextFormat(Qt.RichText)
         fields_layout.addWidget(fields_label)
-        fields_layout.addWidget(self.fields_table)
+
+        fields_dnd_row = QHBoxLayout()
+        fpal_col = QVBoxLayout()
+        fpal_col.setSpacing(2)
+        fpal_col.addWidget(QLabel("<small><b>Tipi di campo →</b></small>"))
+        self.field_palette = DragPalette(
+            FIELD_TYPE_MIME, field_type_palette_entries(),
+            tooltip="Trascina nella sezione per aggiungere un campo di questo tipo")
+        self.field_palette.setFixedWidth(200)
+        fpal_col.addWidget(self.field_palette, 1)
+        fields_dnd_row.addLayout(fpal_col)
+
+        fcanvas_col = QVBoxLayout()
+        fcanvas_col.setSpacing(2)
+        # Aggiunta rapida inline: scrivi l'etichetta e premi Invio (campo testo)
+        self.field_quick_edit = QLineEdit()
+        self.field_quick_edit.setPlaceholderText("➕  Scrivi un campo e premi Invio (campo testo)…")
+        self.field_quick_edit.returnPressed.connect(self._inline_add_field)
+        fcanvas_col.addWidget(self.field_quick_edit)
+        fcanvas_col.addWidget(self.fields_list, 1)
+        fields_dnd_row.addLayout(fcanvas_col, 1)
+        fields_layout.addLayout(fields_dnd_row)
+
+        self.fields_list.preset_dropped.connect(self._drop_field_type)
+        self.fields_list.reorder_requested.connect(self._reorder_fields)
+        self.fields_list.itemChanged.connect(self._on_field_label_edited)
+        self.fields_list.itemDoubleClicked.connect(lambda _: self.edit_field())
+
         fields_btn_layout = QHBoxLayout()
         self.field_add_btn = QPushButton(qta.icon('fa5s.plus'), " Aggiungi")
         self.field_add_btn.setObjectName("autoButton")
@@ -777,10 +932,18 @@ class SectionEditorDialog(QDialog):
         # Pannello per le righe (checklist/table)
         rows_widget = QWidget()
         rows_layout = QVBoxLayout(rows_widget)
-        rows_label = QLabel("<b>Righe della Sezione</b>")
+        rows_label = QLabel("<b>Verifiche della Sezione</b>  <span style='color:#64748b;'>(doppio clic per rinominare)</span>")
+        rows_label.setTextFormat(Qt.RichText)
         rows_layout.addWidget(rows_label)
-        self.rows_list = QListWidget()
+        # Aggiunta rapida inline: scrivi la verifica e premi Invio (esito OK/KO/N.A.
+        # automatico). Niente più finestre annidate per il caso comune
+        self.row_quick_edit = QLineEdit()
+        self.row_quick_edit.setPlaceholderText("➕  Scrivi una verifica e premi Invio per aggiungerla…")
+        self.row_quick_edit.returnPressed.connect(self._inline_add_row)
+        rows_layout.addWidget(self.row_quick_edit)
+        self.rows_list = DragDropList()
         self.rows_list.setAlternatingRowColors(True)
+        self.rows_list.reorder_requested.connect(self._reorder_rows)
         rows_layout.addWidget(self.rows_list)
         rows_btn_layout = QHBoxLayout()
         self.row_add_btn = QPushButton(qta.icon('fa5s.plus'), " Aggiungi")
@@ -821,8 +984,11 @@ class SectionEditorDialog(QDialog):
         self.field_up_btn.clicked.connect(self.move_field_up)
         self.field_down_btn.clicked.connect(self.move_field_down)
         self.row_add_btn.clicked.connect(self.add_row)
-        self.row_quick_add_btn.clicked.connect(self.quick_add_row)
+        self.row_quick_add_btn.clicked.connect(lambda: self.row_quick_edit.setFocus())
         self.row_edit_btn.clicked.connect(self.edit_row)
+        # Rinomina inline delle verifiche (doppio clic sull'elemento).
+        # I campi hanno la propria connessione itemChanged definita col pannello.
+        self.rows_list.itemChanged.connect(self._on_row_label_edited)
         self.row_dup_btn.clicked.connect(self.duplicate_row)
         self.row_remove_btn.clicked.connect(self.remove_row)
         self.row_up_btn.clicked.connect(self.move_row_up)
@@ -872,24 +1038,133 @@ class SectionEditorDialog(QDialog):
         self._key_user_edited = True
 
     def _refresh_fields(self):
-        self.fields_table.setRowCount(0)
+        self.fields_list.blockSignals(True)
+        self.fields_list.clear()
         for field in self.section.fields:
-            row_idx = self.fields_table.rowCount()
-            self.fields_table.insertRow(row_idx)
-            self.fields_table.setItem(row_idx, 0, QTableWidgetItem(field.key))
-            self.fields_table.setItem(row_idx, 1, QTableWidgetItem(field.label))
-            self.fields_table.setItem(row_idx, 2, QTableWidgetItem(field.field_type))
-            self.fields_table.setItem(row_idx, 3, QTableWidgetItem("Sì" if field.required else "No"))
-            self.fields_table.setItem(row_idx, 4, QTableWidgetItem("Sì" if field.read_only else "No"))
-            self.fields_table.setItem(row_idx, 5, QTableWidgetItem(field.formula or ""))
+            type_label = FIELD_TYPE_INFO.get(field.field_type, {}).get("label", field.field_type)
+            item = QListWidgetItem(field.label or field.key)
+            item.setFlags(item.flags() | Qt.ItemIsEditable)
+            item.setData(Qt.UserRole, field)
+            info = FIELD_TYPE_INFO.get(field.field_type, {})
+            item.setIcon(qta.icon(info.get("icon", "fa5s.font"), color=info.get("color", "#64748b")))
+            extra = []
+            if field.required:
+                extra.append("obbligatorio")
+            if field.formula:
+                extra.append(f"= {field.formula}")
+            tip = f"Tipo: {type_label} · chiave: {field.key}"
+            if extra:
+                tip += " · " + " · ".join(extra)
+            item.setToolTip(tip)
+            self.fields_list.addItem(item)
+        self.fields_list.blockSignals(False)
+
+    def _on_field_label_edited(self, item):
+        """Rinomina inline dell'etichetta di un campo (doppio clic)."""
+        field = item.data(Qt.UserRole)
+        if field is None:
+            return
+        new_label = item.text().strip()
+        if new_label:
+            field.label = new_label
+        else:
+            self.fields_list.blockSignals(True)
+            item.setText(field.label or field.key)
+            self.fields_list.blockSignals(False)
+
+    def _unique_field_key(self, base: str) -> str:
+        base = base or "campo"
+        keys = {f.key for f in self.section.fields}
+        if base not in keys:
+            return base
+        suffix = 2
+        while f"{base}_{suffix}" in keys:
+            suffix += 1
+        return f"{base}_{suffix}"
+
+    def _inline_add_field(self):
+        """Aggiunge un campo testo dalla riga di inserimento rapido."""
+        label = self.field_quick_edit.text().strip()
+        if not label:
+            return
+        key = self._unique_field_key(self._slugify_key(label) or "campo")
+        self.section.fields.append(FunctionalField(key=key, label=label, field_type="text"))
+        self.field_quick_edit.clear()
+        self._refresh_fields()
+        self.field_quick_edit.setFocus()
+
+    def _drop_field_type(self, field_type: str, row: int):
+        """Crea un campo del tipo trascinato dalla palette, al punto di rilascio."""
+        type_label = FIELD_TYPE_INFO.get(field_type, {}).get("label", field_type)
+        key = self._unique_field_key(self._slugify_key(type_label) or "campo")
+        new_field = FunctionalField(key=key, label=type_label, field_type=field_type)
+        if field_type == "pass_fail":
+            new_field.options = ["PASS", "FAIL", "N.A."]
+            new_field.required = True
+        elif field_type == "choice":
+            new_field.options = ["OK", "KO", "N.A."]
+        row = max(0, min(row, len(self.section.fields)))
+        self.section.fields.insert(row, new_field)
+        self._refresh_fields()
+        self.fields_list.setCurrentRow(row)
+
+    def _reorder_fields(self, src: int, dst: int):
+        """Riordino dei campi per trascinamento."""
+        move_in_list(self.section.fields, src, dst)
+        self._refresh_fields()
 
     def _refresh_rows(self):
+        self.rows_list.blockSignals(True)
         self.rows_list.clear()
         for row in self.section.rows:
             label = row.label or row.key
-            item = QListWidgetItem(f"{row.key} - {label} ({len(row.fields)} campi)")
+            item = QListWidgetItem(label)
+            item.setFlags(item.flags() | Qt.ItemIsEditable)
             item.setData(Qt.UserRole, row)
+            extra = ", ".join(f.label for f in row.fields if f.key != "esito")
+            tip = f"Chiave: {row.key} · {len(row.fields)} campo/i"
+            if extra:
+                tip += f" · {extra}"
+            item.setToolTip(tip)
             self.rows_list.addItem(item)
+        self.rows_list.blockSignals(False)
+
+    def _on_row_label_edited(self, item):
+        """Rinomina inline di una verifica (doppio clic sull'elemento)."""
+        row = item.data(Qt.UserRole)
+        if row is None:
+            return
+        new_label = item.text().strip()
+        if new_label:
+            row.label = new_label
+        else:
+            self.rows_list.blockSignals(True)
+            item.setText(row.label or row.key)
+            self.rows_list.blockSignals(False)
+
+    def _reorder_rows(self, src, dst):
+        """Riordino delle verifiche per trascinamento."""
+        move_in_list(self.section.rows, src, dst)
+        self._refresh_rows()
+
+    def _inline_add_row(self):
+        """Aggiunge una verifica con esito OK/KO/N.A. dalla riga rapida."""
+        label = self.row_quick_edit.text().strip()
+        if not label:
+            return
+        key = self._slugify_key(label) or f"riga_{len(self.section.rows) + 1}"
+        if any(r.key == key for r in self.section.rows):
+            suffix = 2
+            while any(r.key == f"{key}_{suffix}" for r in self.section.rows):
+                suffix += 1
+            key = f"{key}_{suffix}"
+        self.section.rows.append(FunctionalRowDefinition(
+            key=key, label=label,
+            fields=[FunctionalField(key="esito", label="Esito", field_type="choice",
+                                    required=True, options=["OK", "KO", "N.A."])]))
+        self.row_quick_edit.clear()
+        self._refresh_rows()
+        self.row_quick_edit.setFocus()
 
     def add_field(self):
         dialog = FieldEditorDialog(parent=self)
@@ -902,7 +1177,7 @@ class SectionEditorDialog(QDialog):
             self._refresh_fields()
 
     def edit_field(self):
-        row_idx = self.fields_table.currentRow()
+        row_idx = self.fields_list.currentRow()
         if row_idx < 0:
             QMessageBox.warning(self, "Selezione mancante", "Seleziona un campo da modificare.")
             return
@@ -910,9 +1185,10 @@ class SectionEditorDialog(QDialog):
         if dialog.exec() == QDialog.Accepted:
             self.section.fields[row_idx] = dialog.field
             self._refresh_fields()
+            self.fields_list.setCurrentRow(row_idx)
 
     def remove_field(self):
-        row_idx = self.fields_table.currentRow()
+        row_idx = self.fields_list.currentRow()
         if row_idx < 0:
             QMessageBox.warning(self, "Selezione mancante", "Seleziona un campo da rimuovere.")
             return
@@ -921,44 +1197,33 @@ class SectionEditorDialog(QDialog):
 
     def duplicate_field(self):
         """Duplica il campo selezionato con una nuova chiave."""
-        row_idx = self.fields_table.currentRow()
+        row_idx = self.fields_list.currentRow()
         if row_idx < 0:
             QMessageBox.warning(self, "Selezione mancante", "Seleziona un campo da duplicare.")
             return
         original = self.section.fields[row_idx]
         new_field = copy.deepcopy(original)
-        # Genera chiave unica
-        base_key = original.key
-        suffix = 2
-        while any(f.key == f"{base_key}_{suffix}" for f in self.section.fields):
-            suffix += 1
-        new_field.key = f"{base_key}_{suffix}"
+        new_field.key = self._unique_field_key(original.key)
         new_field.label = f"{original.label} (copia)"
         self.section.fields.insert(row_idx + 1, new_field)
         self._refresh_fields()
-        self.fields_table.selectRow(row_idx + 1)
+        self.fields_list.setCurrentRow(row_idx + 1)
 
     def move_field_up(self):
-        row_idx = self.fields_table.currentRow()
+        row_idx = self.fields_list.currentRow()
         if row_idx <= 0:
             return
-        self.section.fields[row_idx - 1], self.section.fields[row_idx] = (
-            self.section.fields[row_idx],
-            self.section.fields[row_idx - 1],
-        )
+        move_in_list(self.section.fields, row_idx, row_idx - 1)
         self._refresh_fields()
-        self.fields_table.selectRow(row_idx - 1)
+        self.fields_list.setCurrentRow(row_idx - 1)
 
     def move_field_down(self):
-        row_idx = self.fields_table.currentRow()
+        row_idx = self.fields_list.currentRow()
         if row_idx < 0 or row_idx >= len(self.section.fields) - 1:
             return
-        self.section.fields[row_idx + 1], self.section.fields[row_idx] = (
-            self.section.fields[row_idx],
-            self.section.fields[row_idx + 1],
-        )
+        move_in_list(self.section.fields, row_idx, row_idx + 2)
         self._refresh_fields()
-        self.fields_table.selectRow(row_idx + 1)
+        self.fields_list.setCurrentRow(row_idx + 1)
 
     def add_row(self):
         dialog = RowEditorDialog(parent=self)
@@ -969,44 +1234,6 @@ class SectionEditorDialog(QDialog):
                 return
             self.section.rows.append(new_row)
             self._refresh_rows()
-
-    def quick_add_row(self):
-        """Aggiunge velocemente una riga con campo esito preconfigurato (OK/KO/N.A.)."""
-        from PySide6.QtWidgets import QInputDialog
-        label, ok = QInputDialog.getText(
-            self,
-            "Aggiungi Riga Rapida",
-            "Nome della verifica (es: Integrità cavo di alimentazione):",
-        )
-        if not ok or not label.strip():
-            return
-        label = label.strip()
-        # Genera chiave dalla label
-        key = self._slugify_key(label)
-        if not key:
-            key = f"riga_{len(self.section.rows) + 1}"
-        # Verifica chiave unica
-        if any(r.key == key for r in self.section.rows):
-            suffix = 2
-            while any(r.key == f"{key}_{suffix}" for r in self.section.rows):
-                suffix += 1
-            key = f"{key}_{suffix}"
-
-        new_row = FunctionalRowDefinition(
-            key=key,
-            label=label,
-            fields=[
-                FunctionalField(
-                    key="esito",
-                    label="Esito",
-                    field_type="pass_fail",
-                    required=True,
-                    options=["PASS", "FAIL", "N.A."],
-                ),
-            ],
-        )
-        self.section.rows.append(new_row)
-        self._refresh_rows()
 
     def duplicate_row(self):
         """Duplica la riga selezionata con una nuova chiave."""
@@ -1108,6 +1335,7 @@ class FunctionalProfileEditorDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Editor Profilo Funzionale")
         self.setMinimumSize(1000, 700)
+        self.resize(1180, 780)
         # Applica il tema corrente
         self.setStyleSheet(config.get_current_stylesheet())
         self.is_new = is_new
@@ -1119,35 +1347,43 @@ class FunctionalProfileEditorDialog(QDialog):
         )
 
         main_layout = QVBoxLayout(self)
-        
-        # Header
-        header_layout = QHBoxLayout()
-        title_label = QLabel(f"<h2>{'Nuovo' if is_new else 'Modifica'} Profilo Funzionale</h2>")
-        header_layout.addWidget(title_label)
-        header_layout.addStretch()
-        main_layout.addLayout(header_layout)
+
+        # Barra in alto sempre visibile: nome e tipo apparecchio, i dati che
+        # servono subito (prima erano in un wizard separato / nascosti in scheda)
+        header_box = QGroupBox(f"{'Nuovo' if is_new else 'Modifica'} Profilo Funzionale")
+        header_layout = QHBoxLayout(header_box)
+        header_layout.addWidget(QLabel("Nome *:"))
+        self.name_edit = QLineEdit(self.profile.name)
+        self.name_edit.setPlaceholderText("es. Monitor multiparametrico")
+        self.name_edit.textChanged.connect(self._update_preview)
+        header_layout.addWidget(self.name_edit, 3)
+        header_layout.addWidget(QLabel("Tipo apparecchio:"))
+        self.device_type_edit = QLineEdit(self.profile.device_type or "")
+        self.device_type_edit.setPlaceholderText("es. MONITOR")
+        self.device_type_edit.textChanged.connect(self._update_preview)
+        header_layout.addWidget(self.device_type_edit, 2)
+        main_layout.addWidget(header_box)
 
         # Layout orizzontale: form a sinistra, anteprima a destra
         content_layout = QHBoxLayout()
-        
-        # Colonna sinistra: Form
-        left_widget = QWidget()
-        left_layout = QVBoxLayout(left_widget)
-        
+
+        # Colonna sinistra a SCHEDE: separa il lavoro sul contenuto dalle
+        # informazioni/strumenti, così ogni parte ha tutto lo spazio in altezza
+        # (prima erano impilati e l'area di editing restava schiacciata in fondo)
+        self.editor_tabs = QTabWidget()
+
+        # Scheda "Informazioni e strumenti"
+        info_tab = QWidget()
+        left_layout = QVBoxLayout(info_tab)
+
         form_widget = QGroupBox("Informazioni Base")
         form = QFormLayout(form_widget)
-        self.name_edit = QLineEdit(self.profile.name)
-        self.name_edit.textChanged.connect(self._update_preview)
-        form.addRow("Nome Profilo *:", self.name_edit)
 
         self.key_edit = QLineEdit(self.profile.profile_key)
+        self.key_edit.setPlaceholderText("Generata automaticamente dal nome")
         if not self.is_new:
             self.key_edit.setDisabled(True)
         form.addRow("Chiave Profilo:", self.key_edit)
-
-        self.device_type_edit = QLineEdit(self.profile.device_type or "")
-        self.device_type_edit.textChanged.connect(self._update_preview)
-        form.addRow("Tipo Apparecchio:", self.device_type_edit)
 
         # Regole strumenti per il profilo
         self.min_instruments_spin = QSpinBox()
@@ -1241,15 +1477,39 @@ class FunctionalProfileEditorDialog(QDialog):
         self.instruments_sort_combo.currentIndexChanged.connect(self._refresh_instruments_list)
         self.instruments_list.itemSelectionChanged.connect(self._capture_instrument_selection)
         instruments_layout.addWidget(self.instruments_list)
-        left_layout.addWidget(instruments_group)
+        left_layout.addWidget(instruments_group, 1)
 
         # Sezioni
         sections_group = QGroupBox("Sezioni del Profilo")
         sections_layout = QVBoxLayout(sections_group)
-        self.sections_list = QListWidget()
-        self.sections_list.setSelectionMode(QAbstractItemView.SingleSelection)
+
+        # Palette di blocchi + canvas con drag & drop: si trascina un blocco
+        # dalla palette nell'elenco per aggiungerlo, e si riordinano le sezioni
+        # trascinandole
+        dnd_row = QHBoxLayout()
+        palette_col = QVBoxLayout()
+        palette_col.setSpacing(2)
+        palette_col.addWidget(QLabel("<small><b>Trascina nel profilo →</b></small>"))
+        self.section_palette = DragPalette(
+            SECTION_PRESET_MIME, SECTION_PRESETS,
+            tooltip="Trascina nel profilo per aggiungere questa sezione")
+        self.section_palette.setFixedWidth(215)
+        self.section_palette.setMaximumHeight(160)
+        palette_col.addWidget(self.section_palette)
+        palette_col.addStretch()
+        dnd_row.addLayout(palette_col)
+
+        canvas_col = QVBoxLayout()
+        canvas_col.setSpacing(2)
+        canvas_col.addWidget(QLabel("<small>Sezioni del profilo "
+                                    "<span style='color:#64748b;'>(trascina per riordinare)</span></small>"))
+        self.sections_list = DragDropList(preset_mime=SECTION_PRESET_MIME)
         self.sections_list.setAlternatingRowColors(True)
-        sections_layout.addWidget(self.sections_list)
+        self.sections_list.preset_dropped.connect(self._drop_section_preset)
+        self.sections_list.reorder_requested.connect(self._reorder_sections)
+        canvas_col.addWidget(self.sections_list)
+        dnd_row.addLayout(canvas_col, 1)
+        sections_layout.addLayout(dnd_row)
 
         btn_row = QHBoxLayout()
         self.section_add_btn = QPushButton(qta.icon('fa5s.plus'), " Aggiungi")
@@ -1274,19 +1534,40 @@ class FunctionalProfileEditorDialog(QDialog):
             btn_row.addWidget(btn)
         btn_row.addStretch()
         sections_layout.addLayout(btn_row)
-        left_layout.addWidget(sections_group, 1)
-        
-        content_layout.addWidget(left_widget, 2)
-        
-        # Colonna destra: Anteprima
+        # Scheda "Contenuto del profilo": selettore modalità + sezioni,
+        # a tutta altezza — è qui che si lavora di più
+        content_tab = QWidget()
+        content_tab_layout = QVBoxLayout(content_tab)
+
+        mode_row = QHBoxLayout()
+        self.sections_mode_label = QLabel("")
+        self.sections_mode_label.setStyleSheet("font-weight: bold;")
+        self.sections_mode_btn = QPushButton("")
+        self.sections_mode_btn.clicked.connect(self._toggle_sections_mode)
+        mode_row.addWidget(self.sections_mode_label)
+        mode_row.addStretch()
+        mode_row.addWidget(self.sections_mode_btn)
+        content_tab_layout.addLayout(mode_row)
+
+        self.sections_stack = QStackedWidget()
+        self.sections_stack.addWidget(self._build_simple_sections_page())  # 0 = guidata
+        self.sections_stack.addWidget(sections_group)                      # 1 = completo
+        content_tab_layout.addWidget(self.sections_stack, 1)
+
+        # Contenuto come prima scheda (attiva di default), info come seconda
+        self.editor_tabs.addTab(content_tab, qta.icon('fa5s.list-ul'), "  Contenuto del profilo")
+        self.editor_tabs.addTab(info_tab, qta.icon('fa5s.info-circle'), "  Informazioni e strumenti")
+        content_layout.addWidget(self.editor_tabs, 2)
+
+        # Colonna destra: Anteprima (sempre visibile, accanto alle schede)
         preview_group = QGroupBox("Anteprima Profilo")
         preview_layout = QVBoxLayout(preview_group)
         self.preview_text = QTextEdit()
         self.preview_text.setReadOnly(True)
-        self.preview_text.setMaximumWidth(350)
+        self.preview_text.setMinimumWidth(300)
         preview_layout.addWidget(self.preview_text)
         content_layout.addWidget(preview_group, 1)
-        
+
         main_layout.addLayout(content_layout)
 
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -1304,8 +1585,151 @@ class FunctionalProfileEditorDialog(QDialog):
         self.sections_list.itemDoubleClicked.connect(lambda _: self.edit_section())
         self.sections_list.currentRowChanged.connect(self._update_preview)
 
+        # Nuovo profilo: parte già con una struttura tipica pronta da editare
+        # (riferimenti normativi + checklist visiva standard + note), così
+        # l'editor strutturato non si apre vuoto
+        if self.is_new and not self.profile.sections:
+            self.profile.sections = build_sections(
+                SimpleFunctionalOptions(blocks=default_new_profile_blocks()))
         self._refresh_sections()
+
+        # Prepara anche la vista "documento" come modalità alternativa (pulsante)
+        parsed = parse_profile_sections(self.profile)
+        view = outline_view_from_options(parsed) if parsed is not None else None
+        if view is not None:
+            self._load_outline_view(view)
+
+        # Default: editor strutturato avanzato (quello che l'utente preferisce)
+        self._set_sections_mode(simple=False)
         self._update_preview()
+
+    # ─── Modalità documento: profilo scritto come testo ──────────────────
+
+    def _build_simple_sections_page(self) -> QWidget:
+        page = QWidget()
+        v = QVBoxLayout(page)
+        v.setContentsMargins(0, 0, 0, 0)
+
+        # Riferimenti normativi: riga singola opzionale
+        norm_row = QHBoxLayout()
+        self.doc_normative_chk = QCheckBox("Riferimenti normativi:")
+        self.doc_normative_chk.setChecked(True)
+        self.doc_normative_edit = QLineEdit()
+        self.doc_normative_edit.setPlaceholderText("es. CEI 62353 / AMS-MOD-…")
+        norm_row.addWidget(self.doc_normative_chk)
+        norm_row.addWidget(self.doc_normative_edit, 1)
+        v.addLayout(norm_row)
+
+        v.addWidget(QLabel("Verifiche del profilo:"))
+        self.doc_text = QPlainTextEdit()
+        self.doc_text.setStyleSheet("font-family: Consolas, 'Courier New', monospace; font-size: 13px;")
+        self.doc_text.setPlaceholderText(
+            "# Controllo Visivo/Funzionale\n"
+            "Integrità involucro\n"
+            "Leggibilità etichette\n"
+            "Lettura SpO2 [%]\n"
+            "\n"
+            "# Controllo Funzionale\n"
+            "Allarmi acustici e visivi"
+        )
+        v.addWidget(self.doc_text, 1)
+
+        self.doc_notes_chk = QCheckBox("Aggiungi spazio note a fine verifica")
+        self.doc_notes_chk.setChecked(True)
+        v.addWidget(self.doc_notes_chk)
+
+        hint = QLabel("💡  «#» apre una sezione · una verifica per riga (esito OK/KO/N.A. "
+                      "automatico) · «[unità]» per registrare anche un valore, es: Lettura SpO2 [%]")
+        hint.setWordWrap(True)
+        hint.setStyleSheet("color: #64748b; font-size: 11px;")
+        v.addWidget(hint)
+
+        self.doc_normative_chk.toggled.connect(self.doc_normative_edit.setEnabled)
+        self.doc_normative_chk.toggled.connect(self._on_simple_changed)
+        self.doc_normative_edit.textChanged.connect(self._on_simple_changed)
+        self.doc_text.textChanged.connect(self._on_simple_changed)
+        self.doc_notes_chk.toggled.connect(self._on_simple_changed)
+
+        # OutlineView caricata: conserva sorgenti e chiavi da preservare
+        self._doc_view = None
+        return page
+
+    def _collect_simple_options(self) -> SimpleFunctionalOptions:
+        meta = getattr(self, "_doc_view", None)
+        normative = self.doc_normative_edit.text() if self.doc_normative_chk.isChecked() else None
+        view = OutlineView(
+            normative=normative,
+            outline=self.doc_text.toPlainText(),
+            has_notes=self.doc_notes_chk.isChecked(),
+            sources=meta.sources if meta else [],
+            normative_key=meta.normative_key if meta else None,
+            normative_field_key=meta.normative_field_key if meta else None,
+            notes_key=meta.notes_key if meta else None,
+            notes_field_key=meta.notes_field_key if meta else None,
+        )
+        return options_from_outline_view(view)
+
+    def _load_outline_view(self, view: OutlineView):
+        self._doc_view = view
+        widgets = (self.doc_normative_chk, self.doc_normative_edit,
+                   self.doc_text, self.doc_notes_chk)
+        for w in widgets:
+            w.blockSignals(True)
+        self.doc_normative_chk.setChecked(view.normative is not None)
+        self.doc_normative_edit.setText(view.normative or "")
+        self.doc_normative_edit.setEnabled(view.normative is not None)
+        self.doc_text.setPlainText(view.outline)
+        self.doc_notes_chk.setChecked(view.has_notes)
+        for w in widgets:
+            w.blockSignals(False)
+        self._on_simple_changed()
+
+    def _on_simple_changed(self, *args):
+        if hasattr(self, "preview_text"):
+            self._update_preview()
+
+    def _current_sections(self):
+        """Sezioni correnti: costruite dalla guidata oppure quelle del profilo."""
+        if getattr(self, "_sections_simple_mode", False):
+            try:
+                return build_sections(self._collect_simple_options())
+            except Exception:
+                return self.profile.sections
+        return self.profile.sections
+
+    def _set_sections_mode(self, simple: bool):
+        self._sections_simple_mode = simple
+        self.sections_stack.setCurrentIndex(0 if simple else 1)
+        if simple:
+            self.sections_mode_label.setText("✦ MODALITÀ DOCUMENTO — scrivi il profilo come testo")
+            self.sections_mode_btn.setText("EDITOR AVANZATO…")
+        else:
+            self.sections_mode_label.setText("🛠 EDITOR AVANZATO — sezioni, tabelle e formule")
+            self.sections_mode_btn.setText("TORNA AL DOCUMENTO…")
+        if hasattr(self, "preview_text"):
+            self._update_preview()
+
+    def _toggle_sections_mode(self):
+        if self._sections_simple_mode:
+            # Guidata → completo: travasa le sezioni costruite
+            self.profile.sections = build_sections(self._collect_simple_options())
+            self._refresh_sections()
+            self._set_sections_mode(simple=False)
+        else:
+            temp = FunctionalProfile(profile_key="x", name="x",
+                                     sections=self.profile.sections)
+            parsed = parse_profile_sections(temp)
+            view = outline_view_from_options(parsed) if parsed is not None else None
+            if view is None:
+                QMessageBox.information(
+                    self, "Modalità documento non disponibile",
+                    "Il profilo contiene tabelle, formule o moduli di campi\n"
+                    "che la modalità documento non può rappresentare.\n\n"
+                    "Continua nell'editor avanzato.",
+                )
+                return
+            self._load_outline_view(view)
+            self._set_sections_mode(simple=True)
 
     def _refresh_sections(self):
         """Aggiorna la lista delle sezioni con icone e colori."""
@@ -1332,48 +1756,92 @@ class FunctionalProfileEditorDialog(QDialog):
             self.sections_list.addItem(item)
         self._update_preview()
     
+    def _field_control_preview(self, field) -> str:
+        """Descrizione HTML del controllo come apparirà al tecnico in verifica."""
+        import html as _html
+        ft = field.field_type
+        if ft == "header":
+            return ""  # intestazione: già resa come titolo
+        if ft in ("choice", "pass_fail"):
+            opts = field.options or (["PASS", "FAIL", "N.A."] if ft == "pass_fail" else [])
+            if opts:
+                chips = " ".join(
+                    f"<span style='background:#eef2ff;color:#4338ca;border-radius:8px;"
+                    f"padding:1px 6px;'>{_html.escape(str(o))}</span>" for o in opts
+                )
+                return chips
+            return "<span style='color:#94a3b8;'>(nessuna opzione)</span>"
+        if ft == "bool":
+            return "<span style='color:#94a3b8;'>☐ Sì / No</span>"
+        if ft == "rating":
+            n = field.rating_max or 5
+            return f"<span style='color:#eab308;'>{'★' * min(n, 10)}</span> <span style='color:#94a3b8;'>(1–{n})</span>"
+        if ft == "calculated":
+            return (f"<span style='color:#0d9488;'>∑ calcolato: "
+                    f"<code>{_html.escape(field.formula or '')}</code></span>")
+        # input testuale/numerico/data/ora: mostra una casella con eventuale unità/default
+        placeholder = ""
+        if field.default not in (None, ""):
+            placeholder = _html.escape(str(field.default))
+        box = (f"<span style='border:1px solid #cbd5e1;border-radius:4px;"
+               f"padding:1px 18px 1px 6px;color:#64748b;'>{placeholder or '&nbsp;'}</span>")
+        if field.unit:
+            box += f" <span style='color:#64748b;'>{_html.escape(field.unit)}</span>"
+        return box
+
     def _update_preview(self):
-        """Aggiorna l'anteprima del profilo."""
+        """Anteprima fedele: mostra il profilo come apparirà in verifica."""
+        import html as _html
         name = self.name_edit.text().strip() or "Nome Profilo"
         device_type = self.device_type_edit.text().strip()
-        
-        preview_html = f"<h3>{name}</h3>"
+        sections = self._current_sections()
+
+        html_parts = [f"<h3 style='margin-bottom:2px;'>{_html.escape(name)}</h3>"]
         if device_type:
-            preview_html += f"<p><b>Tipo:</b> {device_type}</p>"
-        
-        preview_html += f"<p><b>Sezioni:</b> {len(self.profile.sections)}</p>"
-        preview_html += "<hr>"
-        
-        for idx, section in enumerate(self.profile.sections):
-            preview_html += f"<h4>{idx + 1}. {section.title}</h4>"
-            preview_html += f"<p style='color: #64748b;'><i>Tipo: {section.section_type}</i></p>"
-            
-            if section.section_type == "fields":
-                preview_html += "<ul>"
+            html_parts.append(f"<p style='color:#64748b;margin-top:0;'>{_html.escape(device_type)}</p>")
+        if not sections:
+            html_parts.append("<p style='color:#94a3b8;'><i>Nessuna sezione: aggiungi una "
+                              "checklist o un modulo campi.</i></p>")
+
+        for idx, section in enumerate(sections):
+            html_parts.append(
+                f"<div style='margin-top:10px;'><span style='font-weight:700;color:#1e293b;'>"
+                f"{idx + 1}. {_html.escape(section.title)}</span></div>")
+            if section.description:
+                html_parts.append(
+                    f"<div style='color:#64748b;font-size:11px;'>{_html.escape(section.description)}</div>")
+
+            if section.section_type in ("fields", "form"):
+                html_parts.append("<table cellpadding='3' style='margin-left:6px;'>")
                 for field in section.fields:
-                    required = " <span style='color: red;'>*</span>" if field.required else ""
-                    type_label = FIELD_TYPE_INFO.get(field.field_type, {}).get("label", field.field_type)
-                    preview_html += f"<li>{field.label}{required} <span style='color:#94a3b8;'>({type_label})</span></li>"
-                preview_html += "</ul>"
+                    if field.field_type == "header":
+                        html_parts.append(
+                            f"<tr><td colspan='2' style='font-weight:600;color:#475569;'>"
+                            f"— {_html.escape(field.label)} —</td></tr>")
+                        continue
+                    req = " <span style='color:#dc2626;'>*</span>" if field.required else ""
+                    html_parts.append(
+                        f"<tr><td style='color:#334155;vertical-align:top;'>{_html.escape(field.label)}{req}</td>"
+                        f"<td>{self._field_control_preview(field)}</td></tr>")
+                html_parts.append("</table>")
             else:
-                preview_html += f"<p>Righe: {len(section.rows)}</p>"
-                if section.rows:
-                    preview_html += "<ul>"
-                    for row in section.rows[:5]:
-                        preview_html += f"<li>{row.label or row.key}"
-                        if row.fields:
-                            field_types = ", ".join(
-                                FIELD_TYPE_INFO.get(f.field_type, {}).get("label", f.field_type) for f in row.fields
-                            )
-                            preview_html += f" <span style='color:#94a3b8;'>({field_types})</span>"
-                        preview_html += "</li>"
-                    if len(section.rows) > 5:
-                        preview_html += f"<li>... e altre {len(section.rows) - 5}</li>"
-                    preview_html += "</ul>"
-            
-            preview_html += "<br>"
-        
-        self.preview_text.setHtml(preview_html)
+                # checklist / table: una riga per voce
+                html_parts.append("<table cellpadding='3' style='margin-left:6px;'>")
+                for row in section.rows[:8]:
+                    controls = " &nbsp; ".join(
+                        self._field_control_preview(f) for f in row.fields
+                        if self._field_control_preview(f)
+                    )
+                    html_parts.append(
+                        f"<tr><td style='color:#334155;vertical-align:top;'>"
+                        f"{_html.escape(row.label or row.key)}</td><td>{controls}</td></tr>")
+                if len(section.rows) > 8:
+                    html_parts.append(
+                        f"<tr><td colspan='2' style='color:#94a3b8;'>… e altre "
+                        f"{len(section.rows) - 8} voci</td></tr>")
+                html_parts.append("</table>")
+
+        self.preview_text.setHtml("".join(html_parts))
 
     def _capture_instrument_selection(self):
         self._selected_instrument_ids = {
@@ -1586,6 +2054,46 @@ class FunctionalProfileEditorDialog(QDialog):
         self.profile.sections.pop(row)
         self._refresh_sections()
 
+    def _unique_section_key(self, base: str) -> str:
+        base = base or "sezione"
+        existing = {s.key for s in self.profile.sections}
+        if base not in existing:
+            return base
+        n = 2
+        while f"{base}_{n}" in existing:
+            n += 1
+        return f"{base}_{n}"
+
+    def _drop_section_preset(self, preset: str, row: int):
+        """Crea una sezione dal blocco trascinato dalla palette e la inserisce
+        nel punto del rilascio."""
+        from app.functional_templates import (
+            build_normative_section, build_notes_section,
+        )
+        if preset == "normative":
+            section = build_normative_section()
+        elif preset == "notes":
+            section = build_notes_section()
+        elif preset == "checklist":
+            section = FunctionalSection(key="", title="Nuova checklist",
+                                        section_type="checklist", rows=[])
+        else:  # fields
+            section = FunctionalSection(key="", title="Nuova sezione",
+                                        section_type="fields", fields=[])
+        section.key = self._unique_section_key(
+            section.key or sanitize_profile_key(section.title) or "sezione")
+        row = max(0, min(row, len(self.profile.sections)))
+        self.profile.sections.insert(row, section)
+        self._refresh_sections()
+        self.sections_list.setCurrentRow(row)
+        self._update_preview()
+
+    def _reorder_sections(self, src: int, dst: int):
+        """Riordino delle sezioni per trascinamento."""
+        move_in_list(self.profile.sections, src, dst)
+        self._refresh_sections()
+        self._update_preview()
+
     def move_section_up(self):
         row = self.sections_list.currentRow()
         if row > 0:
@@ -1611,6 +2119,10 @@ class FunctionalProfileEditorDialog(QDialog):
         if not name:
             QMessageBox.warning(self, "Nome mancante", "Il nome del profilo è obbligatorio.")
             return
+
+        # In modalità guidata le sezioni vengono costruite dalle checklist
+        if getattr(self, "_sections_simple_mode", False):
+            self.profile.sections = build_sections(self._collect_simple_options())
 
         if self.is_new:
             key = sanitize_profile_key(self.key_edit.text() or name)
@@ -1661,270 +2173,6 @@ class FunctionalProfileEditorDialog(QDialog):
             return
 
         super().accept()
-
-
-class FunctionalProfileWizard(QWizard):
-    """Wizard guidato per creare un nuovo profilo funzionale."""
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Wizard Creazione Profilo Funzionale")
-        self.setMinimumSize(700, 500)
-        # Applica il tema corrente
-        self.setStyleSheet(config.get_current_stylesheet())
-        
-        # Pagina 1: Scelta metodo di creazione
-        self.page1 = QWizardPage()
-        self.page1.setTitle("Metodo di Creazione")
-        self.page1.setSubTitle("Scegli come vuoi creare il nuovo profilo")
-        page1_layout = QVBoxLayout(self.page1)
-        
-        self.create_method_combo = QComboBox()
-        self.create_method_combo.addItem("Vuoto - Crea da zero", "empty")
-        self.create_method_combo.addItem("Da Template Predefinito", "template")
-        self.create_method_combo.addItem("Copia da Profilo Esistente", "copy")
-        page1_layout.addWidget(QLabel("Come vuoi creare il profilo?"))
-        page1_layout.addWidget(self.create_method_combo)
-        page1_layout.addStretch()
-        
-        # Pagina 2: Template
-        self.page2 = QWizardPage()
-        self.page2.setTitle("Selezione Template")
-        self.page2.setSubTitle("Scegli un template predefinito")
-        page2_layout = QVBoxLayout(self.page2)
-        
-        self.template_list = QListWidget()
-        self.template_list.addItem("ECG - Monitor ECG")
-        self.template_list.addItem("SpO2 - Monitor SpO2")
-        self.template_list.addItem("Defibrillatore")
-        self.template_list.addItem("Ventilatore")
-        self.template_list.addItem("Pompa Infusione")
-        page2_layout.addWidget(self.template_list)
-        page2_layout.addWidget(QLabel("💡 I template includono sezioni comuni per il tipo di dispositivo selezionato"))
-        
-        # Pagina 3: Copia da profilo
-        self.page3 = QWizardPage()
-        self.page3.setTitle("Copia da Profilo Esistente")
-        self.page3.setSubTitle("Seleziona il profilo da copiare")
-        page3_layout = QVBoxLayout(self.page3)
-        
-        self.copy_profile_list = QListWidget()
-        page3_layout.addWidget(self.copy_profile_list)
-        
-        # Pagina 4: Informazioni base
-        self.page4 = QWizardPage()
-        self.page4.setTitle("Informazioni Base")
-        self.page4.setSubTitle("Inserisci le informazioni principali del profilo")
-        page4_layout = QFormLayout(self.page4)
-        
-        self.wizard_name_edit = QLineEdit()
-        self.wizard_key_edit = QLineEdit()
-        self.wizard_device_type_edit = QLineEdit()
-        self.wizard_key_edit.setPlaceholderText("Generato automaticamente dal nome")
-        
-        page4_layout.addRow("Nome Profilo *:", self.wizard_name_edit)
-        page4_layout.addRow("Chiave Profilo:", self.wizard_key_edit)
-        page4_layout.addRow("Tipo Apparecchio:", self.wizard_device_type_edit)
-        
-        self.wizard_name_edit.textChanged.connect(self._on_name_changed)
-        
-        self.addPage(self.page1)
-        self.addPage(self.page2)
-        self.addPage(self.page3)
-        self.addPage(self.page4)
-        
-        # Carica profili esistenti per la copia
-        self._load_existing_profiles()
-        
-        # Connessioni
-        self.create_method_combo.currentIndexChanged.connect(self._on_method_changed)
-        self._on_method_changed(0)
-    
-    def _on_method_changed(self, index):
-        """Mostra/nascondi pagine in base al metodo selezionato."""
-        method = self.create_method_combo.currentData()
-        if method == "template":
-            self.setPage(1, self.page2)
-            self.setPage(2, self.page4)
-            self.removePage(3)
-        elif method == "copy":
-            self.setPage(1, self.page3)
-            self.setPage(2, self.page4)
-            self.removePage(3)
-        else:  # empty
-            self.setPage(1, self.page4)
-            self.removePage(2)
-            self.removePage(3)
-    
-    def _on_name_changed(self, text):
-        """Genera automaticamente la chiave dal nome."""
-        if text and not self.wizard_key_edit.isModified():
-            key = sanitize_profile_key(text)
-            self.wizard_key_edit.setText(key)
-    
-    def _load_existing_profiles(self):
-        """Carica i profili esistenti per la copia."""
-        self.copy_profile_list.clear()
-        with database.DatabaseConnection() as conn:
-            rows = conn.execute(
-                "SELECT id, profile_key, name FROM functional_profiles WHERE is_deleted = 0 ORDER BY name"
-            ).fetchall()
-        for row in rows:
-            item = QListWidgetItem(row["name"])
-            item.setData(Qt.UserRole, {"id": row["id"], "key": row["profile_key"]})
-            self.copy_profile_list.addItem(item)
-    
-    def get_profile(self) -> Optional[FunctionalProfile]:
-        """Restituisce il profilo creato dal wizard."""
-        method = self.create_method_combo.currentData()
-        name = self.wizard_name_edit.text().strip()
-        key = self.wizard_key_edit.text().strip() or sanitize_profile_key(name)
-        device_type = self.wizard_device_type_edit.text().strip() or None
-        
-        if not name:
-            return None
-        
-        if method == "template":
-            # Crea profilo da template
-            template_name = self.template_list.currentItem().text() if self.template_list.currentItem() else ""
-            profile = self._create_from_template(template_name, name, key, device_type)
-        elif method == "copy":
-            # Copia da profilo esistente
-            item = self.copy_profile_list.currentItem()
-            if not item:
-                return None
-            data = item.data(Qt.UserRole)
-            profile_key = data["key"]
-            source_profile = config.FUNCTIONAL_PROFILES.get(profile_key)
-            if source_profile:
-                profile = copy.deepcopy(source_profile)
-                profile.name = name
-                profile.profile_key = key
-                profile.device_type = device_type or profile.device_type
-            else:
-                return None
-        else:  # empty
-            # Profilo vuoto
-            profile = FunctionalProfile(
-                profile_key=key,
-                name=name,
-                device_type=device_type,
-                sections=[],
-            )
-        
-        return profile
-    
-    def _create_from_template(self, template_name: str, name: str, key: str, device_type: Optional[str]) -> FunctionalProfile:
-        """Crea un profilo da un template predefinito."""
-        # Template base con sezioni comuni
-        sections = []
-        
-        if "ECG" in template_name:
-            sections = [
-                FunctionalSection(
-                    key="normative_references",
-                    title="Riferimenti Normativi-Procedure",
-                    section_type="fields",
-                    description="",
-                    fields=[
-                        FunctionalField(
-                            key="norme_procedure",
-                            label="Norme/Procedure",
-                            field_type="text",
-                            required=False,
-                            default="CEI 62-26/AMS-MOD-PROVECG1",
-                        )
-                    ],
-                    rows=[],
-                ),
-                FunctionalSection(
-                    key="visual_functional_control",
-                    title="Controllo Visivo/Funzionale",
-                    section_type="checklist",
-                    description="",
-                    fields=[],
-                    rows=[
-                        FunctionalRowDefinition(
-                            key="serigrafie_etichette",
-                            label="Leggibilità delle serigrafie/etichette",
-                            fields=[
-                                FunctionalField(
-                                    key="esito",
-                                    label="Esito",
-                                    field_type="choice",
-                                    required=True,
-                                    options=["OK", "KO", "N.A."],
-                                )
-                            ],
-                        ),
-                    ],
-                ),
-            ]
-        elif "SpO2" in template_name:
-            sections = [
-                FunctionalSection(
-                    key="normative_references",
-                    title="Riferimenti Normativi-Procedure",
-                    section_type="fields",
-                    description="",
-                    fields=[
-                        FunctionalField(
-                            key="norme_procedure",
-                            label="Norme/Procedure",
-                            field_type="text",
-                            required=False,
-                        )
-                    ],
-                    rows=[],
-                ),
-                FunctionalSection(
-                    key="visual_functional_control",
-                    title="Controllo Visivo/Funzionale",
-                    section_type="checklist",
-                    description="",
-                    fields=[],
-                    rows=[
-                        FunctionalRowDefinition(
-                            key="serigrafie_etichette",
-                            label="Leggibilità delle serigrafie/etichette",
-                            fields=[
-                                FunctionalField(
-                                    key="esito",
-                                    label="Esito",
-                                    field_type="choice",
-                                    required=True,
-                                    options=["OK", "KO", "N.A."],
-                                )
-                            ],
-                        ),
-                    ],
-                ),
-            ]
-        else:
-            # Template generico
-            sections = [
-                FunctionalSection(
-                    key="general_info",
-                    title="Informazioni Generali",
-                    section_type="fields",
-                    description="",
-                    fields=[
-                        FunctionalField(
-                            key="note",
-                            label="Note",
-                            field_type="multiline",
-                            required=False,
-                        )
-                    ],
-                    rows=[],
-                ),
-            ]
-        
-        return FunctionalProfile(
-            profile_key=key,
-            name=name,
-            device_type=device_type,
-            sections=sections,
-        )
 
 
 class FunctionalProfileManagerDialog(QDialog):
@@ -2030,40 +2278,32 @@ class FunctionalProfileManagerDialog(QDialog):
         return item, item.data(Qt.UserRole) if item else (None, None)
 
     def add_profile(self):
-        """Apre il wizard per creare un nuovo profilo."""
-        wizard = FunctionalProfileWizard(parent=self)
-        if wizard.exec() == QDialog.Accepted:
-            profile = wizard.get_profile()
-            if not profile:
-                QMessageBox.warning(self, "Dati mancanti", "Inserire almeno il nome del profilo.")
-                return
-            
-            if profile.profile_key in config.FUNCTIONAL_PROFILES:
-                QMessageBox.warning(
-                    self,
-                    "Chiave duplicata",
-                    f"Esiste già un profilo con la chiave '{profile.profile_key}'.",
-                )
-                return
-            
-            try:
-                services.add_functional_profile(profile.profile_key, profile)
-                self.profiles_changed = True
-                config.load_functional_profiles()
-                self.load_profiles_from_db()
-                
-                # Apri l'editor per completare la configurazione
-                reply = QMessageBox.question(
-                    self,
-                    "Profilo Creato",
-                    f"Il profilo '{profile.name}' è stato creato.\n\nVuoi modificarlo ora per aggiungere sezioni e campi?",
-                    QMessageBox.Yes | QMessageBox.No,
-                    QMessageBox.Yes,
-                )
-                if reply == QMessageBox.Yes:
-                    self.edit_profile_by_key(profile.profile_key)
-            except Exception as e:
-                QMessageBox.critical(self, "Errore", f"Impossibile creare il profilo:\n{e}")
+        """Crea un nuovo profilo aprendo direttamente l'editor a documento.
+
+        Niente più wizard: nome, tipo e contenuto si impostano tutti
+        nell'unica schermata dell'editor.
+        """
+        editor = FunctionalProfileEditorDialog(profile=None, is_new=True, parent=self)
+        if editor.exec() != QDialog.Accepted:
+            return
+
+        profile = editor.profile
+        # Chiave univoca: se quella generata dal nome esiste già, aggiunge un
+        # suffisso invece di buttare via il lavoro appena fatto
+        base = profile.profile_key
+        if base in config.FUNCTIONAL_PROFILES:
+            n = 2
+            while f"{base}_{n}" in config.FUNCTIONAL_PROFILES:
+                n += 1
+            profile.profile_key = f"{base}_{n}"
+
+        try:
+            services.add_functional_profile(profile.profile_key, profile)
+            self.profiles_changed = True
+            config.load_functional_profiles()
+            self.load_profiles_from_db()
+        except Exception as e:
+            QMessageBox.critical(self, "Errore", f"Impossibile creare il profilo:\n{e}")
     
     def copy_profile(self):
         """Crea una copia del profilo selezionato."""

@@ -21,7 +21,7 @@ LOCK_FILE = config.LOCK_FILE_DIR
 SYNC_ORDER = [
     "customers", "mti_instruments", "signatures", "profiles", "profile_tests", "functional_profiles",
     "destinations", "devices", "verifications", "functional_verifications", "verification_attachments",
-    "system_verifications", "system_verification_devices", "audit_log"
+    "system_verifications", "system_verification_devices", "verification_assignments", "device_unavailability_reports", "audit_log"
 ]
 
 # Timeout e retry configuration
@@ -680,6 +680,21 @@ def _get_unsynced_local_changes():
             "WHERE svd.is_synced = 0",
             ["system_verification_id", "device_id"]
         ),
+        "verification_assignments": (
+            "SELECT a.*, d.uuid as device_uuid "
+            "FROM verification_assignments a "
+            "JOIN devices d ON a.device_id = d.id "
+            "WHERE a.is_synced = 0",
+            ["device_id"]
+        ),
+        "device_unavailability_reports": (
+            "SELECT r.*, d.uuid as device_uuid, dest.uuid as destination_uuid "
+            "FROM device_unavailability_reports r "
+            "JOIN devices d ON r.device_id = d.id "
+            "JOIN destinations dest ON r.destination_id = dest.id "
+            "WHERE r.is_synced = 0",
+            ["device_id", "destination_id"]
+        ),
         "audit_log": ("SELECT * FROM {table} WHERE is_synced = 0", [])
     }
 
@@ -836,7 +851,7 @@ def _apply_server_changes(conn, changes):
                         logging.warning(f"Allegato {record.get('uuid')} senza verification_uuid, saltato.")
                         continue
 
-                    # Salva file su disco se presente
+                    # Salva file su disco solo se presente nel payload (upload da altro client)
                     if file_data and record.get('uuid'):
                         try:
                             decoded = base64.b64decode(file_data)
@@ -855,9 +870,10 @@ def _apply_server_changes(conn, changes):
                             logging.warning(f"Errore nel salvataggio file allegato {record.get('uuid')}: {e}")
                             continue
                     else:
-                        # Nessun file_data: salta il record (file_path è NOT NULL nel DB locale)
-                        logging.warning(f"Allegato {record.get('uuid')} senza file_data, saltato (file_path NOT NULL).")
-                        continue
+                        # Nessun file_data (server non lo invia nella sync): salva solo metadati.
+                        # Il file verrà scaricato on-demand dal server quando l'utente lo apre.
+                        record['file_path'] = ''
+                        # Conserva file_size dal server se presente
 
                     # Prepara record per upsert
                     record['is_synced'] = 1
@@ -971,6 +987,33 @@ def _apply_server_changes(conn, changes):
                     else:
                         record['device_id'] = local_device_id
 
+                if table == 'verification_assignments' and not fk_missing and not fk_orphan:
+                    local_device_id = resolve_fk("devices", "device_uuid")
+                    if local_device_id == -1:
+                        fk_orphan = True
+                    elif local_device_id is None:
+                        fk_missing = True
+                    else:
+                        record['device_id'] = local_device_id
+
+                if table == 'device_unavailability_reports' and not fk_missing and not fk_orphan:
+                    local_device_id = resolve_fk("devices", "device_uuid")
+                    if local_device_id == -1:
+                        fk_orphan = True
+                    elif local_device_id is None:
+                        fk_missing = True
+                    else:
+                        record['device_id'] = local_device_id
+
+                if table == 'device_unavailability_reports' and not fk_missing and not fk_orphan:
+                    local_dest_id = resolve_fk("destinations", "destination_uuid")
+                    if local_dest_id == -1:
+                        fk_orphan = True
+                    elif local_dest_id is None:
+                        fk_missing = True
+                    else:
+                        record['destination_id'] = local_dest_id
+
                 # Record orfano dal server (UUID padre assente nel payload) → salta silenziosamente
                 if fk_orphan:
                     record_uuid = record.get('uuid', 'unknown')
@@ -1001,7 +1044,8 @@ def _apply_server_changes(conn, changes):
                     records_to_update.append(record)
                 elif not record.get('is_deleted', False):
                     record.pop('id', None)
-                    # Per la tabella devices, controlla se esiste già un record con lo stesso serial_number
+                    # Per la tabella devices, logga solo un avviso informativo se esiste già
+                    # un record con lo stesso serial_number: i duplicati sono permessi per scelta applicativa.
                     if table == 'devices':
                         sn = record.get('serial_number')
                         if sn and str(sn).strip():
@@ -1010,26 +1054,10 @@ def _apply_server_changes(conn, changes):
                                 (sn, record_uuid)
                             ).fetchone()
                             if existing_by_sn:
-                                # Crea un conflitto di duplicazione per l'utente
-                                local_row = cursor.execute("SELECT * FROM devices WHERE id = ?", (existing_by_sn[0],)).fetchone()
-                                local_data = dict(local_row) if local_row else {}
-                                
-                                conflict = {
-                                    'table': table,
-                                    'record_uuid': record_uuid,
-                                    'conflict_type': 'duplicate_serial_number',
-                                    'severity': 'high',
-                                    'local_data': local_data,
-                                    'server_data': record.copy(),
-                                    'error_message': (
-                                        f"Il dispositivo con numero di serie '{sn}' esiste già localmente "
-                                        f"(UUID locale: {existing_by_sn[1]}) ma il server ha inviato "
-                                        f"un dispositivo diverso (UUID server: {record_uuid}) con lo stesso numero di serie."
-                                    )
-                                }
-                                conflicts_list.append(conflict)
-                                logging.warning(f"⚠ Conflitto serial_number: '{sn}' in devices (locale={existing_by_sn[1]}, server={record_uuid})")
-                                continue
+                                logging.info(
+                                    f"[sync] Numero di serie '{sn}' già presente localmente "
+                                    f"(uuid={existing_by_sn[1]}) — duplicato permesso, sync prosegue."
+                                )
                     records_to_insert.append(record)
             
             # === INSERIMENTO ===
@@ -1273,7 +1301,7 @@ def _apply_hard_deletes(conn, hard_deletes: dict) -> dict:
     
     if deleted_counts:
         total = sum(deleted_counts.values())
-        logging.warning(f"\ud83d\uddd1\ufe0f Totale record eliminati definitivamente per propagazione: {total}")
+        logging.warning(f"[HARD-DELETE] Totale record eliminati definitivamente per propagazione: {total}")
     
     return deleted_counts
 
@@ -1522,6 +1550,12 @@ def run_sync(full_sync=False):
                 for r in pending_resolutions
             ]
             logging.info(f"📋 {len(pending_resolutions)} risoluzioni conflitto pendenti incluse nel payload")
+
+        # Rimuovi eventuali conflitti serial_number residui (i duplicati sono ora permessi)
+        try:
+            database.delete_serial_number_conflicts()
+        except Exception as _e:
+            logging.warning(f"Impossibile rimuovere conflitti serial_number: {_e}")
         
         # Aggiungi checksum e versione per validazione
         payload_checksum = _calculate_checksum(local_changes)

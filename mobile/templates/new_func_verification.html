@@ -2,32 +2,88 @@
 
 {% block title %}Nuova Verifica Funzionale — STM Mobile{% endblock %}
 {% block header_title %}Nuova Verifica Funzionale{% endblock %}
-{% block header_subtitle %}<p class="text-blue-300 text-xs">{{ device.description or device.model or 'Dispositivo' }}</p>{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">{{ device.description or device.model or 'Dispositivo' }}</p>{% endblock %}
 
 {% block content %}
-<div class="px-4 py-4">
+<div class="px-4 py-4" x-data="vfInstrPicker()" x-init="init()">
+
+    {# ── Modal selezione strumenti ──────────────────────────────────────── #}
+    <div x-show="showModal" x-cloak
+         style="position:fixed;inset:0;z-index:200;background:rgba(15,23,42,.55);display:flex;align-items:flex-end;justify-content:center;">
+        <div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:1.5rem 1.25rem 2rem;max-height:85vh;overflow-y:auto;"
+             @click.stop>
+            <div style="width:40px;height:4px;background:#e2e8f0;border-radius:2px;margin:0 auto .75rem;"></div>
+            <h2 style="font-size:1rem;font-weight:700;color:#1e293b;margin-bottom:.25rem;"><i class="ti ti-ruler-2" style="margin-right:.375rem;color:#7c3aed;"></i>Strumenti di misura</h2>
+            <p style="font-size:.75rem;color:#94a3b8;margin-bottom:1.25rem;">Seleziona uno o più strumenti prima di avviare la verifica funzionale.</p>
+
+            {% if instruments %}
+            <div style="margin-bottom:1rem;">
+                <select class="form-input" @change="addInstr($event.target)">
+                    <option value="">+ Aggiungi strumento</option>
+                    {% for i in instruments %}
+                    <option value="{{ i.uuid }}"
+                            data-name="{{ i.instrument_name }}"
+                            data-serial="{{ i.serial_number or '' }}"
+                            data-cal="{{ i.calibration_date or '' }}">
+                        {{ i.instrument_name }}{% if i.serial_number %} — {{ i.serial_number }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="space-y-2" style="margin-bottom:1rem;">
+                <template x-for="(instr, idx) in selected" :key="instr.uuid">
+                    <div style="display:flex;align-items:center;justify-content:space-between;background:#f5f3ff;border:1.5px solid #ddd6fe;border-radius:12px;padding:.625rem .875rem;">
+                        <div style="flex:1;min-width:0;">
+                            <p style="font-size:.825rem;font-weight:700;color:#4c1d95;" x-text="instr.name"></p>
+                            <p style="font-size:.7rem;color:#7c3aed;opacity:.8;" x-show="instr.serial">S/N: <span x-text="instr.serial"></span></p>
+                            <p style="font-size:.7rem;color:#7c3aed;opacity:.8;" x-show="instr.cal">Scad: <span x-text="instr.cal"></span></p>
+                        </div>
+                        <button type="button" @click="removeInstr(idx)"
+                                style="margin-left:.75rem;flex-shrink:0;color:#ef4444;background:none;border:none;cursor:pointer;font-size:1.125rem;"><i class="ti ti-x"></i></button>
+                    </div>
+                </template>
+                <template x-if="selected.length === 0">
+                    <p style="font-size:.75rem;color:#94a3b8;text-align:center;padding:.5rem 0;">Nessuno strumento selezionato</p>
+                </template>
+            </div>
+            {% else %}
+            <div style="background:#fffbeb;border:1.5px solid #fde68a;color:#92400e;border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.875rem;">
+                <i class="ti ti-alert-triangle"></i> Nessuno strumento funzionale. Aggiungerne uno di tipo <strong>funzionale</strong>.
+            </div>
+            {% endif %}
+
+            <button type="button"
+                    :disabled="selected.length === 0"
+                    @click="confirm()"
+                    class="btn-primary"
+                    :style="selected.length === 0 ? 'opacity:.45;cursor:not-allowed;' : ''">
+                <i class="ti ti-player-play" style="margin-right:.375rem;"></i>Avvia verifica
+            </button>
+            <a href="/mobile/devices/{{ device.uuid }}" class="btn-secondary block text-center" style="margin-top:.625rem;">Annulla</a>
+        </div>
+    </div>
 
     {% if error %}
-    <div class="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 mb-4 text-sm">
-        ⚠️ {{ error }}
+    <div style="background:#fef2f2;border:1.5px solid #fca5a5;color:#991b1b;border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.875rem;display:flex;align-items:center;gap:.5rem;">
+        <i class="ti ti-alert-circle" style="flex-shrink:0;"></i> {{ error }}
     </div>
     {% endif %}
 
     <form method="POST" action="/mobile/devices/{{ device.uuid }}/new-func-verification"
-          id="vf-form" class="space-y-5">
+          id="vf-form" class="space-y-5" x-show="!showModal" x-cloak>
 
         <!-- Base info -->
         <div class="card p-4 space-y-4">
-            <h2 class="text-sm font-bold text-gray-700 border-b border-gray-100 pb-2">Informazioni generali</h2>
+            <h2 class="section-title" style="border-bottom:1px solid #f1f5f9;padding-bottom:.5rem;">Informazioni generali</h2>
 
             <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Data verifica *</label>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Data verifica <span class="text-red-500">*</span></label>
                 <input type="date" name="verification_date" class="form-input"
                        value="{{ today }}" required>
             </div>
 
             <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Profilo funzionale *</label>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Profilo funzionale <span class="text-red-500">*</span></label>
                 <select name="profile_key" class="form-input" required
                         hx-get="/mobile/partials/functional-profile-schema"
                         hx-trigger="change"
@@ -42,27 +98,45 @@
             </div>
 
             <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Esito complessivo *</label>
-                <div class="grid grid-cols-2 gap-2">
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Esito complessivo <span class="text-red-500">*</span></label>
+                <div class="grid grid-cols-1 gap-2">
                     <label class="flex items-center gap-3 p-3 border-2 border-gray-200 rounded-xl cursor-pointer has-[:checked]:border-green-500 has-[:checked]:bg-green-50">
-                        <input type="radio" name="overall_status" value="PASSATO" class="accent-green-600" required>
-                        <span class="text-sm font-semibold text-green-700">✓ PASSATO</span>
+                        <input type="radio" name="overall_status" value="CONFORME" class="accent-green-600" required>
+                        <span class="text-sm font-semibold text-green-700">✓ CONFORME</span>
+                    </label>
+                    <label class="flex items-center gap-3 p-3 border-2 border-gray-200 rounded-xl cursor-pointer has-[:checked]:border-amber-500 has-[:checked]:bg-amber-50">
+                        <input type="radio" name="overall_status" value="CONFORME CON ANNOTAZIONE" class="accent-amber-500">
+                        <span class="text-sm font-semibold text-amber-700">⚠ CONFORME CON ANNOTAZIONE</span>
                     </label>
                     <label class="flex items-center gap-3 p-3 border-2 border-gray-200 rounded-xl cursor-pointer has-[:checked]:border-red-500 has-[:checked]:bg-red-50">
-                        <input type="radio" name="overall_status" value="NON PASSATO" class="accent-red-600">
-                        <span class="text-sm font-semibold text-red-700">✗ NON PASSATO</span>
+                        <input type="radio" name="overall_status" value="NON CONFORME" class="accent-red-600">
+                        <span class="text-sm font-semibold text-red-700">✗ NON CONFORME</span>
                     </label>
                 </div>
             </div>
         </div>
 
+        {# Riepilogo strumenti selezionati + hidden inputs #}
+        <div style="background:#f5f3ff;border:1.5px solid #ddd6fe;border-radius:12px;padding:.625rem 1rem;display:flex;align-items:center;gap:.625rem;">
+            <i class="ti ti-ruler-2" style="color:#7c3aed;font-size:1.125rem;flex-shrink:0;"></i>
+            <div style="flex:1;min-width:0;">
+                <template x-for="(instr, idx) in selected" :key="instr.uuid">
+                    <p style="font-size:.8rem;font-weight:700;color:#4c1d95;" x-text="instr.name + (instr.serial ? ' — ' + instr.serial : '')"></p>
+                </template>
+                <input type="hidden" name="instrument_uuid"
+                       x-bind:value="selected.map(s=>s.uuid).join(',')">
+                <template x-for="instr in selected" :key="instr.uuid">
+                    <input type="hidden" name="instrument_uuid" :value="instr.uuid">
+                </template>
+            </div>
+            <button type="button" @click="showModal=true"
+                    style="font-size:.7rem;color:#7c3aed;background:none;border:none;cursor:pointer;text-decoration:underline;">Cambia</button>
+        </div>
+
         <!-- Dynamic profile schema -->
         <div class="relative">
             <span id="schema-spinner" class="htmx-indicator absolute top-2 right-2 z-10">
-                <svg class="animate-spin h-5 w-5 text-blue-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 22 6.477 22 12h-4z"></path>
-                </svg>
+                <i class="ti ti-loader-2 animate-spin" style="font-size:1.25rem;color:#2563eb;"></i>
             </span>
             <div id="schema-container"
                  hx-get="/mobile/partials/functional-profile-schema"
@@ -72,48 +146,9 @@
             </div>
         </div>
 
-        <!-- Instrument selection -->
-        <div class="card p-4 space-y-4" x-data="{ serial: '—', cal: '—' }">
-            <h2 class="text-sm font-bold text-gray-700 border-b border-gray-100 pb-2">Strumento di misura</h2>
-            {% if instruments %}
-            <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Seleziona strumento</label>
-                <select name="instrument_uuid" class="form-input"
-                        x-on:change="
-                            const opt = $event.target.selectedOptions[0];
-                            serial = opt.dataset.serial || '—';
-                            cal    = opt.dataset.cal    || '—';
-                        ">
-                    <option value="">— Nessuno strumento —</option>
-                    {% for i in instruments %}
-                    <option value="{{ i.uuid }}"
-                            data-serial="{{ i.serial_number or '' }}"
-                            data-cal="{{ i.calibration_date or '' }}">
-                        {{ i.instrument_name }}{% if i.serial_number %} — {{ i.serial_number }}{% endif %}
-                    </option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="grid grid-cols-2 gap-3 text-xs text-gray-500">
-                <div>
-                    <span class="font-semibold text-gray-600">Matricola:</span>
-                    <span x-text="serial">—</span>
-                </div>
-                <div>
-                    <span class="font-semibold text-gray-600">Scad. calibrazione:</span>
-                    <span x-text="cal">—</span>
-                </div>
-            </div>
-            {% else %}
-            <div class="bg-yellow-50 border border-yellow-200 text-yellow-800 rounded-xl px-4 py-3 text-sm">
-                ⚠️ Nessuno strumento funzionale nel database. Aggiungere uno strumento di tipo <strong>funzionale</strong> dalla sezione Strumenti.
-            </div>
-            {% endif %}
-        </div>
-
         <!-- Notes -->
         <div class="card p-4">
-            <label class="block text-xs font-semibold text-gray-600 mb-1.5">Note</label>
+            <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Note</label>
             <textarea name="notes" class="form-input" rows="3"
                       placeholder="Note aggiuntive sulla verifica..."></textarea>
         </div>
@@ -121,11 +156,9 @@
         <!-- Submit -->
         <div class="space-y-2 pb-4">
             <button type="submit" class="btn-primary" id="submit-btn">
-                Salva verifica funzionale
+                <i class="ti ti-device-floppy" style="margin-right:.375rem;"></i>Salva verifica funzionale
             </button>
-            <a href="/mobile/devices/{{ device.uuid }}" class="btn-secondary block text-center">
-                Annulla
-            </a>
+            <a href="/mobile/devices/{{ device.uuid }}" class="btn-secondary block text-center">Annulla</a>
         </div>
 
     </form>
@@ -139,5 +172,106 @@ document.getElementById('vf-form').addEventListener('submit', function() {
     btn.textContent = 'Salvataggio...';
     btn.disabled = true;
 });
+
+// ── Multi-instrument picker per verifica funzionale ─────────────────────────
+function vfInstrPicker() {
+    return {
+        showModal: true,
+        selected: [],
+        init() {},
+        addInstr(selectEl) {
+            const val = selectEl.value;
+            if (!val) return;
+            if (this.selected.find(s => s.uuid === val)) {
+                selectEl.value = '';
+                return;
+            }
+            const opt = selectEl.options[selectEl.selectedIndex];
+            this.selected.push({
+                uuid:   val,
+                name:   opt.dataset.name   || opt.text,
+                serial: opt.dataset.serial || '',
+                cal:    opt.dataset.cal    || '',
+            });
+            selectEl.value = '';
+        },
+        removeInstr(idx) {
+            this.selected.splice(idx, 1);
+        },
+        confirm() {
+            if (this.selected.length === 0) return;
+            this.showModal = false;
+        }
+    };
+}
+
+// ── Formula engine ────────────────────────────────────────────────────────────
+// Formulas reference other fields by their key (last segment of name after "__").
+// Scope: row-level (same name prefix up to the last "__") so that repeated rows
+// like mis_1, mis_2 … each use their own sibling values.
+function recalcFormulas() {
+    document.querySelectorAll('input[data-formula]').forEach(function(el) {
+        const formula = el.dataset.formula;
+        const precision = parseInt(el.dataset.precision ?? '2', 10);
+        if (!formula) return;
+
+        // Determine row scope: name = "fld__sec__row__fieldkey"
+        // rowPrefix = everything up to (and excluding) the last "__"
+        const nameParts = el.name.split('__');
+        nameParts.pop(); // remove own key
+        const rowPrefix = nameParts.join('__'); // e.g. "fld__etilometro__mis_1"
+
+        // Build value map scoped to the same row prefix
+        const valueMap = {};
+        const scope = rowPrefix
+            ? document.querySelectorAll('input[name^="' + rowPrefix + '__"], select[name^="' + rowPrefix + '__"]')
+            : document.querySelectorAll('input[name], select[name]');
+        scope.forEach(function(sib) {
+            const sibParts = sib.name.split('__');
+            const key = sibParts[sibParts.length - 1];
+            const v = parseFloat(sib.value);
+            if (!isNaN(v)) valueMap[key] = v;
+        });
+
+        try {
+            let expr = formula;
+            // Sort keys longest-first to avoid partial replacements
+            Object.keys(valueMap).sort((a,b) => b.length - a.length).forEach(function(k) {
+                expr = expr.replace(
+                    new RegExp('\\b' + k.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + '\\b', 'g'),
+                    valueMap[k]
+                );
+            });
+            const result = Function('"use strict"; return (' + expr + ')')();
+            if (typeof result === 'number' && isFinite(result)) {
+                el.value = result.toFixed(precision);
+            } else {
+                el.value = '';
+            }
+        } catch(e) {
+            el.value = '';
+        }
+    });
+}
+
+// Run after HTMX injects schema, and attach oninput to source fields
+document.body.addEventListener('htmx:afterSettle', function() {
+    attachFormulaListeners();
+    recalcFormulas();
+});
+
+function attachFormulaListeners() {
+    document.querySelectorAll('input:not([data-formula]), select').forEach(function(el) {
+        if (el.dataset._formulaListening) return;
+        el.dataset._formulaListening = '1';
+        el.addEventListener('input', recalcFormulas);
+        el.addEventListener('change', recalcFormulas);
+    });
+}
+
+// Also run immediately if schema already loaded
+attachFormulaListeners();
+recalcFormulas();
+window.recalcFormulas = recalcFormulas;
 </script>
 {% endblock %}

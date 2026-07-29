@@ -2,147 +2,209 @@
 
 {% block title %}Dashboard — STM Mobile{% endblock %}
 {% block header_title %}Benvenuto, {{ user.first_name or user.username }}{% endblock %}
-{% block header_subtitle %}<p class="text-blue-300 text-xs">Safety Test Manager</p>{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] leading-tight mt-0.5">Safety Test Manager</p>{% endblock %}
 
 {% block content %}
 <div class="px-4 py-5 space-y-5">
 
     <!-- Stats grid -->
     <div class="grid grid-cols-2 gap-3">
-        <div class="card p-4">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Clienti</span>
-                <div class="bg-blue-100 p-1.5 rounded-lg">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-blue-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16"/>
-                    </svg>
+
+        <div class="card p-4" style="border-left:4px solid #3b82f6;">
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wide">Clienti</p>
+                    <p class="text-3xl font-extrabold text-gray-900 mt-1">{{ total_customers }}</p>
+                </div>
+                <div style="background:#eff6ff;border-radius:10px;padding:8px;">
+                    <i class="ti ti-building" style="font-size:1.25rem;color:#3b82f6;display:block;"></i>
                 </div>
             </div>
-            <p class="text-3xl font-bold text-gray-900">{{ total_customers }}</p>
         </div>
 
-        <div class="card p-4">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Dispositivi</span>
-                <div class="bg-indigo-100 p-1.5 rounded-lg">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-indigo-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18m0 0h10a2 2 0 002-2V9M9 21H5a2 2 0 01-2-2V9m0 0h18"/>
-                    </svg>
+        <div class="card p-4" style="border-left:4px solid #6366f1;">
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wide">Dispositivi</p>
+                    <p class="text-3xl font-extrabold text-gray-900 mt-1">{{ total_devices }}</p>
+                </div>
+                <div style="background:#eef2ff;border-radius:10px;padding:8px;">
+                    <i class="ti ti-device-heart-monitor" style="font-size:1.25rem;color:#6366f1;display:block;"></i>
                 </div>
             </div>
-            <p class="text-3xl font-bold text-gray-900">{{ total_devices }}</p>
         </div>
 
-        <div class="card p-4">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-medium text-gray-500 uppercase tracking-wide">Verifiche mese</span>
-                <div class="bg-green-100 p-1.5 rounded-lg">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-green-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
+        <div class="card p-4" style="border-left:4px solid #10b981;">
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="text-[11px] font-bold text-gray-400 uppercase tracking-wide">Verifiche mese</p>
+                    <p class="text-3xl font-extrabold text-gray-900 mt-1">{{ verifications_this_month }}</p>
+                    {% if verifications_this_month > 0 %}
+                    <p class="text-[11px] text-gray-400 mt-1 flex gap-2">
+                        <span class="text-emerald-600 font-bold">{{ pass_count }} ✓</span>
+                        <span class="{% if fail_count > 0 %}text-red-500{% else %}text-gray-400{% endif %} font-bold">{{ fail_count }} ✗</span>
+                    </p>
+                    {% endif %}
+                </div>
+                <div style="background:#ecfdf5;border-radius:10px;padding:8px;">
+                    <i class="ti ti-circle-check" style="font-size:1.25rem;color:#10b981;display:block;"></i>
                 </div>
             </div>
-            <p class="text-3xl font-bold text-gray-900">{{ verifications_this_month }}</p>
-            {% if verifications_this_month > 0 %}
-            <p class="text-xs text-gray-400 mt-1">
-                <span class="text-green-600 font-semibold">{{ pass_count }} ✓</span>
-                &middot;
-                <span class="{% if fail_count > 0 %}text-red-600{% else %}text-gray-400{% endif %} font-semibold">{{ fail_count }} ✗</span>
-            </p>
-            {% endif %}
         </div>
 
-        <div class="card p-4 {% if overdue > 0 %}border-red-200 bg-red-50{% elif expiring_soon > 0 %}border-yellow-200 bg-yellow-50{% endif %}">
-            <div class="flex items-center justify-between mb-2">
-                <span class="text-xs font-medium {% if overdue > 0 %}text-red-600{% elif expiring_soon > 0 %}text-yellow-600{% else %}text-gray-500{% endif %} uppercase tracking-wide">
-                    {% if overdue > 0 %}Scadute{% else %}In scadenza{% endif %}
-                </span>
-                <div class="{% if overdue > 0 %}bg-red-100{% elif expiring_soon > 0 %}bg-yellow-100{% else %}bg-gray-100{% endif %} p-1.5 rounded-lg">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 {% if overdue > 0 %}text-red-600{% elif expiring_soon > 0 %}text-yellow-600{% else %}text-gray-500{% endif %}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
+        {% set exp_border = '#ef4444' if overdue > 0 else ('#f59e0b' if expiring_soon > 0 else '#d1d5db') %}
+        {% set exp_icon_bg = '#fef2f2' if overdue > 0 else ('#fffbeb' if expiring_soon > 0 else '#f9fafb') %}
+        {% set exp_icon_color = '#ef4444' if overdue > 0 else ('#f59e0b' if expiring_soon > 0 else '#9ca3af') %}
+        {% if overdue > 0 %}
+        <div class="card p-4" style="border-left:4px solid #ef4444;">
+        {% elif expiring_soon > 0 %}
+        <div class="card p-4" style="border-left:4px solid #f59e0b;">
+        {% else %}
+        <div class="card p-4" style="border-left:4px solid #d1d5db;">
+        {% endif %}
+            <div class="flex items-start justify-between">
+                <div>
+                    <p class="text-[11px] font-bold uppercase tracking-wide
+                       {% if overdue > 0 %}text-red-500{% elif expiring_soon > 0 %}text-amber-500{% else %}text-gray-400{% endif %}">
+                        {% if overdue > 0 %}Scadute{% else %}In scadenza{% endif %}
+                    </p>
+                    <p class="text-3xl font-extrabold mt-1
+                       {% if overdue > 0 %}text-red-600{% elif expiring_soon > 0 %}text-amber-600{% else %}text-gray-900{% endif %}">
+                        {% if overdue > 0 %}{{ overdue }}{% else %}{{ expiring_soon }}{% endif %}
+                    </p>
                 </div>
+                {% if overdue > 0 %}
+                <div style="background:#fef2f2;border-radius:10px;padding:8px;">
+                    <i class="ti ti-clock-exclamation" style="font-size:1.25rem;color:#ef4444;display:block;"></i>
+                </div>
+                {% elif expiring_soon > 0 %}
+                <div style="background:#fffbeb;border-radius:10px;padding:8px;">
+                    <i class="ti ti-clock-exclamation" style="font-size:1.25rem;color:#f59e0b;display:block;"></i>
+                </div>
+                {% else %}
+                <div style="background:#f9fafb;border-radius:10px;padding:8px;">
+                    <i class="ti ti-clock-exclamation" style="font-size:1.25rem;color:#9ca3af;display:block;"></i>
+                </div>
+                {% endif %}
             </div>
-            <p class="text-3xl font-bold {% if overdue > 0 %}text-red-700{% elif expiring_soon > 0 %}text-yellow-700{% else %}text-gray-900{% endif %}">
-                {% if overdue > 0 %}{{ overdue }}{% else %}{{ expiring_soon }}{% endif %}
-            </p>
         </div>
     </div>
 
     <!-- Quick actions -->
     <div>
-        <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">Azioni rapide</h2>
+        <p class="section-title">Azioni rapide</p>
         <div class="card overflow-hidden">
             <a href="/mobile/customers" class="list-item">
-                <div class="bg-blue-100 p-2 rounded-lg mr-3">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-blue-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16"/>
-                    </svg>
+                <div style="background:#eff6ff;border-radius:10px;padding:8px;margin-right:12px;flex-shrink:0;">
+                    <i class="ti ti-building" style="font-size:1.1rem;color:#3b82f6;display:block;"></i>
                 </div>
-                <div class="flex-1">
+                <div class="flex-1 min-w-0">
                     <p class="text-sm font-semibold text-gray-800">Sfoglia clienti</p>
                     <p class="text-xs text-gray-400">Clienti → Sedi → Dispositivi</p>
                 </div>
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                </svg>
+                <i class="ti ti-chevron-right text-gray-300 flex-shrink-0"></i>
             </a>
             <a href="/mobile/search" class="list-item">
-                <div class="bg-purple-100 p-2 rounded-lg mr-3">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-purple-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                    </svg>
+                <div style="background:#f5f3ff;border-radius:10px;padding:8px;margin-right:12px;flex-shrink:0;">
+                    <i class="ti ti-search" style="font-size:1.1rem;color:#7c3aed;display:block;"></i>
                 </div>
-                <div class="flex-1">
+                <div class="flex-1 min-w-0">
                     <p class="text-sm font-semibold text-gray-800">Cerca dispositivo</p>
                     <p class="text-xs text-gray-400">Per S/N, inv. AMS, descrizione</p>
                 </div>
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                </svg>
+                <i class="ti ti-chevron-right text-gray-300 flex-shrink-0"></i>
             </a>
             {% if overdue > 0 or expiring_soon > 0 %}
+            {% set qa_bg = '#fef2f2' if overdue > 0 else '#fffbeb' %}
+            {% set qa_color = '#ef4444' if overdue > 0 else '#f59e0b' %}
             <a href="/mobile/expiring" class="list-item">
-                <div class="{% if overdue > 0 %}bg-red-100{% else %}bg-yellow-100{% endif %} p-2 rounded-lg mr-3">
-                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 {% if overdue > 0 %}text-red-600{% else %}text-yellow-600{% endif %}" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                    </svg>
+                {% if overdue > 0 %}
+                <div style="background:#fef2f2;border-radius:10px;padding:8px;margin-right:12px;flex-shrink:0;">
+                    <i class="ti ti-clock-exclamation" style="font-size:1.1rem;color:#ef4444;display:block;"></i>
                 </div>
-                <div class="flex-1">
-                    <p class="text-sm font-semibold {% if overdue > 0 %}text-red-700{% else %}text-yellow-700{% endif %}">
+                {% else %}
+                <div style="background:#fffbeb;border-radius:10px;padding:8px;margin-right:12px;flex-shrink:0;">
+                    <i class="ti ti-clock-exclamation" style="font-size:1.1rem;color:#f59e0b;display:block;"></i>
+                </div>
+                {% endif %}
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-semibold {% if overdue > 0 %}text-red-700{% else %}text-amber-700{% endif %}">
                         Verifiche {% if overdue > 0 %}scadute ({{ overdue }}){% else %}in scadenza ({{ expiring_soon }}){% endif %}
                     </p>
                     <p class="text-xs text-gray-400">Entro 30 giorni</p>
                 </div>
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-                </svg>
+                <i class="ti ti-chevron-right text-gray-300 flex-shrink-0"></i>
             </a>
             {% endif %}
         </div>
     </div>
 
-    <!-- Recent verifications -->
+    <!-- Lavori assegnati (card dedicata) -->
+    {% if pending_assignments %}
+    <div>
+        <div class="flex items-center justify-between mb-2">
+            <p class="section-title" style="margin-bottom:0;">I miei lavori</p>
+            <a href="/mobile/assignments" class="text-xs text-blue-600 font-semibold">Vedi tutti →</a>
+        </div>
+        <div class="card overflow-hidden">
+            {% for a in pending_assignments %}
+            <a href="/mobile/assignments/{{ a.uuid }}" class="list-item">
+                <div style="width:4px;height:40px;border-radius:4px;flex-shrink:0;margin-right:12px;
+                    background:{% if a.priority == 'urgent' %}#ef4444{% elif a.priority == 'high' %}#f59e0b{% else %}#3b82f6{% endif %};">
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-semibold text-gray-900 truncate">
+                        {% if a.device_id %}
+                            🔧 {{ a.description or a.model or 'Dispositivo' }}
+                        {% else %}
+                            📍 Sede: {{ a.destination_name or 'Sede intera' }}
+                        {% endif %}
+                    </p>
+                    <p class="text-xs text-gray-500 truncate">
+                        {{ a.customer_name or '' }}{% if a.destination_name %} / {{ a.destination_name }}{% endif %}
+                        {% if a.due_date %} · <span class="{% if a.due_date < today() %}text-red-500 font-semibold{% endif %}">Sc. {{ a.due_date.strftime('%d/%m') }}</span>{% endif %}
+                    </p>
+                </div>
+                {% if a.status == 'in_progress' %}
+                <span class="badge-warn" style="flex-shrink:0;margin-right:4px;">In corso</span>
+                {% else %}
+                <span class="badge-gray" style="flex-shrink:0;margin-right:4px;">In attesa</span>
+                {% endif %}
+                <i class="ti ti-chevron-right text-gray-300 flex-shrink-0"></i>
+            </a>
+            {% endfor %}
+            {% if pending_assignments_count > 3 %}
+            <a href="/mobile/assignments" class="list-item justify-center">
+                <p class="text-xs text-blue-600 font-semibold">+{{ pending_assignments_count - 3 }} altri lavori →</p>
+            </a>
+            {% endif %}
+        </div>
+    </div>
+    {% elif pending_assignments_count == 0 %}
+    {# nessuna card se non ci sono lavori #}
+    {% endif %}
     {% if recent_verifications %}
     <div>
-        <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">Ultime verifiche</h2>
+        <p class="section-title">Ultime verifiche elettriche</p>
         <div class="card overflow-hidden">
             {% for v in recent_verifications %}
             <a href="/mobile/verifications/{{ v.uuid }}" class="list-item">
                 <div class="flex-1 min-w-0">
                     <p class="text-sm font-semibold text-gray-800 truncate">
                         {{ v.description or v.model or 'Dispositivo' }}
-                        {% if v.manufacturer %}<span class="font-normal text-gray-500">— {{ v.manufacturer }}</span>{% endif %}
+                        {% if v.manufacturer %}<span class="font-normal text-gray-400"> · {{ v.manufacturer }}</span>{% endif %}
                     </p>
                     <p class="text-xs text-gray-400 truncate">{{ v.profile_name }} · {{ v.verification_date }}</p>
                 </div>
                 <div class="ml-3 flex-shrink-0">
-                    {% if v.overall_status in ('PASSATO', 'PASS', 'OK') %}
-                    <span class="badge-pass">✓</span>
-                    {% elif v.overall_status in ('NON PASSATO', 'FAIL', 'FALLITO') %}
-                    <span class="badge-fail">✗</span>
+                    {% if v.overall_status == 'CONFORME CON ANNOTAZIONE' %}
+                    <span class="badge-warn">⚠ C.C.A.</span>
+                    {% elif v.overall_status in ('CONFORME', 'PASSATO', 'PASS', 'OK') %}
+                    <span class="badge-pass">✓ CONF.</span>
+                    {% elif v.overall_status in ('NON PASSATO', 'FAIL', 'FALLITO', 'NON CONFORME') %}
+                    <span class="badge-fail">✗ N.CONF.</span>
                     {% else %}
-                    <span class="badge-gray">{{ v.overall_status[:3] }}</span>
+                    <span class="badge-gray">{{ v.overall_status[:4] }}</span>
                     {% endif %}
                 </div>
             </a>
@@ -151,27 +213,29 @@
     </div>
     {% endif %}
 
-    <!-- Recent functional verifications -->
+    <!-- Recent VFUN verifications -->
     {% if recent_func_verifications %}
     <div>
-        <h2 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 px-1">Ultime verifiche funzionali</h2>
+        <p class="section-title">Ultime verifiche funzionali</p>
         <div class="card overflow-hidden">
             {% for fv in recent_func_verifications %}
             <a href="/mobile/func-verifications/{{ fv.uuid }}" class="list-item">
                 <div class="flex-1 min-w-0">
                     <p class="text-sm font-semibold text-gray-800 truncate">
                         {{ fv.description or fv.model or 'Dispositivo' }}
-                        {% if fv.manufacturer %}<span class="font-normal text-gray-500">— {{ fv.manufacturer }}</span>{% endif %}
+                        {% if fv.manufacturer %}<span class="font-normal text-gray-400"> · {{ fv.manufacturer }}</span>{% endif %}
                     </p>
                     <p class="text-xs text-gray-400 truncate">{{ fv.profile_key }} · {{ fv.verification_date }}</p>
                 </div>
                 <div class="ml-3 flex-shrink-0">
-                    {% if fv.overall_status in ('PASSATO', 'PASS', 'OK') %}
-                    <span class="badge-pass">✓</span>
-                    {% elif fv.overall_status in ('NON PASSATO', 'FAIL', 'FALLITO') %}
-                    <span class="badge-fail">✗</span>
+                    {% if fv.overall_status == 'CONFORME CON ANNOTAZIONE' %}
+                    <span class="badge-warn">⚠ C.C.A.</span>
+                    {% elif fv.overall_status in ('CONFORME', 'PASSATO', 'PASS', 'OK') %}
+                    <span class="badge-pass">✓ CONF.</span>
+                    {% elif fv.overall_status in ('NON CONFORME', 'NON PASSATO', 'FAIL', 'FALLITO') %}
+                    <span class="badge-fail">✗ N.CONF.</span>
                     {% else %}
-                    <span class="badge-gray">{{ fv.overall_status[:3] }}</span>
+                    <span class="badge-gray">{{ fv.overall_status[:4] }}</span>
                     {% endif %}
                 </div>
             </a>

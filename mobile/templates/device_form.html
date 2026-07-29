@@ -2,60 +2,109 @@
 
 {% block title %}{% if mode == 'edit' %}Modifica Dispositivo{% else %}Nuovo Dispositivo{% endif %} — STM Mobile{% endblock %}
 {% block header_title %}{% if mode == 'edit' %}Modifica Dispositivo{% else %}Nuovo Dispositivo{% endif %}{% endblock %}
-{% block header_subtitle %}<p class="text-blue-300 text-xs">{{ destination.name or 'Destinazione' }}</p>{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">{{ destination.name or 'Destinazione' }}</p>{% endblock %}
 
 {% block content %}
 <div class="px-4 py-4">
     {% if error %}
-    <div class="bg-red-50 border border-red-200 text-red-700 rounded-xl px-4 py-3 mb-4 text-sm">⚠️ {{ error }}</div>
+    <div style="background:#fef2f2;border:1.5px solid #fca5a5;color:#991b1b;border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.875rem;display:flex;align-items:center;gap:.5rem;">
+        <i class="ti ti-alert-circle" style="flex-shrink:0;"></i> {{ error }}
+    </div>
+    {% endif %}
+
+    {% if duplicate_warning %}
+    <div style="background:#fffbeb;border:1.5px solid #fbbf24;color:#92400e;border-radius:12px;padding:.85rem 1rem;margin-bottom:1rem;font-size:.875rem;">
+        <div style="display:flex;align-items:flex-start;gap:.5rem;margin-bottom:.75rem;">
+            <i class="ti ti-alert-triangle" style="flex-shrink:0;margin-top:.1rem;"></i>
+            <span>{{ duplicate_warning | safe }}</span>
+        </div>
+        <div style="display:flex;gap:.5rem;flex-wrap:wrap;align-items:center;">
+            <form method="POST" action="{{ form_action }}">
+                <!-- Ripropaga tutti i campi nascosti per confermare -->
+                <input type="hidden" name="serial_number" value="{{ device.serial_number or '' }}">
+                <input type="hidden" name="description" value="{{ device.description or '' }}">
+                <input type="hidden" name="manufacturer" value="{{ device.manufacturer or '' }}">
+                <input type="hidden" name="model" value="{{ device.model or '' }}">
+                <input type="hidden" name="department" value="{{ device.department or '' }}">
+                <input type="hidden" name="customer_inventory" value="{{ device.customer_inventory or '' }}">
+                <input type="hidden" name="ams_inventory" value="{{ device.ams_inventory or '' }}">
+                <input type="hidden" name="verification_interval" value="{{ device.verification_interval or '' }}">
+                <input type="hidden" name="default_profile_key" value="{{ device.default_profile_key or '' }}">
+                <input type="hidden" name="default_functional_profile_key" value="{{ device.default_functional_profile_key or '' }}">
+                <input type="hidden" name="status" value="{{ device.status or 'active' }}">
+                {% if device.applied_parts_json %}
+                {% for pa in device.applied_parts_json %}
+                <input type="hidden" name="pa_name_{{ loop.index0 }}" value="{{ pa.name or '' }}">
+                <input type="hidden" name="pa_type_{{ loop.index0 }}" value="{{ pa.part_type or 'B' }}">
+                {% endfor %}
+                <input type="hidden" name="pa_count" value="{{ device.applied_parts_json | length }}">
+                {% else %}
+                <input type="hidden" name="pa_count" value="0">
+                {% endif %}
+                <input type="hidden" name="force_duplicate_serial" value="1">
+                <button type="submit" style="background:#b45309;color:#fff;border:none;border-radius:8px;padding:.45rem .9rem;font-size:.8rem;font-weight:600;cursor:pointer;">
+                    <i class="ti ti-check"></i> Sì, inserisci comunque
+                </button>
+            </form>
+            <a href="{{ back_url }}" style="background:#f3f4f6;color:#374151;border-radius:8px;padding:.45rem .9rem;font-size:.8rem;font-weight:600;text-decoration:none;">
+                <i class="ti ti-x"></i> Annulla
+            </a>
+        </div>
+    </div>
     {% endif %}
 
     <form method="POST" action="{{ form_action }}" class="space-y-4">
         <div class="card p-4 space-y-4">
             <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Descrizione</label>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Descrizione</label>
                 <input type="text" name="description" class="form-input" value="{{ device.description or '' }}">
             </div>
             <div class="grid grid-cols-1 gap-3">
                 <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Seriale</label>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Seriale</label>
                     <input type="text" name="serial_number" class="form-input" value="{{ device.serial_number or '' }}">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Produttore</label>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Produttore</label>
                     <input type="text" name="manufacturer" class="form-input" value="{{ device.manufacturer or '' }}">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Modello</label>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Modello</label>
                     <input type="text" name="model" class="form-input" value="{{ device.model or '' }}">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Reparto</label>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Reparto</label>
                     <input type="text" name="department" class="form-input" value="{{ device.department or '' }}">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Nr. Inventario Cliente</label>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Nr. Inventario Cliente</label>
                     <input type="text" name="customer_inventory" class="form-input" value="{{ device.customer_inventory or '' }}">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Nr. Inventario AMS</label>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Nr. Inventario AMS</label>
                     <input type="text" name="ams_inventory" class="form-input" value="{{ device.ams_inventory or '' }}">
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Intervallo verifica (mesi)</label>
-                    <input type="number" min="1" name="verification_interval" class="form-input" value="{{ device.verification_interval or '' }}">
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Intervallo verifica (mesi)</label>
+                    <select name="verification_interval" class="form-input">
+                        <option value="" {% if not device.verification_interval %}selected{% endif %}>Nessuno</option>
+                        <option value="6" {% if device.verification_interval == 6 %}selected{% endif %}>6</option>
+                        <option value="12" {% if device.verification_interval == 12 %}selected{% endif %}>12</option>
+                        <option value="24" {% if device.verification_interval == 24 %}selected{% endif %}>24</option>
+                        <option value="36" {% if device.verification_interval == 36 %}selected{% endif %}>36</option>
+                    </select>
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-gray-600 mb-1.5">Stato dispositivo</label>
+                    <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Stato dispositivo</label>
                     <select name="status" class="form-input">
-                        <option value="active" {% if (device.status or 'active') == 'active' %}selected{% endif %}>✅ Attivo</option>
-                        <option value="maintenance" {% if device.status == 'maintenance' %}selected{% endif %}>🔧 In manutenzione</option>
-                        <option value="dismissed" {% if device.status == 'dismissed' %}selected{% endif %}>❌ Dismesso</option>
+                        <option value="active" {% if (device.status or 'active') == 'active' %}selected{% endif %}>Attivo</option>
+                        <option value="maintenance" {% if device.status == 'maintenance' %}selected{% endif %}>In manutenzione</option>
+                        <option value="dismissed" {% if device.status == 'dismissed' %}selected{% endif %}>Dismesso</option>
                     </select>
                 </div>
             </div>
             <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Profilo elettrico di default</label>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Profilo elettrico di default</label>
                 <select name="default_profile_key" class="form-input">
                     <option value="">— Nessuno —</option>
                     {% for p in profiles %}
@@ -64,7 +113,7 @@
                 </select>
             </div>
             <div>
-                <label class="block text-xs font-semibold text-gray-600 mb-1.5">Profilo funzionale di default</label>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Profilo funzionale di default</label>
                 <select name="default_functional_profile_key" class="form-input">
                     <option value="">— Nessuno —</option>
                     {% for p in functional_profiles %}
@@ -76,7 +125,7 @@
 
         <!-- Parti applicate -->
         <div class="card p-4 space-y-3" x-data="appliedPartsManager()">
-            <h2 class="text-sm font-bold text-gray-700 border-b border-gray-100 pb-2">Parti applicate</h2>
+            <h2 class="section-title" style="border-bottom:1px solid #f1f5f9;padding-bottom:.5rem;">Parti applicate</h2>
 
             <!-- Existing parts list -->
             <template x-for="(pa, idx) in parts" :key="idx">
@@ -96,18 +145,17 @@
             <!-- Add new part row -->
             <div class="flex gap-2 pt-1">
                 <input type="text" x-model="newName" placeholder="Nome (es. ECG Torace)"
-                       class="form-input flex-1 text-sm">
-                <select x-model="newType" class="form-input w-24 text-sm">
+                       class="form-input flex-1 text-sm" style="width: 70% !important;">
+                <select x-model="newType" class="form-input w-24 text-sm" style="width: 30% !important;">
                     <option value="B">B</option>
                     <option value="BF">BF</option>
                     <option value="CF">CF</option>
                 </select>
-                <button type="button" @click="add()"
-                        class="bg-blue-900 text-white text-xs font-semibold px-3 py-2 rounded-xl">+ P.A.</button>
+                <button type="button" @click="add()" class="btn-sm" style="background:#1e3a8a;color:#fff;"><i class="ti ti-plus"></i> P.A.</button>
             </div>
         </div>
 
-        <button type="submit" class="btn-primary">Salva</button>
+        <button type="submit" class="btn-primary"><i class="ti ti-device-floppy" style="margin-right:.375rem;"></i>Salva dispositivo</button>
         <a href="{{ back_url }}" class="btn-secondary block text-center">Annulla</a>
     </form>
 </div>
@@ -121,7 +169,7 @@ function appliedPartsManager() {
         newName: '',
         newType: 'B',
         add() {
-            if (!this.newType) return;
+            if (!this.newName.trim()) return;
             this.parts.push({ name: this.newName.trim(), part_type: this.newType, code: '' });
             this.newName = '';
         },

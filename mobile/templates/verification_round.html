@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+
+{% block title %}Chiudi giro verifiche — {{ destination.name }}{% endblock %}
+{% block header_title %}Chiudi giro verifiche{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">{{ destination.name }} · {{ customer_name }}</p>{% endblock %}
+
+{% block content %}
+<div class="px-4 py-4 space-y-4">
+
+    {# ── STEP 1: Selezione periodo ──────────────────────────────────────── #}
+    {% if not show_results %}
+    <div class="card p-4">
+        <p class="text-sm text-gray-500 mb-3">
+            Seleziona il periodo del giro di verifiche per vedere quali dispositivi sono stati verificati
+            e segnalare quelli non messi a disposizione.
+        </p>
+        <form method="POST" action="/mobile/destinations/{{ destination.uuid }}/verification-round" class="space-y-3">
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">DATA INIZIO</label>
+                <input type="date" name="period_start" required
+                       value="{{ period_start or today }}"
+                       class="input w-full" style="padding:.5rem .75rem;border-radius:.5rem;border:1px solid #d1d5db;font-size:.875rem;">
+            </div>
+            <div>
+                <label class="block text-xs font-semibold text-gray-600 mb-1">DATA FINE</label>
+                <input type="date" name="period_end" required
+                       value="{{ period_end or today }}"
+                       class="input w-full" style="padding:.5rem .75rem;border-radius:.5rem;border:1px solid #d1d5db;font-size:.875rem;">
+            </div>
+            <button type="submit" name="action" value="show"
+                    class="btn w-full" style="background:#7c3aed;color:#fff;padding:.6rem;border-radius:.5rem;font-weight:700;font-size:.875rem;">
+                <i class="ti ti-search"></i> MOSTRA STATO VERIFICHE
+            </button>
+        </form>
+    </div>
+
+    {# ── STEP 2: Risultati e segnalazioni ──────────────────────────────── #}
+    {% else %}
+    <div class="card p-3" style="background:#f5f3ff;border:1px solid #ddd6fe;">
+        <p class="text-xs font-semibold text-purple-700">
+            <i class="ti ti-calendar-event"></i> Periodo: {{ period_start }} → {{ period_end }}
+        </p>
+        <a href="/mobile/destinations/{{ destination.uuid }}/verification-round"
+           class="text-xs text-purple-500 underline">Cambia periodo</a>
+    </div>
+
+    {# Verificati #}
+    {% if verified %}
+    <div>
+        <p class="section-title" style="color:#059669;">✅ Verificati ({{ verified|length }})</p>
+        <div class="card overflow-hidden">
+            {% for dev in verified %}
+            <div class="list-item" style="pointer-events:none;">
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-semibold text-gray-900 truncate">{{ dev.description }}</p>
+                    <p class="text-xs text-gray-400">S/N: {{ dev.serial_number or '—' }}</p>
+                </div>
+                <i class="ti ti-circle-check" style="color:#059669;font-size:1.25rem;flex-shrink:0;margin-left:8px;"></i>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {# Non messi a disposizione già segnalati #}
+    {% if unavailable %}
+    <div>
+        <p class="section-title" style="color:#dc2626;">🚫 Non messi a disposizione ({{ unavailable|length }})</p>
+        <div class="card overflow-hidden">
+            {% for item in unavailable %}
+            <div class="list-item" style="pointer-events:none;border-left:3px solid #dc2626;">
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-semibold text-gray-900 truncate">{{ item.description }}</p>
+                    <p class="text-xs text-gray-400">S/N: {{ item.serial_number or '—' }}</p>
+                    <p class="text-xs text-red-600 mt-0.5"><i class="ti ti-info-circle"></i> {{ item.reason }}</p>
+                    {% if item.technician_name %}
+                    <p class="text-xs text-gray-400">Tecnico: {{ item.technician_name }}</p>
+                    {% endif %}
+                </div>
+                <form method="POST" action="/mobile/destinations/{{ destination.uuid }}/verification-round"
+                      onsubmit="return confirm('Rimuovere la segnalazione?');" style="flex-shrink:0;margin-left:8px;">
+                    <input type="hidden" name="action" value="remove">
+                    <input type="hidden" name="report_uuid" value="{{ item.uuid }}">
+                    <input type="hidden" name="period_start" value="{{ period_start }}">
+                    <input type="hidden" name="period_end" value="{{ period_end }}">
+                    <button type="submit"
+                            style="background:#fee2e2;color:#dc2626;border:none;border-radius:.375rem;padding:.25rem .5rem;font-size:.75rem;cursor:pointer;">
+                        <i class="ti ti-x"></i>
+                    </button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {# Da verificare / segnala #}
+    {% if unverified %}
+    <div>
+        <p class="section-title" style="color:#d97706;">⏳ Da verificare — segna non disponibili ({{ unverified|length }})</p>
+        <div class="card overflow-hidden">
+            {% for dev in unverified %}
+            <div style="border-bottom:1px solid #f3f4f6;padding:.75rem 1rem;">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm font-semibold text-gray-900 truncate">{{ dev.description }}</p>
+                        <p class="text-xs text-gray-400">S/N: {{ dev.serial_number or '—' }}</p>
+                    </div>
+                    <button type="button"
+                            onclick="toggleReasonForm('reason_{{ dev.uuid }}')"
+                            style="flex-shrink:0;background:#fef3c7;color:#92400e;border:none;border-radius:.375rem;padding:.3rem .6rem;font-size:.75rem;font-weight:700;cursor:pointer;white-space:nowrap;">
+                        <i class="ti ti-ban"></i> Non disponibile
+                    </button>
+                </div>
+                <div id="reason_{{ dev.uuid }}" style="display:none;margin-top:.5rem;">
+                    <form method="POST" action="/mobile/destinations/{{ destination.uuid }}/verification-round">
+                        <input type="hidden" name="action" value="mark">
+                        <input type="hidden" name="device_uuid" value="{{ dev.uuid }}">
+                        <input type="hidden" name="period_start" value="{{ period_start }}">
+                        <input type="hidden" name="period_end" value="{{ period_end }}">
+                        <textarea name="reason" required rows="2" placeholder="Motivo (es. in uso, in riparazione...)"
+                                  style="width:100%;border:1px solid #fcd34d;border-radius:.375rem;padding:.4rem .5rem;font-size:.8rem;resize:vertical;"></textarea>
+                        <div class="flex gap-2 mt-1">
+                            <button type="submit"
+                                    style="background:#ef4444;color:#fff;border:none;border-radius:.375rem;padding:.3rem .75rem;font-size:.75rem;font-weight:700;cursor:pointer;">
+                                <i class="ti ti-device-floppy"></i> Salva
+                            </button>
+                            <button type="button" onclick="toggleReasonForm('reason_{{ dev.uuid }}')"
+                                    style="background:#e5e7eb;color:#374151;border:none;border-radius:.375rem;padding:.3rem .75rem;font-size:.75rem;cursor:pointer;">
+                                Annulla
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    {% if not verified and not unverified and not unavailable %}
+    <div class="card" style="display:flex;flex-direction:column;align-items:center;padding:2rem 1rem;color:#94a3b8;">
+        <i class="ti ti-device-heart-monitor-off" style="font-size:2.5rem;margin-bottom:.5rem;"></i>
+        <p class="text-sm">Nessun dispositivo trovato per questo periodo</p>
+    </div>
+    {% endif %}
+
+    {% endif %}
+
+    <a href="/mobile/destinations/{{ destination.uuid }}"
+       class="block text-center text-sm text-gray-400 py-2">
+        ← Torna alla destinazione
+    </a>
+</div>
+
+<script>
+function toggleReasonForm(id) {
+    const el = document.getElementById(id);
+    el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+</script>
+{% endblock %}

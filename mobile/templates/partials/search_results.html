@@ -2,20 +2,18 @@
 
 {% if customers %}
 <div class="mb-3">
-    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1">Clienti</p>
+    <p class="section-title">Clienti</p>
     <div class="card overflow-hidden">
         {% for c in customers %}
         <a href="/mobile/customers/{{ c.uuid }}" class="list-item">
-            <div class="bg-blue-100 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 mr-3">
-                <span class="text-xs font-bold text-blue-800">{{ c.name[0].upper() }}</span>
+            <div style="background:#eff6ff;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-right:12px;">
+                <span style="font-size:.8rem;font-weight:800;color:#1d4ed8;">{{ c.name[0].upper() }}</span>
             </div>
             <div class="flex-1 min-w-0">
                 <p class="text-sm font-semibold text-gray-900 truncate">{{ c.name }}</p>
                 {% if c.address %}<p class="text-xs text-gray-400 truncate">{{ c.address }}</p>{% endif %}
             </div>
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-            </svg>
+            <i class="ti ti-chevron-right" style="color:#d1d5db;flex-shrink:0;"></i>
         </a>
         {% endfor %}
     </div>
@@ -24,23 +22,22 @@
 
 {% if devices %}
 <div class="mb-3">
-    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1">Dispositivi</p>
+    <p class="section-title">Dispositivi</p>
     <div class="card overflow-hidden">
         {% for dev in devices %}
         <a href="/mobile/devices/{{ dev.uuid }}" class="list-item">
+            <div style="background:#eef2ff;border-radius:10px;padding:7px;margin-right:12px;flex-shrink:0;">
+                <i class="ti ti-device-heart-monitor" style="font-size:1rem;color:#6366f1;display:block;"></i>
+            </div>
             <div class="flex-1 min-w-0">
-                <p class="text-sm font-semibold text-gray-900 truncate">
-                    {{ dev.description or dev.model or 'Dispositivo' }}
-                </p>
+                <p class="text-sm font-semibold text-gray-900 truncate">{{ dev.description or dev.model or 'Dispositivo' }}</p>
                 <p class="text-xs text-gray-400 truncate">
-                    {% if dev.serial_number %}S/N: {{ dev.serial_number }} &middot; {% endif %}
+                    {% if dev.serial_number %}S/N: {{ dev.serial_number }} · {% endif %}
                     {% if dev.customer_name %}{{ dev.customer_name }}{% endif %}
                     {% if dev.destination_name %} / {{ dev.destination_name }}{% endif %}
                 </p>
             </div>
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-300 flex-shrink-0 ml-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-            </svg>
+            <i class="ti ti-chevron-right" style="color:#d1d5db;flex-shrink:0;margin-left:8px;"></i>
         </a>
         {% endfor %}
     </div>
@@ -49,21 +46,26 @@
 
 {% if verifications %}
 <div>
-    <p class="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 px-1">Verifiche</p>
+    <p class="section-title">Verifiche</p>
     <div class="card overflow-hidden">
         {% for v in verifications %}
         <a href="/mobile/verifications/{{ v.uuid }}" class="list-item">
+            <div style="background:#ecfdf5;border-radius:10px;padding:7px;margin-right:12px;flex-shrink:0;">
+                <i class="ti ti-clipboard-check" style="font-size:1rem;color:#059669;display:block;"></i>
+            </div>
             <div class="flex-1 min-w-0">
                 <p class="text-sm font-semibold text-gray-900 truncate">
                     {{ v.verification_code or v.profile_name }}
-                    {% if v.device_description %}<span class="font-normal text-gray-500"> &mdash; {{ v.device_description }}</span>{% endif %}
+                    {% if v.device_description %}<span class="font-normal text-gray-400"> · {{ v.device_description }}</span>{% endif %}
                 </p>
-                <p class="text-xs text-gray-400">{{ v.profile_name }} &middot; {{ v.verification_date }}</p>
+                <p class="text-xs text-gray-400">{{ v.profile_name }} · {{ v.verification_date }}</p>
             </div>
             <div class="ml-3 flex-shrink-0">
-                {% if v.overall_status in ('PASSATO','PASS','OK') %}
+                {% if v.overall_status == 'CONFORME CON ANNOTAZIONE' %}
+                <span class="badge-warn">⚠</span>
+                {% elif v.overall_status in ('CONFORME','PASSATO','PASS','OK') %}
                 <span class="badge-pass">✓</span>
-                {% elif v.overall_status in ('NON PASSATO','FAIL','FALLITO') %}
+                {% elif v.overall_status in ('NON PASSATO','FAIL','FALLITO','NON CONFORME') %}
                 <span class="badge-fail">✗</span>
                 {% else %}
                 <span class="badge-gray">{{ v.overall_status[:3] }}</span>
@@ -76,10 +78,8 @@
 {% endif %}
 
 {% else %}
-<div class="flex flex-col items-center py-10 text-gray-400">
-    <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-    </svg>
-    <p class="text-sm font-medium">Nessun risultato trovato</p>
+<div style="display:flex;flex-direction:column;align-items:center;padding:2.5rem 1rem;color:#94a3b8;">
+    <i class="ti ti-search-off" style="font-size:3rem;margin-bottom:.75rem;"></i>
+    <p style="font-size:.875rem;font-weight:600;">Nessun risultato trovato</p>
 </div>
 {% endif %}

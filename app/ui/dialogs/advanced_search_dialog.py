@@ -2,7 +2,8 @@
 
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QGridLayout, QLabel, QLineEdit,
                                QPushButton, QTableWidget, QAbstractItemView, QMessageBox, QTableWidgetItem, QComboBox, QHBoxLayout,
-                               QDialogButtonBox, QCompleter, QGroupBox, QFileDialog, QApplication, QProgressBar)
+                               QDialogButtonBox, QCompleter, QGroupBox, QFileDialog, QApplication, QProgressBar,
+                               QHeaderView, QSplitter)
 from PySide6.QtCore import Qt, QDate
 from PySide6.QtGui import QColor, QBrush
 from app import services, config
@@ -43,9 +44,13 @@ class AdvancedSearchDialog(QDialog):
         header_layout = self._create_header()
         main_layout.addLayout(header_layout)
 
-        # Criteri di ricerca
-        search_group = self._create_search_criteria_group()
-        main_layout.addWidget(search_group)
+        # Area di lavoro ridimensionabile: filtri sopra, risultati prioritari sotto.
+        self.content_splitter = QSplitter(Qt.Vertical)
+        self.content_splitter.setChildrenCollapsible(False)
+
+        self.criteria_group = self._create_search_criteria_group()
+        self.criteria_group.setVisible(False)
+        self.content_splitter.addWidget(self.criteria_group)
 
         # Progress bar per ricerche lunghe
         self.progress_bar = QProgressBar()
@@ -54,8 +59,12 @@ class AdvancedSearchDialog(QDialog):
         main_layout.addWidget(self.progress_bar)
 
         # Risultati
-        results_group = self._create_results_group()
-        main_layout.addWidget(results_group)
+        self.results_group = self._create_results_group()
+        self.content_splitter.addWidget(self.results_group)
+        self.content_splitter.setStretchFactor(0, 0)
+        self.content_splitter.setStretchFactor(1, 1)
+        self.content_splitter.setSizes([0, 1000])
+        main_layout.addWidget(self.content_splitter, 1)
 
         # Pulsanti finestra
         button_layout = self._create_button_box()
@@ -93,6 +102,12 @@ class AdvancedSearchDialog(QDialog):
         reset_button.clicked.connect(self._reset_filters)
         reset_button.setToolTip("Resetta tutti i filtri")
         top_row.addWidget(reset_button)
+
+        self.toggle_filters_button = QPushButton(qta.icon('fa5s.chevron-down'), " Mostra criteri di ricerca")
+        self.toggle_filters_button.setObjectName("secondaryButton")
+        self.toggle_filters_button.setToolTip("Espande o richiude i criteri di ricerca")
+        self.toggle_filters_button.clicked.connect(self._toggle_criteria_visibility)
+        top_row.addWidget(self.toggle_filters_button)
 
         main_layout.addLayout(top_row)
 
@@ -215,6 +230,10 @@ class AdvancedSearchDialog(QDialog):
         self.interval_combo = QComboBox()
         self.interval_combo.addItems(["QUALSIASI", "6", "12", "24", "36", "48", "60"])
 
+        self.with_attachments_combo = QComboBox()
+        self.with_attachments_combo.addItems(["QUALSIASI", "CON ALLEGATI", "SENZA ALLEGATI"])
+        self.with_attachments_combo.setToolTip("Filtra verifiche in base alla presenza di allegati")
+
         # --- Data range ---
         self.date_range_button = QPushButton(qta.icon('fa5s.calendar-alt'), " Seleziona Periodo")
         self.date_range_button.setObjectName("secondaryButton")
@@ -270,18 +289,22 @@ class AdvancedSearchDialog(QDialog):
         grid_layout.addWidget(self.profile_combo, row, 5)
 
         row += 1
-        # Riga 5: Stato Dispositivo | Int. Verifica | Periodo
+        # Riga 5: Stato Dispositivo | Int. Verifica | Allegati
         grid_layout.addWidget(QLabel("<b>Stato Disp.:</b>"), row, 0)
         grid_layout.addWidget(self.device_status_combo, row, 1)
         grid_layout.addWidget(QLabel("<b>Int. Verifica (mesi):</b>"), row, 2)
         grid_layout.addWidget(self.interval_combo, row, 3)
+        grid_layout.addWidget(QLabel("<b>Allegati:</b>"), row, 4)
+        grid_layout.addWidget(self.with_attachments_combo, row, 5)
 
+        row += 1
+        # Riga 6: Periodo
         date_layout = QHBoxLayout()
         date_layout.addWidget(self.date_range_button)
         date_layout.addWidget(self.date_range_label)
         date_layout.addStretch()
-        grid_layout.addWidget(QLabel("<b>Periodo:</b>"), row, 4)
-        grid_layout.addLayout(date_layout, row, 5)
+        grid_layout.addWidget(QLabel("<b>Periodo:</b>"), row, 0)
+        grid_layout.addLayout(date_layout, row, 1, 1, 5)
 
         # Imposta colonne con stretch uniforme per le colonne input
         grid_layout.setColumnStretch(1, 1)
@@ -344,11 +367,34 @@ class AdvancedSearchDialog(QDialog):
         self.results_table.setSelectionMode(QAbstractItemView.SingleSelection)
         self.results_table.setAlternatingRowColors(True)
         self.results_table.setSortingEnabled(True)
+        self.results_table.setWordWrap(False)
+        self.results_table.setTextElideMode(Qt.ElideRight)
+        self.results_table.setHorizontalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.results_table.setVerticalScrollMode(QAbstractItemView.ScrollPerPixel)
+        self.results_table.verticalHeader().setDefaultSectionSize(30)
+        self.results_table.verticalHeader().setMinimumSectionSize(26)
+        self.results_table.horizontalHeader().setStretchLastSection(False)
+        self.results_table.horizontalHeader().setSectionsMovable(True)
         self.results_table.itemDoubleClicked.connect(self.accept_selection)
         layout.addWidget(self.results_table)
 
         group.setLayout(layout)
         return group
+
+    def _toggle_criteria_visibility(self):
+        """Mostra o nasconde il pannello filtri per lasciare più spazio ai risultati."""
+        visible = not self.criteria_group.isVisible()
+        self.criteria_group.setVisible(visible)
+        self.toggle_filters_button.setIcon(
+            qta.icon('fa5s.chevron-up') if visible else qta.icon('fa5s.chevron-down')
+        )
+        self.toggle_filters_button.setText(
+            " Nascondi criteri di ricerca" if visible else " Mostra criteri di ricerca"
+        )
+        if visible:
+            self.content_splitter.setSizes([260, 740])
+        else:
+            self.content_splitter.setSizes([0, 1000])
 
     def _create_button_box(self):
         """Crea i pulsanti Cerca, OK e Annulla."""
@@ -516,6 +562,7 @@ class AdvancedSearchDialog(QDialog):
         self.verification_type_combo.setCurrentIndex(0)
         self.profile_combo.setCurrentIndex(0)
         self.interval_combo.setCurrentIndex(0)
+        self.with_attachments_combo.setCurrentIndex(0)
         self.start_date = None
         self.end_date = None
         self.date_range_label.setText("<i>Nessun periodo selezionato</i>")
@@ -552,6 +599,7 @@ class AdvancedSearchDialog(QDialog):
             "verification_type": self.verification_type_combo.currentText(),
             "profile_key": profile_key,
             "verification_interval": self.interval_combo.currentText(),
+            "with_attachments": self.with_attachments_combo.currentText(),
             "start_date": self.start_date,
             "end_date": self.end_date,
         }
@@ -634,8 +682,32 @@ class AdvancedSearchDialog(QDialog):
             except ValueError:
                 pass
 
-        # Ridimensiona colonne
-        self.results_table.resizeColumnsToContents()
+        # Larghezze pensate per mantenere subito leggibili i dati principali.
+        preferred_widths = {
+            "Cliente": 180,
+            "Destinazione": 190,
+            "Apparecchio": 240,
+            "Reparto": 140,
+            "Matricola": 140,
+            "Marca": 150,
+            "Modello": 160,
+            "Inv. AMS": 125,
+            "Inv. Cliente": 125,
+            "Data Verifica": 115,
+            "Tecnico": 150,
+            "Codice": 175,
+            "Profilo": 210,
+            "Tipo": 110,
+            "Strumento": 180,
+            "Esito": 195,
+            "Stato": 100,
+        }
+        header = self.results_table.horizontalHeader()
+        for col_idx, col_name in enumerate(headers):
+            if col_name in ('device_id', 'verification_id'):
+                continue
+            header.setSectionResizeMode(col_idx, QHeaderView.Interactive)
+            self.results_table.setColumnWidth(col_idx, preferred_widths.get(col_name, 140))
         self.results_table.setSortingEnabled(True)
 
         # Aggiorna info
@@ -689,7 +761,7 @@ class AdvancedSearchDialog(QDialog):
                         try:
                             if len(str(cell.value)) > max_length:
                                 max_length = len(str(cell.value))
-                        except:
+                        except Exception:
                             pass
                     adjusted_width = min(max_length + 2, 50)
                     worksheet.column_dimensions[column_letter].width = adjusted_width

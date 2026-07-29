@@ -8,10 +8,21 @@ TEMPLATE_BASE = [
     Test(name="Corrente dispersione diretta dispositivo", parameter="Inversa", limits={"::ST": Limit(unit="uA", high_value=500.0)}),
 ]
 
-# Modello che include anche test per parti applicate
+# Modello che include anche test per parti applicate.
+# Ogni test P.A. deve avere il limite per OGNI tipo di parte da provare:
+# il piano di verifica esegue il test su una parte solo se esiste il limite
+# per il suo tipo. Limiti CEI EN 62353: B/BF 5000 uA, CF 50 uA.
 TEMPLATE_CON_PA = TEMPLATE_BASE + [
-    Test(name="Corrente dispersione diretta P.A.", parameter="Normale", limits={"::BF": Limit(unit="uA", high_value=5000.0)}, is_applied_part_test=True),
-    Test(name="Corrente dispersione diretta P.A.", parameter="Inversa", limits={"::CF": Limit(unit="uA", high_value=5000.0)}, is_applied_part_test=True),
+    Test(name="Corrente dispersione diretta P.A.", parameter="Normale",
+         limits={"::B": Limit(unit="uA", high_value=5000.0),
+                 "::BF": Limit(unit="uA", high_value=5000.0),
+                 "::CF": Limit(unit="uA", high_value=50.0)},
+         is_applied_part_test=True),
+    Test(name="Corrente dispersione diretta P.A.", parameter="Inversa",
+         limits={"::B": Limit(unit="uA", high_value=5000.0),
+                 "::BF": Limit(unit="uA", high_value=5000.0),
+                 "::CF": Limit(unit="uA", high_value=50.0)},
+         is_applied_part_test=True),
 ]
 
 # Dizionario per accedere facilmente ai template

@@ -2,8 +2,86 @@
 
 {% block title %}{% if mode == 'edit' %}Modifica strumento{% else %}Nuovo strumento{% endif %} — STM Mobile{% endblock %}
 {% block header_title %}{% if mode == 'edit' %}Modifica strumento{% else %}Nuovo strumento{% endif %}{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">Dati calibrazione e identificazione</p>{% endblock %}
 
 {% block content %}
+<div class="px-4 py-4">
+
+    {% if error %}
+    <div style="background:#fef2f2;border:1.5px solid #fca5a5;color:#991b1b;border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.875rem;display:flex;align-items:center;gap:.5rem;">
+        <i class="ti ti-alert-circle" style="flex-shrink:0;"></i> {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="POST" class="space-y-4">
+        <div class="card p-4 space-y-4">
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Nome strumento <span class="text-red-500">*</span></label>
+                <input type="text" name="instrument_name" class="form-input" required
+                       value="{{ form.instrument_name or '' }}" placeholder="es. Fluke ESA620">
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Matricola (S/N)</label>
+                <input type="text" name="serial_number" class="form-input"
+                       value="{{ form.serial_number or '' }}" placeholder="es. 12345678">
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Data calibrazione</label>
+                <input type="date" name="calibration_date" class="form-input"
+                       value="{{ form.calibration_date or '' }}">
+                <p class="text-xs text-gray-400 mt-1"><i class="ti ti-info-circle"></i> La scadenza viene calcolata automaticamente a +1 anno</p>
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Versione firmware</label>
+                <input type="text" name="fw_version" class="form-input"
+                       value="{{ form.fw_version or '' }}" placeholder="es. 1.2.3">
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Tipo strumento</label>
+                <select name="instrument_type" class="form-input">
+                    <option value="electrical" {% if not form.instrument_type or form.instrument_type == 'electrical' %}selected{% endif %}>
+                        <i class="ti ti-bolt"></i> Elettrico (VE)
+                    </option>
+                    <option value="functional" {% if form.instrument_type == 'functional' %}selected{% endif %}>
+                        <i class="ti ti-activity"></i> Funzionale (VFUN)
+                    </option>
+                </select>
+            </div>
+
+            <label style="display:flex;align-items:center;gap:.75rem;padding:.5rem 0;cursor:pointer;">
+                <input type="checkbox" name="is_default" id="is_default" value="1"
+                       style="width:18px;height:18px;accent-color:#1e3a8a;"
+                       {% if form.is_default %}checked{% endif %}>
+                <span class="text-sm font-semibold text-gray-700">Strumento predefinito</span>
+            </label>
+        </div>
+
+        <div class="space-y-2 pb-4">
+            <button type="submit" class="btn-primary">
+                <i class="ti ti-device-floppy" style="margin-right:.375rem;"></i>
+                {% if mode == 'edit' %}Salva modifiche{% else %}Crea strumento{% endif %}
+            </button>
+            {% if mode == 'edit' %}
+            <button type="button" onclick="document.getElementById('del-form').submit()" class="btn-danger">
+                <i class="ti ti-trash" style="margin-right:.375rem;"></i>Elimina strumento
+            </button>
+            {% endif %}
+            <a href="/mobile/instruments" class="btn-secondary">Annulla</a>
+        </div>
+    </form>
+
+    {% if mode == 'edit' %}
+    <form id="del-form" method="POST" action="/mobile/instruments/{{ instrument.uuid }}/delete"
+          onsubmit="return confirm('Eliminare questo strumento?')" style="display:none"></form>
+    {% endif %}
+
+</div>
+{% endblock %}
 <div class="px-4 py-4">
 
     {% if error %}

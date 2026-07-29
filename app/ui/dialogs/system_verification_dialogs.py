@@ -396,6 +396,11 @@ class SystemVerificationViewerDialog(QDialog):
         btn_pdf.clicked.connect(self._generate_pdf)
         btn_layout.addWidget(btn_pdf)
 
+        btn_print = QPushButton("🖨️ Stampa")
+        btn_print.setMinimumHeight(36)
+        btn_print.clicked.connect(self._print_pdf)
+        btn_layout.addWidget(btn_print)
+
         btn_close = QPushButton("Chiudi")
         btn_close.setMinimumHeight(36)
         btn_close.clicked.connect(self.accept)
@@ -428,6 +433,18 @@ class SystemVerificationViewerDialog(QDialog):
         except Exception as e:
             logging.error(f"Errore generazione report verifica di sistema: {e}", exc_info=True)
             QMessageBox.critical(self, "Errore", f"Impossibile generare il report:\n{e}")
+
+    def _print_pdf(self):
+        """Stampa il report della verifica di sistema."""
+        try:
+            report_settings = {}
+            parent = self.parent()
+            if parent and hasattr(parent, 'logo_path'):
+                report_settings['logo_path'] = parent.logo_path
+            services.print_system_pdf_report(self.sv_id, report_settings, parent_widget=self)
+        except Exception as e:
+            logging.error(f"Errore stampa report verifica di sistema: {e}", exc_info=True)
+            QMessageBox.critical(self, "Errore", f"Impossibile stampare il report:\n{e}")
 
 
 class SystemVerificationListDialog(QDialog):
@@ -480,6 +497,11 @@ class SystemVerificationListDialog(QDialog):
         btn_pdf.setMinimumHeight(36)
         btn_pdf.clicked.connect(self._generate_pdf_selected)
         btn_layout.addWidget(btn_pdf)
+
+        btn_print = QPushButton("🖨️ Stampa")
+        btn_print.setMinimumHeight(36)
+        btn_print.clicked.connect(self._print_selected)
+        btn_layout.addWidget(btn_print)
 
         btn_delete = QPushButton("🗑 Elimina")
         btn_delete.setMinimumHeight(36)
@@ -586,6 +608,21 @@ class SystemVerificationListDialog(QDialog):
         except Exception as e:
             logging.error(f"Errore generazione report: {e}", exc_info=True)
             QMessageBox.critical(self, "Errore", f"Errore:\n{e}")
+
+    def _print_selected(self):
+        """Stampa il report della verifica di sistema selezionata."""
+        sv_id = self._get_selected_sv_id()
+        if sv_id is None:
+            return
+        try:
+            report_settings = {}
+            parent = self.parent()
+            if parent and hasattr(parent, 'logo_path'):
+                report_settings['logo_path'] = parent.logo_path
+            services.print_system_pdf_report(sv_id, report_settings, parent_widget=self)
+        except Exception as e:
+            logging.error(f"Errore stampa report verifica di sistema: {e}", exc_info=True)
+            QMessageBox.critical(self, "Errore", f"Impossibile stampare il report:\n{e}")
 
     def _delete_selected(self):
         """Elimina la verifica di sistema selezionata."""

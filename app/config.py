@@ -28,7 +28,7 @@ def get_app_data_dir():
     # Crea la cartella se non esiste
     os.makedirs(app_data_path, exist_ok=True)
     return app_data_path
-VERSIONE = "10.0.13"
+VERSIONE = "10.0.16"
 BASE_DIR = get_base_dir() # La cartella del programma
 APP_DATA_DIR = get_app_data_dir() # La cartella dei dati utente
 
@@ -57,8 +57,8 @@ def load_server_url():
     parser = configparser.ConfigParser()
     if os.path.exists(CONFIG_INI_PATH):
         parser.read(CONFIG_INI_PATH)
-        return parser.get('server', 'url', fallback='https://lcalhost:8000')
-    return 'https://lcalhost:8000'
+        return parser.get('server', 'url', fallback='https://localhost:8000')
+    return 'https://localhost:8000'
 
 def load_ssl_ca_cert():
     """

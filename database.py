@@ -1050,6 +1050,20 @@ def advanced_search(criteria: dict):
                     "WHERE fv2.device_id = dev.id AND fv2.is_deleted = 0)"
                 )
 
+        with_att = (criteria.get("with_attachments") or "QUALSIASI").upper().strip()
+        if with_att == "CON ALLEGATI":
+            e_extra.append("v.id IS NOT NULL")
+            e_extra.append(
+                "EXISTS (SELECT 1 FROM verification_attachments va "
+                "WHERE va.verification_id = v.id AND va.verification_type = 'electrical' AND va.is_deleted = 0)"
+            )
+        elif with_att == "SENZA ALLEGATI":
+            e_extra.append("v.id IS NOT NULL")
+            e_extra.append(
+                "NOT EXISTS (SELECT 1 FROM verification_attachments va "
+                "WHERE va.verification_id = v.id AND va.verification_type = 'electrical' AND va.is_deleted = 0)"
+            )
+
         if e_extra:
             e_query += " AND " + " AND ".join(e_extra)
 
@@ -1133,6 +1147,20 @@ def advanced_search(criteria: dict):
             f_extra.append("fv.id IS NOT NULL AND fv.overall_status = 'CONFORME CON ANNOTAZIONE'")
         elif outcome == "NON VERIFICATO":
             f_extra.append("fv.id IS NULL")
+
+        with_att = (criteria.get("with_attachments") or "QUALSIASI").upper().strip()
+        if with_att == "CON ALLEGATI":
+            f_extra.append("fv.id IS NOT NULL")
+            f_extra.append(
+                "EXISTS (SELECT 1 FROM verification_attachments va "
+                "WHERE va.verification_id = fv.id AND va.verification_type = 'functional' AND va.is_deleted = 0)"
+            )
+        elif with_att == "SENZA ALLEGATI":
+            f_extra.append("fv.id IS NOT NULL")
+            f_extra.append(
+                "NOT EXISTS (SELECT 1 FROM verification_attachments va "
+                "WHERE va.verification_id = fv.id AND va.verification_type = 'functional' AND va.is_deleted = 0)"
+            )
 
         if f_extra:
             f_query += " AND " + " AND ".join(f_extra)
@@ -1972,11 +2000,22 @@ def get_devices_verification_status_by_period(destination_id: int, start_date: s
 
 def get_all_devices_for_customer(customer_id: int, search_query=None):
     """
-    Recupera TUTTI i dispositivi di un cliente, da tutte le sue destinazioni.
+    Recupera TUTTI i dispositivi di un cliente, da tutte le sue destinazioni,
+    arricchiti con la data dell'ultima verifica (elettrica o funzionale).
     """
     with DatabaseConnection() as conn:
         query = """
-            SELECT d.* FROM devices d
+            SELECT d.*,
+                   (
+                       SELECT MAX(v2.verification_date)
+                       FROM (
+                           SELECT device_id, verification_date FROM verifications   WHERE is_deleted = 0
+                           UNION ALL
+                           SELECT device_id, verification_date FROM functional_verifications WHERE is_deleted = 0
+                       ) v2
+                       WHERE v2.device_id = d.id
+                   ) AS last_verification_date
+            FROM devices d
             JOIN destinations dest ON d.destination_id = dest.id
             WHERE dest.customer_id = ? AND d.is_deleted = 0
         """
@@ -4390,6 +4429,20 @@ def delete_all_conflicts():
     return count
 
 
+def delete_serial_number_conflicts():
+    """Elimina i conflitti di tipo serial_conflict e duplicate_serial_number.
+    I duplicati di numero di serie sono ora permessi, quindi questi conflitti
+    non devono più essere mostrati all'utente."""
+    with DatabaseConnection() as conn:
+        cursor = conn.execute(
+            "DELETE FROM sync_conflicts WHERE conflict_type IN ('serial_conflict', 'duplicate_serial_number')"
+        )
+        count = cursor.rowcount
+    if count > 0:
+        logging.info(f"Eliminati {count} conflitti serial_number (ora i duplicati sono permessi).")
+    return count
+
+
 # ==============================================================================
 # SEZIONE: RISOLUZIONI CONFLITTO PENDENTI (da inviare al server)
 # ==============================================================================
@@ -4440,6 +4493,49 @@ def clear_pending_sync_resolutions() -> int:
 # SEZIONE: ALLEGATI VERIFICHE (Verification Attachments)
 # ==============================================================================
 
+_IMAGE_MIME_TYPES = {"image/jpeg", "image/jpg", "image/png", "image/bmp", "image/tiff", "image/tif"}
+_MAX_IMAGE_PX   = 2048   # lato massimo in pixel
+_JPEG_QUALITY   = 78     # qualità JPEG di output (0-95)
+
+
+def _compress_image(file_data: bytes, mime_type: str, filename: str) -> tuple[bytes, str, str]:
+    """
+    Ridimensiona e ricomprime un'immagine con Pillow.
+    Restituisce (bytes_compressi, nuovo_mime_type, nuova_estensione).
+    Se Pillow non è disponibile o il file non è un'immagine, restituisce l'input invariato.
+    """
+    if mime_type not in _IMAGE_MIME_TYPES:
+        ext = os.path.splitext(filename)[1] if '.' in filename else ''
+        return file_data, mime_type, ext
+    try:
+        from PIL import Image
+        import io
+        img = Image.open(io.BytesIO(file_data))
+        # Converti in RGB (rimuove canale alpha per JPEG)
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        # Ridimensiona se supera il limite
+        w, h = img.size
+        if max(w, h) > _MAX_IMAGE_PX:
+            ratio = _MAX_IMAGE_PX / max(w, h)
+            img = img.resize((int(w * ratio), int(h * ratio)), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=_JPEG_QUALITY, optimize=True)
+        compressed = buf.getvalue()
+        # Accetta la compressione solo se riduce davvero la dimensione
+        if len(compressed) < len(file_data):
+            logging.debug(
+                f"[allegati] compressione immagine: {len(file_data)//1024}KB → "
+                f"{len(compressed)//1024}KB ({filename})"
+            )
+            return compressed, "image/jpeg", ".jpg"
+        return file_data, mime_type, os.path.splitext(filename)[1] if '.' in filename else '.jpg'
+    except Exception as e:
+        logging.warning(f"[allegati] compressione non riuscita ({filename}): {e}")
+        ext = os.path.splitext(filename)[1] if '.' in filename else ''
+        return file_data, mime_type, ext
+
+
 def save_verification_attachment(
     verification_id: int,
     filename: str,
@@ -4448,9 +4544,13 @@ def save_verification_attachment(
     description: str = "",
     verification_type: str = "functional",
 ) -> int:
-    """Salva un allegato su disco e registra il percorso nel database."""
+    """Salva un allegato su disco (con compressione automatica per le immagini)
+    e registra il percorso nel database."""
     attachment_uuid = str(uuid.uuid4())
     timestamp = datetime.now(timezone.utc).isoformat()
+
+    # Comprimi le immagini automaticamente prima di salvare
+    file_data, mime_type, ext = _compress_image(file_data, mime_type, filename)
     file_size = len(file_data)
 
     # Crea la sotto-cartella per la verifica
@@ -4458,7 +4558,6 @@ def save_verification_attachment(
     os.makedirs(verify_dir, exist_ok=True)
 
     # Genera un nome file unico per evitare collisioni
-    ext = os.path.splitext(filename)[1] if '.' in filename else '.jpg'
     safe_filename = f"{attachment_uuid}{ext}"
     file_path = os.path.join(verify_dir, safe_filename)
 
@@ -4552,7 +4651,7 @@ def get_attachment_file_path(attachment_id: int) -> str | None:
             "SELECT file_path FROM verification_attachments WHERE id = ? AND is_deleted = 0",
             (attachment_id,),
         ).fetchone()
-        if not row:
+        if not row or not row['file_path']:
             return None
         abs_path = os.path.join(config.ATTACHMENTS_DIR, row['file_path'])
         return abs_path if os.path.exists(abs_path) else None
@@ -4583,14 +4682,15 @@ def delete_verification_attachment(attachment_id: int) -> bool:
     deleted = cursor.rowcount > 0
 
     if deleted:
-        # Elimina anche il file fisico da disco
-        abs_path = os.path.join(config.ATTACHMENTS_DIR, row['file_path'])
-        try:
-            if os.path.exists(abs_path):
-                os.remove(abs_path)
-                logging.info(f"File allegato rimosso da disco: {abs_path}")
-        except OSError as e:
-            logging.warning(f"Impossibile eliminare il file allegato {abs_path}: {e}")
+        # Elimina il file fisico da disco solo se presente in cache locale
+        if row['file_path']:
+            abs_path = os.path.join(config.ATTACHMENTS_DIR, row['file_path'])
+            try:
+                if os.path.exists(abs_path):
+                    os.remove(abs_path)
+                    logging.info(f"File allegato rimosso da disco: {abs_path}")
+            except OSError as e:
+                logging.warning(f"Impossibile eliminare il file allegato {abs_path}: {e}")
         logging.info(f"Allegato id={attachment_id} eliminato.")
     return deleted
 
@@ -4608,6 +4708,91 @@ def get_attachments_count(
             (verification_id, verification_type),
         ).fetchone()
         return row["cnt"] if row else 0
+
+
+def get_attachments_disk_usage() -> dict:
+    """
+    Calcola l'utilizzo disco della cartella allegati.
+    Restituisce {"total_bytes": int, "total_files": int, "synced_bytes": int, "synced_files": int}
+    """
+    total_bytes = 0
+    total_files = 0
+    for dirpath, _, filenames in os.walk(config.ATTACHMENTS_DIR):
+        for fname in filenames:
+            try:
+                total_bytes += os.path.getsize(os.path.join(dirpath, fname))
+                total_files += 1
+            except OSError:
+                pass
+
+    # Conta i file già sincronizzati
+    with DatabaseConnection() as conn:
+        rows = conn.execute(
+            "SELECT file_path, file_size FROM verification_attachments "
+            "WHERE is_deleted = 0 AND is_synced = 1 AND file_path IS NOT NULL AND file_path != ''"
+        ).fetchall()
+    synced_bytes = sum(r["file_size"] for r in rows if r["file_size"])
+    synced_files = len(rows)
+
+    return {
+        "total_bytes":  total_bytes,
+        "total_files":  total_files,
+        "synced_bytes": synced_bytes,
+        "synced_files": synced_files,
+    }
+
+
+def purge_synced_attachments() -> dict:
+    """
+    Elimina i file fisici degli allegati già sincronizzati con il server.
+    Il record DB rimane intatto (con file_path = NULL) così i metadati sono preservati
+    e il file può essere ri-scaricato dal server se necessario.
+    Restituisce {"freed_bytes": int, "deleted_files": int, "errors": int}
+    """
+    freed_bytes = 0
+    deleted_files = 0
+    errors = 0
+
+    with DatabaseConnection() as conn:
+        rows = conn.execute(
+            "SELECT id, file_path, file_size FROM verification_attachments "
+            "WHERE is_deleted = 0 AND is_synced = 1 AND file_path IS NOT NULL AND file_path != ''"
+        ).fetchall()
+
+        for row in rows:
+            abs_path = os.path.join(config.ATTACHMENTS_DIR, row["file_path"])
+            size = row["file_size"] or 0
+            try:
+                if os.path.exists(abs_path):
+                    os.remove(abs_path)
+                    freed_bytes += size
+                    deleted_files += 1
+                # Imposta file_path a stringa vuota: il record rimane, il file è sul server
+                conn.execute(
+                    "UPDATE verification_attachments SET file_path = '', "
+                    "last_modified = ? WHERE id = ?",
+                    (datetime.now(timezone.utc).isoformat(), row["id"]),
+                )
+            except OSError as e:
+                logging.warning(f"[purge] impossibile eliminare {abs_path}: {e}")
+                errors += 1
+
+        # Rimuovi le sotto-cartelle verifica rimaste vuote
+        try:
+            for entry in os.scandir(config.ATTACHMENTS_DIR):
+                if entry.is_dir():
+                    try:
+                        os.rmdir(entry.path)  # rmdir fallisce se non è vuota
+                    except OSError:
+                        pass
+        except Exception:
+            pass
+
+    logging.info(
+        f"[purge allegati] liberati {freed_bytes//1024}KB, "
+        f"{deleted_files} file rimossi, {errors} errori"
+    )
+    return {"freed_bytes": freed_bytes, "deleted_files": deleted_files, "errors": errors}
 
 
 def get_functional_verification_by_uuid(verification_uuid: str) -> dict | None:
@@ -4630,5 +4815,444 @@ def get_functional_verification_by_code(verification_code: str) -> dict | None:
         return dict(row) if row else None
 
 
+# ==============================================================================
+# SEZIONE: ASSEGNAZIONI VERIFICHE (Verification Assignments)
+# ==============================================================================
+
+def ensure_assignments_table():
+    """Crea la tabella verification_assignments se non esiste (SQLite locale).
+    Gestisce anche la migrazione da versioni precedenti (device_id NOT NULL → nullable,
+    aggiunta colonna destination_id).
+    """
+    with DatabaseConnection() as conn:
+        # ── Schema target ───────────────────────────────────────────────────
+        _NEW_SCHEMA = """
+            CREATE TABLE IF NOT EXISTS verification_assignments (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                uuid            TEXT    NOT NULL UNIQUE,
+                device_id       INTEGER REFERENCES devices(id) ON DELETE CASCADE,
+                destination_id  INTEGER REFERENCES destinations(id) ON DELETE SET NULL,
+                assigned_to     TEXT    NOT NULL,
+                assigned_by     TEXT    NOT NULL,
+                notes           TEXT,
+                priority        TEXT    NOT NULL DEFAULT 'normal',
+                due_date        TEXT,
+                status          TEXT    NOT NULL DEFAULT 'pending',
+                created_at      TEXT    NOT NULL,
+                updated_at      TEXT    NOT NULL,
+                completed_at    TEXT,
+                is_deleted      INTEGER NOT NULL DEFAULT 0,
+                is_synced       INTEGER NOT NULL DEFAULT 0,
+                last_modified   TEXT    DEFAULT '1970-01-01T00:00:00'
+            )
+        """
+        conn.execute(_NEW_SCHEMA)
+
+        # ── Controlla se è necessaria una migrazione ─────────────────────
+        pragma = conn.execute("PRAGMA table_info(verification_assignments)").fetchall()
+        col_info = {row[1]: row for row in pragma}  # {name: (cid,name,type,notnull,dflt,pk)}
+
+        device_id_notnull  = col_info.get('device_id',  (None,)*4)[3]  # 1 = NOT NULL
+        has_destination_id = 'destination_id' in col_info
+
+        if device_id_notnull or not has_destination_id:
+            # Ricrea la tabella con lo schema aggiornato
+            logging.info("[assignments] Migrazione tabella verification_assignments → schema v2")
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS _va_migration (
+                    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                    uuid            TEXT    NOT NULL UNIQUE,
+                    device_id       INTEGER REFERENCES devices(id) ON DELETE CASCADE,
+                    destination_id  INTEGER REFERENCES destinations(id) ON DELETE SET NULL,
+                    assigned_to     TEXT    NOT NULL,
+                    assigned_by     TEXT    NOT NULL,
+                    notes           TEXT,
+                    priority        TEXT    NOT NULL DEFAULT 'normal',
+                    due_date        TEXT,
+                    status          TEXT    NOT NULL DEFAULT 'pending',
+                    created_at      TEXT    NOT NULL,
+                    updated_at      TEXT    NOT NULL,
+                    completed_at    TEXT,
+                    is_deleted      INTEGER NOT NULL DEFAULT 0,
+                    is_synced       INTEGER NOT NULL DEFAULT 0,
+                    last_modified   TEXT    DEFAULT '1970-01-01T00:00:00'
+                )
+            """)
+            conn.execute("""
+                INSERT OR IGNORE INTO _va_migration
+                    (id, uuid, device_id, destination_id,
+                     assigned_to, assigned_by, notes, priority, due_date, status,
+                     created_at, updated_at, completed_at,
+                     is_deleted, is_synced, last_modified)
+                SELECT
+                    id, uuid, device_id, NULL,
+                    assigned_to, assigned_by, notes, priority, due_date, status,
+                    created_at, updated_at, completed_at,
+                    is_deleted,
+                    COALESCE(is_synced, 0),
+                    COALESCE(last_modified, '1970-01-01T00:00:00')
+                FROM verification_assignments
+            """)
+            conn.execute("DROP TABLE verification_assignments")
+            conn.execute("ALTER TABLE _va_migration RENAME TO verification_assignments")
+        else:
+            # Aggiungi eventuali colonne mancanti su tabella già aggiornata
+            for col, ddl in [
+                ('is_synced',    "ALTER TABLE verification_assignments ADD COLUMN is_synced INTEGER DEFAULT 0"),
+                ('last_modified',"ALTER TABLE verification_assignments ADD COLUMN last_modified TEXT DEFAULT '1970-01-01T00:00:00'"),
+                ('destination_id',"ALTER TABLE verification_assignments ADD COLUMN destination_id INTEGER"),
+            ]:
+                if col not in col_info:
+                    try:
+                        conn.execute(ddl)
+                    except Exception:
+                        pass
+
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_assign_to     ON verification_assignments(assigned_to)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_assign_status  ON verification_assignments(status)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_assign_device  ON verification_assignments(device_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_assign_dest    ON verification_assignments(destination_id)")
+
+
+def create_assignment(device_id: int | None, assigned_to: str, assigned_by: str,
+                      notes: str | None, priority: str, due_date: str | None,
+                      destination_id: int | None = None) -> dict:
+    """Crea una nuova assegnazione di verifica.
+    Può essere a livello dispositivo (device_id impostato) o
+    a livello destinazione (destination_id impostato, device_id=None).
+    """
+    ensure_assignments_table()
+    now = datetime.now(timezone.utc).isoformat()
+    new_uuid = str(uuid.uuid4())
+    with DatabaseConnection() as conn:
+        conn.execute(
+            """
+            INSERT INTO verification_assignments
+                (uuid, device_id, destination_id, assigned_to, assigned_by, notes,
+                 priority, due_date, status, created_at, updated_at, is_synced, last_modified)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, 0, ?)
+            """,
+            (new_uuid, device_id, destination_id, assigned_to, assigned_by,
+             notes, priority, due_date, now, now, now),
+        )
+        row = conn.execute(
+            "SELECT * FROM verification_assignments WHERE uuid = ?", (new_uuid,)
+        ).fetchone()
+        return dict(row)
+
+
+def get_assignments_for_user(username: str, status_filter: str | None = None) -> list[dict]:
+    """Restituisce le assegnazioni per un tecnico specifico."""
+    ensure_assignments_table()
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT a.*,
+                   d.description, d.serial_number, d.manufacturer, d.model,
+                   d.department, d.uuid AS device_uuid,
+                   COALESCE(dest_d.name, dest_a.name) AS destination_name,
+                   COALESCE(c_d.name, c_a.name)      AS customer_name
+            FROM verification_assignments a
+            LEFT JOIN devices d          ON d.id = a.device_id
+            LEFT JOIN destinations dest_d ON dest_d.id = d.destination_id
+            LEFT JOIN customers   c_d    ON c_d.id = dest_d.customer_id
+            LEFT JOIN destinations dest_a ON dest_a.id = a.destination_id
+            LEFT JOIN customers   c_a    ON c_a.id = dest_a.customer_id
+            WHERE a.assigned_to = ? AND a.is_deleted = 0
+        """
+        params: list = [username]
+        if status_filter:
+            query += " AND a.status = ?"
+            params.append(status_filter)
+        query += " ORDER BY CASE a.priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END, a.due_date ASC, a.created_at DESC"
+        rows = conn.execute(query, params).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_all_assignments(status_filter: str | None = None) -> list[dict]:
+    """Restituisce tutte le assegnazioni (per manager/admin)."""
+    ensure_assignments_table()
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT a.*,
+                   d.description, d.serial_number, d.manufacturer, d.model,
+                   d.department, d.uuid AS device_uuid,
+                   COALESCE(dest_d.name, dest_a.name) AS destination_name,
+                   COALESCE(c_d.name, c_a.name)      AS customer_name
+            FROM verification_assignments a
+            LEFT JOIN devices d          ON d.id = a.device_id
+            LEFT JOIN destinations dest_d ON dest_d.id = d.destination_id
+            LEFT JOIN customers   c_d    ON c_d.id = dest_d.customer_id
+            LEFT JOIN destinations dest_a ON dest_a.id = a.destination_id
+            LEFT JOIN customers   c_a    ON c_a.id = dest_a.customer_id
+            WHERE a.is_deleted = 0
+        """
+        params: list = []
+        if status_filter:
+            query += " AND a.status = ?"
+            params.append(status_filter)
+        query += " ORDER BY CASE a.priority WHEN 'urgent' THEN 1 WHEN 'high' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END, a.due_date ASC, a.created_at DESC"
+        rows = conn.execute(query, params).fetchall()
+        return [dict(r) for r in rows]
+
+
+def get_assignment_by_uuid(assignment_uuid: str) -> dict | None:
+    """Restituisce una singola assegnazione per UUID."""
+    ensure_assignments_table()
+    with DatabaseConnection() as conn:
+        row = conn.execute(
+            """
+            SELECT a.*,
+                   d.description, d.serial_number, d.manufacturer, d.model,
+                   d.department, d.uuid AS device_uuid,
+                   COALESCE(dest_d.name, dest_a.name) AS destination_name,
+                   COALESCE(c_d.name, c_a.name)      AS customer_name
+            FROM verification_assignments a
+            LEFT JOIN devices d          ON d.id = a.device_id
+            LEFT JOIN destinations dest_d ON dest_d.id = d.destination_id
+            LEFT JOIN customers   c_d    ON c_d.id = dest_d.customer_id
+            LEFT JOIN destinations dest_a ON dest_a.id = a.destination_id
+            LEFT JOIN customers   c_a    ON c_a.id = dest_a.customer_id
+            WHERE a.uuid = ? AND a.is_deleted = 0
+            """,
+            (assignment_uuid,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def update_assignment_status(assignment_uuid: str, new_status: str) -> bool:
+    """Aggiorna lo stato di un'assegnazione."""
+    ensure_assignments_table()
+    now = datetime.now(timezone.utc).isoformat()
+    completed_at = now if new_status == 'completed' else None
+    with DatabaseConnection() as conn:
+        cur = conn.execute(
+            """
+            UPDATE verification_assignments
+            SET status = ?, updated_at = ?, completed_at = COALESCE(completed_at, ?),
+                is_synced = 0, last_modified = ?
+            WHERE uuid = ? AND is_deleted = 0
+            """,
+            (new_status, now, completed_at, now, assignment_uuid),
+        )
+        return cur.rowcount > 0
+
+
+def delete_assignment(assignment_uuid: str) -> bool:
+    """Soft-delete di un'assegnazione."""
+    ensure_assignments_table()
+    now = datetime.now(timezone.utc).isoformat()
+    with DatabaseConnection() as conn:
+        cur = conn.execute(
+            "UPDATE verification_assignments SET is_deleted = 1, updated_at = ?, is_synced = 0, last_modified = ? WHERE uuid = ?",
+            (now, now, assignment_uuid),
+        )
+        return cur.rowcount > 0
+
+
+def count_pending_assignments_for_user(username: str) -> int:
+    """Conta le assegnazioni pendenti/in corso per un tecnico."""
+    ensure_assignments_table()
+    with DatabaseConnection() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) as cnt FROM verification_assignments WHERE assigned_to = ? AND status IN ('pending','in_progress') AND is_deleted = 0",
+            (username,),
+        ).fetchone()
+        return row["cnt"] if row else 0
+
+
+# ─────────────────────────────────────────────
+# SEGNALAZIONI "NON MESSO A DISPOSIZIONE"
+# ─────────────────────────────────────────────
+
+def ensure_unavailability_table():
+    """Crea la tabella device_unavailability_reports se non esiste (compatibilità)."""
+    with DatabaseConnection() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS device_unavailability_reports (
+                id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+                uuid                TEXT    NOT NULL UNIQUE,
+                device_id           INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+                destination_id      INTEGER NOT NULL REFERENCES destinations(id) ON DELETE CASCADE,
+                period_start        TEXT    NOT NULL,
+                period_end          TEXT    NOT NULL,
+                report_date         TEXT    NOT NULL,
+                reason              TEXT    NOT NULL,
+                technician_name     TEXT,
+                technician_username TEXT,
+                created_at          TEXT    NOT NULL DEFAULT (datetime('now')),
+                last_modified       TEXT    NOT NULL DEFAULT (datetime('now')),
+                is_deleted          INTEGER NOT NULL DEFAULT 0,
+                is_synced           INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+
+
+def save_unavailability_report(
+    device_id: int,
+    destination_id: int,
+    period_start: str,
+    period_end: str,
+    reason: str,
+    technician_name: str = None,
+    technician_username: str = None,
+) -> dict:
+    """
+    Salva una segnalazione 'non messo a disposizione' per un dispositivo
+    in un dato periodo. Restituisce il record creato.
+    """
+    ensure_unavailability_table()
+    import uuid as _uuid
+    record_uuid = str(_uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+    report_date = now[:10]  # YYYY-MM-DD
+    with DatabaseConnection() as conn:
+        conn.execute(
+            """
+            INSERT INTO device_unavailability_reports
+                (uuid, device_id, destination_id, period_start, period_end,
+                 report_date, reason, technician_name, technician_username,
+                 created_at, last_modified, is_deleted, is_synced)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,0,0)
+            """,
+            (record_uuid, device_id, destination_id, period_start, period_end,
+             report_date, reason, technician_name, technician_username,
+             now, now),
+        )
+    return {
+        "uuid": record_uuid,
+        "device_id": device_id,
+        "destination_id": destination_id,
+        "period_start": period_start,
+        "period_end": period_end,
+        "report_date": report_date,
+        "reason": reason,
+        "technician_name": technician_name,
+        "technician_username": technician_username,
+    }
+
+
+def get_unavailability_reports_for_period(
+    destination_id: int,
+    period_start: str,
+    period_end: str,
+) -> list:
+    """
+    Recupera tutte le segnalazioni 'non disponibile' per una destinazione
+    in un dato intervallo di date. Restituisce una lista di dict con i campi
+    del report + description/serial_number del dispositivo.
+    """
+    ensure_unavailability_table()
+    with DatabaseConnection() as conn:
+        rows = conn.execute(
+            """
+            SELECT r.*, d.description, d.serial_number, d.model
+            FROM device_unavailability_reports r
+            JOIN devices d ON d.id = r.device_id
+            WHERE r.destination_id = ?
+              AND r.period_start = ?
+              AND r.period_end   = ?
+              AND r.is_deleted   = 0
+            ORDER BY d.description
+            """,
+            (destination_id, period_start, period_end),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_unavailability_reports_for_device(device_id: int) -> list:
+    """Recupera tutte le segnalazioni 'non disponibile' per un dispositivo (storico)."""
+    ensure_unavailability_table()
+    with DatabaseConnection() as conn:
+        rows = conn.execute(
+            """
+            SELECT * FROM device_unavailability_reports
+            WHERE device_id = ? AND is_deleted = 0
+            ORDER BY period_start DESC
+            """,
+            (device_id,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_unavailability_report(report_uuid: str) -> bool:
+    """Soft-delete di una segnalazione 'non disponibile'."""
+    ensure_unavailability_table()
+    now = datetime.now(timezone.utc).isoformat()
+    with DatabaseConnection() as conn:
+        cur = conn.execute(
+            "UPDATE device_unavailability_reports SET is_deleted = 1, is_synced = 0, last_modified = ? WHERE uuid = ?",
+            (now, report_uuid),
+        )
+        return cur.rowcount > 0
+
+
+def get_unavailability_reports_by_date_range(
+    start_date: str,
+    end_date: str,
+    destination_id: int = None,
+    customer_id: int = None,
+) -> list:
+    """
+    Recupera le segnalazioni 'non messo a disposizione' il cui periodo di riferimento
+    cade (anche parzialmente) nell'intervallo start_date..end_date.
+    Restituisce i dati già arricchiti con i campi del dispositivo e della destinazione,
+    pronti per essere inseriti come righe sintetiche nel fascicolo verifiche.
+    """
+    ensure_unavailability_table()
+    with DatabaseConnection() as conn:
+        params = [start_date, end_date]
+        extra_join = ""
+        extra_where = ""
+        if destination_id is not None:
+            extra_where = " AND r.destination_id = ?"
+            params.append(destination_id)
+        elif customer_id is not None:
+            extra_join = " JOIN destinations dest2 ON dest2.id = r.destination_id"
+            extra_where = " AND dest2.customer_id = ?"
+            params.append(customer_id)
+        query = f"""
+            SELECT r.*,
+                   d.description, d.manufacturer, d.model,
+                   d.serial_number, d.ams_inventory, d.customer_inventory, d.department,
+                   dest.name AS destination_name
+            FROM device_unavailability_reports r
+            JOIN devices d ON d.id = r.device_id
+            JOIN destinations dest ON dest.id = r.destination_id
+            {extra_join}
+            WHERE r.is_deleted = 0 AND d.is_deleted = 0
+              AND r.period_start <= ? AND r.period_end >= ?
+            {extra_where}
+            ORDER BY d.description
+        """
+        rows = conn.execute(query, params).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_all_unavailability_reports_for_destination(destination_id: int) -> list:
+    """
+    Recupera tutte le segnalazioni 'non messo a disposizione' attive (non cancellate)
+    per una destinazione, arricchite con description e serial del dispositivo.
+    Usata dal dialog di gestione in Gestione Anagrafiche.
+    """
+    ensure_unavailability_table()
+    with DatabaseConnection() as conn:
+        rows = conn.execute(
+            """
+            SELECT r.*,
+                   d.description AS device_description,
+                   d.serial_number AS device_serial
+            FROM device_unavailability_reports r
+            JOIN devices d ON d.id = r.device_id
+            WHERE r.destination_id = ? AND r.is_deleted = 0 AND d.is_deleted = 0
+            ORDER BY d.description, r.period_start DESC
+            """,
+            (destination_id,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 # Applica le migrazioni del database all'avvio del modulo
 migrate_database()
+ensure_assignments_table()
+ensure_unavailability_table()
+

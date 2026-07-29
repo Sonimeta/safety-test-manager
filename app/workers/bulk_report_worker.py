@@ -76,6 +76,13 @@ class BulkReportWorker(QObject):
             verif_id = verif.get('id')
             dev_id = verif.get('device_id')
             verification_type = verif.get('verification_type', 'ELETTRICA')
+
+            # Le segnalazioni "non messo a disposizione" non hanno un PDF da generare:
+            # compaiono solo nel frontespizio/tabella del fascicolo, quindi le saltiamo.
+            if verification_type == 'NON_DISPONIBILE':
+                success_count += 1
+                continue
+
             if verification_type == 'SISTEMA':
                 type_label = "Sistema"
             elif verification_type == 'FUNZIONALE':
@@ -582,10 +589,12 @@ class BulkReportWorker(QObject):
                 c.drawRightString(width - 2*cm, 1.9*cm, created_by)
 
             # === BOX RIASSUNTO MODERNO ===
+            # Box più alto (cresce verso il basso, il bordo superiore resta sotto
+            # il titolo) per ospitare le 3 sezioni complete con i 3 punti ciascuna
             box_w = 7.5*cm
-            box_h = 12*cm
+            box_h = 16*cm
             box_x = width - box_w - 1.5*cm
-            box_y = height - 20*cm
+            box_y = height - 24*cm
             
             # Sfondo box con gradiente simulato (due rettangoli)
             c.setFillColor(COLOR_PRIMARY)
@@ -609,53 +618,86 @@ class BulkReportWorker(QObject):
             c.setFont("Helvetica", 10)
             c.drawCentredString(box_x + box_w/2, box_y + box_h - 4.2*cm, "apparecchi controllati")
             
-            # Dettagli
-            c.setFont("Helvetica", 9)
-            detail_y = box_y + box_h - 5.5*cm
-            
-            # Verifiche elettriche
-            c.setFillColor(HexColor("#93c5fd"))  # Blu chiaro
-            c.circle(box_x + 1.2*cm, detail_y + 0.15*cm, 0.2*cm, fill=1, stroke=0)
-            c.setFillColor(HexColor("#ffffff"))
-            c.drawString(box_x + 1.8*cm, detail_y, f"{info.get('electrical_count', 0)} verifiche elettriche")
-            
-            # Verifiche funzionali
-            detail_y -= 0.8*cm
-            c.setFillColor(HexColor("#86efac"))  # Verde chiaro
-            c.circle(box_x + 1.2*cm, detail_y + 0.15*cm, 0.2*cm, fill=1, stroke=0)
-            c.setFillColor(HexColor("#ffffff"))
-            c.drawString(box_x + 1.8*cm, detail_y, f"{info.get('functional_count', 0)} verifiche funzionali")
-            
-            # Linea separatrice
-            detail_y -= 0.6*cm
-            c.setStrokeColor(HexColor("#ffffff"))
-            c.setLineWidth(0.5)
-            c.line(box_x + 0.8*cm, detail_y, box_x + box_w - 0.8*cm, detail_y)
-            
-            # Verifiche conformi
-            detail_y -= 0.7*cm
-            c.setFillColor(COLOR_SUCCESS)  # Verde
-            c.circle(box_x + 1.2*cm, detail_y + 0.15*cm, 0.2*cm, fill=1, stroke=0)
-            c.setFillColor(HexColor("#ffffff"))
-            c.drawString(box_x + 1.8*cm, detail_y, f"{info.get('conformi_count', 0)} CONFORMI")
+            # Dettagli separati: Elettriche, di Sistema e Funzionali
+            el_count  = info.get('electrical_count', 0)
+            fun_count = info.get('functional_count', 0)
+            sys_count = info.get('system_count', 0)
 
-            # Verifiche conformi con annotazione
-            detail_y -= 0.8*cm
-            c.setFillColor(HexColor("#f59e0b"))  # Arancione
-            c.circle(box_x + 1.2*cm, detail_y + 0.15*cm, 0.2*cm, fill=1, stroke=0)
-            c.setFillColor(HexColor("#ffffff"))
-            c.drawString(
-                box_x + 1.8*cm,
-                detail_y,
-                f"{info.get('conformi_con_annotazione_count', 0)} CONFORMI CON ANNOTAZIONE",
-            )
-            
-            # Verifiche non conformi
-            detail_y -= 0.8*cm
-            c.setFillColor(HexColor("#dc2626"))  # Rosso
-            c.circle(box_x + 1.2*cm, detail_y + 0.15*cm, 0.2*cm, fill=1, stroke=0)
-            c.setFillColor(HexColor("#ffffff"))
-            c.drawString(box_x + 1.8*cm, detail_y, f"{info.get('non_conformi_count', 0)} NON CONFORMI")
+            # indent=0 → riga principale, indent=1 → sotto-voce rientrata
+            def _bullet(clr, y, text, indent=0):
+                off = 0.9*cm * indent
+                c.setFillColor(HexColor(clr))
+                r = 0.14*cm if indent else 0.18*cm
+                c.circle(box_x + 1.2*cm + off, y + 0.13*cm, r, fill=1, stroke=0)
+                c.setFillColor(HexColor("#ffffff"))
+                c.setFont("Helvetica", 7 if indent else 8)
+                c.drawString(box_x + 1.8*cm + off, y, text)
+
+            def _section_sep(y, clr):
+                c.setStrokeColor(HexColor(clr))
+                c.setLineWidth(0.4)
+                c.line(box_x + 0.8*cm, y, box_x + box_w - 0.8*cm, y)
+
+            def _section_hdr(y, text, clr):
+                c.setFillColor(HexColor(clr))
+                c.setFont("Helvetica-Bold", 8)
+                c.drawString(box_x + 0.8*cm, y, text)
+
+            detail_y = box_y + box_h - 5.0*cm
+
+            # ── VERIFICHE ELETTRICHE ──────────────────────────────────
+            if el_count > 0:
+                _section_sep(detail_y + 0.2*cm, "#93c5fd")
+                detail_y -= 0.1*cm
+                _section_hdr(detail_y, "VERIFICHE ELETTRICHE", "#93c5fd")
+                detail_y -= 0.65*cm
+                _bullet("#93c5fd", detail_y, f"{el_count} VERIFICHE TOTALI")
+                detail_y -= 0.58*cm
+                _bullet("#4ade80",  detail_y, f"{info.get('el_conformi_count', 0)} CONFORMI",           indent=1)
+                detail_y -= 0.55*cm
+                _bullet("#f59e0b",  detail_y, f"{info.get('el_cca_count', 0)} CONF. CON ANNOTAZIONE",  indent=1)
+                detail_y -= 0.55*cm
+                _bullet("#f87171",  detail_y, f"{info.get('el_nc_count', 0)} NON CONFORMI",            indent=1)
+                detail_y -= 0.5*cm
+
+            # ── VERIFICHE DI SISTEMA ──────────────────────────────────
+            if sys_count > 0:
+                _section_sep(detail_y + 0.2*cm, "#fdba74")
+                detail_y -= 0.1*cm
+                _section_hdr(detail_y, "VERIFICHE DI SISTEMA", "#fdba74")
+                detail_y -= 0.65*cm
+                _bullet("#fdba74", detail_y, f"{sys_count} VERIFICHE TOTALI")
+                detail_y -= 0.58*cm
+                _bullet("#4ade80",  detail_y, f"{info.get('sys_conformi_count', 0)} CONFORMI",          indent=1)
+                detail_y -= 0.55*cm
+                _bullet("#f59e0b",  detail_y, f"{info.get('sys_cca_count', 0)} CONF. CON ANNOTAZIONE", indent=1)
+                detail_y -= 0.55*cm
+                _bullet("#f87171",  detail_y, f"{info.get('sys_nc_count', 0)} NON CONFORMI",           indent=1)
+                detail_y -= 0.5*cm
+
+            # ── VERIFICHE FUNZIONALI ──────────────────────────────────
+            if fun_count > 0:
+                _section_sep(detail_y + 0.2*cm, "#86efac")
+                detail_y -= 0.1*cm
+                _section_hdr(detail_y, "VERIFICHE FUNZIONALI", "#86efac")
+                detail_y -= 0.65*cm
+                _bullet("#86efac", detail_y, f"{fun_count} VERIFICHE TOTALI")
+                detail_y -= 0.58*cm
+                _bullet("#4ade80",  detail_y, f"{info.get('fun_conformi_count', 0)} CONFORMI",          indent=1)
+                detail_y -= 0.55*cm
+                _bullet("#f59e0b",  detail_y, f"{info.get('fun_cca_count', 0)} CONF. CON ANNOTAZIONE", indent=1)
+                detail_y -= 0.55*cm
+                _bullet("#f87171",  detail_y, f"{info.get('fun_nc_count', 0)} NON CONFORMI",           indent=1)
+                detail_y -= 0.5*cm
+
+            # ── NON MESSI A DISPOSIZIONE ──────────────────────────────
+            non_disp = info.get('non_disponibili_count', 0)
+            if non_disp:
+                _section_sep(detail_y + 0.2*cm, "#c4b5fd")
+                detail_y -= 0.1*cm
+                _section_hdr(detail_y, "NON MESSI A DISPOSIZIONE", "#c4b5fd")
+                detail_y -= 0.65*cm
+                _bullet("#c4b5fd", detail_y, f"{non_disp} DISPOSITIVI", indent=0)
 
             if include_table:
                 c.showPage()
@@ -689,6 +731,8 @@ class BulkReportWorker(QObject):
         COLOR_ANNOTATION_BG = HexColor("#f2d305") # Sfondo giallo chiaro
         COLOR_FAIL = HexColor("#dc2626")         # Rosso per NON CONFORME
         COLOR_FAIL_BG = HexColor("#fee2e2")      # Sfondo rosso chiaro
+        COLOR_UNAVAIL = HexColor("#7c3aed")      # Viola per NON MESSO A DISPOSIZIONE
+        COLOR_UNAVAIL_BG = HexColor("#ede9fe")   # Sfondo viola chiaro
         COLOR_BORDER = HexColor("#cbd5e1")       # Bordo grigio
         COLOR_TEXT = HexColor("#1e293b")         # Testo principale
         
@@ -757,6 +801,21 @@ class BulkReportWorker(QObject):
             if not device_id:
                 continue
 
+            # Segnalazioni "non messo a disposizione": entry sintetica dedicata.
+            # Usano una chiave composta (device_id, uuid) per non collidere con
+            # eventuali verifiche dello stesso dispositivo nello stesso periodo.
+            if verification_type == "NON_DISPONIBILE":
+                key = (device_id, verif.get('unavail_report_uuid') or device_id)
+                reason = str(verif.get('notes') or '').strip()
+                devices_map[key] = {
+                    'data': verif,
+                    'esito_elettrico': '',
+                    'esito_funzionale': '',
+                    'note_parts': [reason] if reason else [],
+                    'esito_override': 'NON MESSO A DISPOSIZIONE',
+                }
+                continue
+
             if device_id not in devices_map:
                 devices_map[device_id] = {
                     'data': verif,
@@ -815,17 +874,16 @@ class BulkReportWorker(QObject):
             verif = device_info['data']
             esito_elettrico = device_info['esito_elettrico']
             esito_funzionale = device_info['esito_funzionale']
-            
+
+            # ===== ESITO OVERRIDE (es. NON MESSO A DISPOSIZIONE) =====
+            if 'esito_override' in device_info:
+                esito_unificato = device_info['esito_override']
             # ===== NUOVO ESITO UNIFICATO =====
             # Priorità assoluta: NON CONFORME > CONFORME CON ANNOTAZIONE > CONFORME
             
             # Paso 1: Controlla se c'è NON CONFORME (ha priorità massima)
-            has_non_conforme = (
-                ("NON CONFORME" in esito_elettrico if esito_elettrico else False) or
-                ("NON CONFORME" in esito_funzionale if esito_funzionale else False)
-            )
-            
-            if has_non_conforme:
+            elif ("NON CONFORME" in esito_elettrico if esito_elettrico else False) or \
+                 ("NON CONFORME" in esito_funzionale if esito_funzionale else False):
                 esito_unificato = "NON CONFORME"
             else:
                 # Passo 2: Se ci sono note (anche senza non conforme), diventa CONFORME CON ANNOTAZIONE
@@ -972,6 +1030,9 @@ class BulkReportWorker(QObject):
                 if esito == "NON CONFORME":
                     style_commands.append(('BACKGROUND', (7, row_idx), (7, row_idx), COLOR_FAIL_BG))
                     style_commands.append(('TEXTCOLOR', (7, row_idx), (7, row_idx), COLOR_FAIL))
+                elif esito == "NON MESSO A DISPOSIZIONE":
+                    style_commands.append(('BACKGROUND', (7, row_idx), (7, row_idx), COLOR_UNAVAIL_BG))
+                    style_commands.append(('TEXTCOLOR', (7, row_idx), (7, row_idx), COLOR_UNAVAIL))
                 elif esito == "CONFORME CON ANNOTAZIONE":
                     style_commands.append(('BACKGROUND', (7, row_idx), (7, row_idx), COLOR_ANNOTATION_BG))
                     style_commands.append(('TEXTCOLOR', (7, row_idx), (7, row_idx), COLOR_ANNOTATION))

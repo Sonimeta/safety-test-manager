@@ -181,7 +181,7 @@ class ExpiringDevicesDialog(QDialog):
                             # Prova altri formati comuni
                             try:
                                 expiration_date = QDate.fromString(expiration_date_str, "dd/MM/yyyy")
-                            except:
+                            except Exception:
                                 expiration_date = QDate.fromString(expiration_date_str, "yyyy-MM-dd")
                         
                         date_item = QTableWidgetItem(expiration_date.toString("dd/MM/yyyy"))

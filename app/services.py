@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 # app/services.py (Versione completa per la sincronizzazione)
+import difflib
 import logging
 import json
 from datetime import datetime, timezone
@@ -8,7 +9,7 @@ import uuid
 
 import database
 from .functional_models import FunctionalProfile
-from .exceptions import DeletedDeviceFoundException  # Import custom exception
+from .exceptions import DeletedDeviceFoundException, DuplicateActiveSerialException  # Import custom exceptions
 import report_generator
 import tempfile
 import os
@@ -23,6 +24,45 @@ from app import config
 # ==============================================================================
 # SERVIZI PER CLIENTI
 # ==============================================================================
+
+def find_similar_customers(name: str, threshold: float = 0.75) -> list:
+    """
+    Cerca clienti esistenti con nome simile (fuzzy match).
+    Restituisce lista di dict con i clienti simili trovati.
+    """
+    name_norm = name.strip().lower()
+    if not name_norm:
+        return []
+    all_customers = database.get_all_customers()
+    similar = []
+    for c in all_customers:
+        c = dict(c)
+        existing = (c.get('name') or '').strip().lower()
+        if not existing:
+            continue
+        ratio = difflib.SequenceMatcher(None, name_norm, existing).ratio()
+        if ratio >= threshold or name_norm in existing or existing in name_norm:
+            similar.append(c)
+    return similar
+
+def find_similar_destinations(name: str, customer_id: int, threshold: float = 0.75) -> list:
+    """
+    Cerca destinazioni con nome simile per il cliente dato (fuzzy match).
+    """
+    name_norm = name.strip().lower()
+    if not name_norm:
+        return []
+    all_dests = database.get_destinations_for_customer(customer_id)
+    similar = []
+    for d in all_dests:
+        d = dict(d)
+        existing = (d.get('name') or '').strip().lower()
+        if not existing:
+            continue
+        ratio = difflib.SequenceMatcher(None, name_norm, existing).ratio()
+        if ratio >= threshold or name_norm in existing or existing in name_norm:
+            similar.append(d)
+    return similar
 
 def add_destination(customer_id, name, address):
     if not name: raise ValueError("Il nome della destinazione non può essere vuoto.")
@@ -336,7 +376,7 @@ def check_deleted_device_by_serial(serial):
         return None
     return database.find_deleted_device_by_serial_with_details(serial)
 
-def add_device(destination_id, serial, desc, mfg, model, department, applied_parts, customer_inv, ams_inv, verification_interval, default_profile_key, default_functional_profile_key, force_create=False):
+def add_device(destination_id, serial, desc, mfg, model, department, applied_parts, customer_inv, ams_inv, verification_interval, default_profile_key, default_functional_profile_key, force_create=False, force_duplicate_serial=False):
     """
     Aggiunge un nuovo dispositivo.
     
@@ -354,8 +394,9 @@ def add_device(destination_id, serial, desc, mfg, model, department, applied_par
     """
     serial = normalize_serial(serial)
     if serial:
-        if database.device_exists(serial):
-            raise ValueError(f"Il numero di serie '{serial}' è già utilizzato da un altro dispositivo attivo.")
+        if database.device_exists(serial) and not force_duplicate_serial:
+            existing = database.find_device_by_serial(serial, include_deleted=False)
+            raise DuplicateActiveSerialException(dict(existing) if existing else {}, serial)
 
         if not force_create:
             deleted_device = database.find_deleted_device_by_serial_with_details(serial)
@@ -428,6 +469,7 @@ def update_device(
     default_functional_profile_key,
     reactivate=False,
     new_destination_id=None,
+    force_duplicate_serial=False,
 ):
     serial = normalize_serial(serial)
     current_device_row = database.get_device_by_id(dev_id)
@@ -435,8 +477,8 @@ def update_device(
 
     if serial:
         existing = database.find_device_by_serial(serial, include_deleted=False)
-        if existing and int(existing.get('id', -1)) != int(dev_id):
-            raise ValueError(f"Il numero di serie '{serial}' è già utilizzato da un altro dispositivo attivo.")
+        if existing and int(existing.get('id', -1)) != int(dev_id) and not force_duplicate_serial:
+            raise DuplicateActiveSerialException(dict(existing), serial)
 
     timestamp = datetime.now(timezone.utc).isoformat()
     database.update_device(
@@ -701,11 +743,19 @@ def finalizza_e_salva_verifica(device_id, profile_name, results,
                                device_info=None) -> tuple[str, int]:
     if isinstance(results, list):
         passed_flags = [bool(r.get('passed')) for r in results if isinstance(r, dict) and 'passed' in r]
-        overall_status = 'PASSATO' if all(passed_flags) else 'FALLITO'
+        overall_status = 'CONFORME' if all(passed_flags) else 'NON CONFORME'
     elif isinstance(results, dict) and results.get('overall_status'):
         overall_status = results.get('overall_status')
     else:
-        overall_status = 'PASSATO'
+        overall_status = 'CONFORME'
+
+    # Normalize legacy values to CONFORME/NON CONFORME
+    _PASS_NORM = {'PASS', 'PASSATO', 'OK', 'CONFORME'}
+    _FAIL_NORM = {'FAIL', 'FALLITO', 'NON PASSATO', 'NON CONFORME'}
+    if overall_status.upper() in _PASS_NORM:
+        overall_status = 'CONFORME'
+    elif overall_status.upper() in _FAIL_NORM:
+        overall_status = 'NON CONFORME'
 
     # Regola business: se la verifica elettrica ha note e non è fallita,
     # l'esito deve essere "CONFORME CON ANNOTAZIONE".
@@ -725,7 +775,7 @@ def finalizza_e_salva_verifica(device_id, profile_name, results,
 
     # Priorità assoluta: KO in ispezione visiva => NON CONFORME
     if visual_has_ko:
-        overall_status = 'FALLITO'
+        overall_status = 'NON CONFORME'
 
     # "CONFORME CON ANNOTAZIONE" solo per note presenti e nessun KO
     if notes_text and overall_status in {'PASSATO', 'CONFORME'}:
@@ -1190,7 +1240,7 @@ def print_pdf_report(verification_id, device_id, report_settings, parent_widget=
         try:
             if os.path.exists(temp_filename):
                 os.unlink(temp_filename)
-        except:
+        except Exception:
             pass
         raise e
     finally:
@@ -1199,13 +1249,12 @@ def print_pdf_report(verification_id, device_id, report_settings, parent_widget=
             try:
                 if os.path.exists(temp_filename):
                     os.unlink(temp_filename)
-            except:
+            except Exception:
                 pass
-        
-        timer = QTimer()
-        timer.setSingleShot(True)
-        timer.timeout.connect(cleanup)
-        timer.start(10000)  # Pulisci dopo 10 secondi
+
+        # QTimer.singleShot è statico: sopravvive all'uscita della funzione
+        # (un QTimer locale verrebbe distrutto dal GC prima di scattare)
+        QTimer.singleShot(10000, cleanup)  # Pulisci dopo 10 secondi
 
 
 def print_functional_pdf_report(verification_id, device_id, report_settings, parent_widget=None):
@@ -1230,7 +1279,7 @@ def print_functional_pdf_report(verification_id, device_id, report_settings, par
         try:
             if os.path.exists(temp_filename):
                 os.unlink(temp_filename)
-        except:
+        except Exception:
             pass
         raise e
     finally:
@@ -1239,13 +1288,12 @@ def print_functional_pdf_report(verification_id, device_id, report_settings, par
             try:
                 if os.path.exists(temp_filename):
                     os.unlink(temp_filename)
-            except:
+            except Exception:
                 pass
-        
-        timer = QTimer()
-        timer.setSingleShot(True)
-        timer.timeout.connect(cleanup)
-        timer.start(10000)  # Pulisci dopo 10 secondi
+
+        # QTimer.singleShot è statico: sopravvive all'uscita della funzione
+        # (un QTimer locale verrebbe distrutto dal GC prima di scattare)
+        QTimer.singleShot(10000, cleanup)  # Pulisci dopo 10 secondi
 
 def get_data_for_daily_export(target_date: str) -> dict:
     return database.get_full_verification_data_for_date(target_date)
@@ -2169,3 +2217,82 @@ def update_profile_sync_status(profile_uuid: str):
         """
         conn.execute(query, (profile_uuid,))
         conn.commit()
+
+
+# ─────────────────────────────────────────────
+# SEGNALAZIONI "NON MESSO A DISPOSIZIONE"
+# ─────────────────────────────────────────────
+
+def save_unavailability_report(
+    device_id: int,
+    destination_id: int,
+    period_start: str,
+    period_end: str,
+    reason: str,
+    technician_name: str = None,
+    technician_username: str = None,
+) -> dict:
+    """Salva una segnalazione 'non messo a disposizione' per un dispositivo."""
+    return database.save_unavailability_report(
+        device_id=device_id,
+        destination_id=destination_id,
+        period_start=period_start,
+        period_end=period_end,
+        reason=reason,
+        technician_name=technician_name,
+        technician_username=technician_username,
+    )
+
+
+def get_unavailability_reports_for_period(
+    destination_id: int,
+    period_start: str,
+    period_end: str,
+) -> list:
+    """Recupera le segnalazioni 'non disponibile' per una destinazione in un periodo."""
+    return database.get_unavailability_reports_for_period(destination_id, period_start, period_end)
+
+
+def get_unavailability_reports_for_device(device_id: int) -> list:
+    """Recupera lo storico delle segnalazioni 'non disponibile' per un dispositivo."""
+    return database.get_unavailability_reports_for_device(device_id)
+
+
+def delete_unavailability_report(report_uuid: str) -> bool:
+    """Rimuove una segnalazione 'non disponibile'."""
+    return database.delete_unavailability_report(report_uuid)
+
+
+# ── Gestione spazio allegati ──────────────────────────────────────────────────
+
+def get_attachments_disk_usage() -> dict:
+    """Utilizzo disco della cartella allegati locali."""
+    return database.get_attachments_disk_usage()
+
+
+def purge_synced_attachments() -> dict:
+    """Elimina i file locali degli allegati già sincronizzati con il server."""
+    return database.purge_synced_attachments()
+
+
+def download_attachment_bytes(att_uuid: str) -> bytes | None:
+    """
+    Scarica i byte di un allegato direttamente dal server (on-demand).
+    Usato quando il file non è presente in cache locale (file_path vuoto).
+    """
+    from app.http_client import http_session
+    from app import auth_manager, config
+    import logging
+    try:
+        headers = auth_manager.get_auth_headers()
+        url = f"{config.SERVER_URL}/api/attachments/{att_uuid}"
+        logging.info(f"Download allegato on-demand: {url}")
+        response = http_session.get(url, headers=headers, timeout=30)
+        if response.status_code == 200:
+            logging.info(f"Download allegato {att_uuid} completato: {len(response.content)} bytes")
+            return response.content
+        logging.warning(f"Download allegato {att_uuid} fallito: HTTP {response.status_code} - {response.text[:200]}")
+        return None
+    except Exception as e:
+        logging.error(f"Errore download allegato {att_uuid}: {e}")
+        return None

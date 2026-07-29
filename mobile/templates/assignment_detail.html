@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}Dettaglio Lavoro — STM Mobile{% endblock %}
+{% block header_title %}Dettaglio Lavoro{% endblock %}
+{% block header_subtitle %}
+<p class="text-blue-200 text-[11px] leading-tight mt-0.5">
+    {% if assignment.priority == 'urgent' %}🔴 Urgente
+    {% elif assignment.priority == 'high' %}🟡 Alta priorità
+    {% elif assignment.priority == 'low' %}🟢 Bassa priorità
+    {% else %}🔵 Priorità normale{% endif %}
+</p>
+{% endblock %}
+
+{% block content %}
+<div class="px-4 py-5 space-y-4">
+
+    <!-- Stato attuale -->
+    <div class="card p-4 flex items-center gap-3">
+        <div style="flex-shrink:0;">
+            {% if assignment.status == 'pending' %}
+            <div style="background:#f1f5f9;border-radius:10px;padding:10px;">
+                <i class="ti ti-clock" style="font-size:1.4rem;color:#64748b;display:block;"></i>
+            </div>
+            {% elif assignment.status == 'in_progress' %}
+            <div style="background:#fffbeb;border-radius:10px;padding:10px;">
+                <i class="ti ti-loader-2" style="font-size:1.4rem;color:#f59e0b;display:block;"></i>
+            </div>
+            {% elif assignment.status == 'completed' %}
+            <div style="background:#d1fae5;border-radius:10px;padding:10px;">
+                <i class="ti ti-circle-check" style="font-size:1.4rem;color:#10b981;display:block;"></i>
+            </div>
+            {% else %}
+            <div style="background:#fee2e2;border-radius:10px;padding:10px;">
+                <i class="ti ti-circle-x" style="font-size:1.4rem;color:#ef4444;display:block;"></i>
+            </div>
+            {% endif %}
+        </div>
+        <div>
+            <p class="text-[11px] text-gray-400 font-semibold uppercase tracking-wide">Stato lavoro</p>
+            <p class="text-base font-bold text-gray-900">
+                {% if assignment.status == 'pending' %}In attesa
+                {% elif assignment.status == 'in_progress' %}In corso
+                {% elif assignment.status == 'completed' %}Completato ✓
+                {% else %}Annullato{% endif %}
+            </p>
+            {% if assignment.completed_at %}
+            <p class="text-xs text-gray-400">
+                Completato il {{ assignment.completed_at.strftime('%d/%m/%Y %H:%M') if assignment.completed_at else '' }}
+            </p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Dispositivo / Sede -->
+    <div>
+        <p class="section-title">{% if assignment.device_id %}Dispositivo{% else %}Sede assegnata{% endif %}</p>
+        {% if assignment.device_id %}
+        <a href="/mobile/devices/{{ assignment.device_uuid }}" class="card p-4 flex items-start gap-3 block" style="text-decoration:none;">
+            <div style="background:#eff6ff;border-radius:10px;padding:8px;flex-shrink:0;">
+                <i class="ti ti-device-heart-monitor" style="font-size:1.2rem;color:#1d4ed8;display:block;"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-bold text-gray-900">{{ assignment.description or assignment.model or 'Dispositivo' }}</p>
+                <p class="text-xs text-gray-500">
+                    {% if assignment.manufacturer %}{{ assignment.manufacturer }}{% endif %}
+                    {% if assignment.serial_number %} · S/N {{ assignment.serial_number }}{% endif %}
+                </p>
+                {% if assignment.department %}
+                <p class="text-xs text-gray-400">Reparto: {{ assignment.department }}</p>
+                {% endif %}
+                <p class="text-xs text-blue-600 mt-0.5">
+                    {{ assignment.customer_name or '' }}{% if assignment.destination_name %} / {{ assignment.destination_name }}{% endif %}
+                </p>
+            </div>
+            <i class="ti ti-chevron-right text-gray-300 flex-shrink-0"></i>
+        </a>
+        {% else %}
+        <a href="/mobile/destinations/{{ assignment.destination_uuid }}" class="card p-4 flex items-start gap-3 block" style="text-decoration:none;">
+            <div style="background:#f0fdf4;border-radius:10px;padding:8px;flex-shrink:0;">
+                <i class="ti ti-map-pin" style="font-size:1.2rem;color:#16a34a;display:block;"></i>
+            </div>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-bold text-gray-900">{{ assignment.destination_name or 'Sede intera' }}</p>
+                <p class="text-xs text-blue-600 mt-0.5">{{ assignment.customer_name or '' }}</p>
+                <p class="text-xs text-gray-400 mt-0.5">Tutti i dispositivi della sede</p>
+            </div>
+            <i class="ti ti-chevron-right text-gray-300 flex-shrink-0"></i>
+        </a>
+        {% endif %}
+    </div>
+
+    <!-- Dettagli assegnazione -->
+    <div>
+        <p class="section-title">Info assegnazione</p>
+        <div class="card overflow-hidden">
+            <div class="flex justify-between items-center px-4 py-3 border-b border-gray-100">
+                <span class="text-xs text-gray-500 font-semibold uppercase tracking-wide">Assegnato a</span>
+                <span class="text-sm font-bold text-gray-900">{{ assignment.assigned_to }}</span>
+            </div>
+            <div class="flex justify-between items-center px-4 py-3 border-b border-gray-100">
+                <span class="text-xs text-gray-500 font-semibold uppercase tracking-wide">Assegnato da</span>
+                <span class="text-sm text-gray-700">{{ assignment.assigned_by }}</span>
+            </div>
+            {% if assignment.due_date %}
+            <div class="flex justify-between items-center px-4 py-3 border-b border-gray-100">
+                <span class="text-xs text-gray-500 font-semibold uppercase tracking-wide">Scadenza</span>
+                <span class="text-sm font-bold {% if assignment.status not in ('completed','cancelled') %}text-red-600{% else %}text-gray-700{% endif %}">
+                    {{ assignment.due_date.strftime('%d/%m/%Y') if assignment.due_date else '—' }}
+                </span>
+            </div>
+            {% endif %}
+            <div class="flex justify-between items-center px-4 py-3">
+                <span class="text-xs text-gray-500 font-semibold uppercase tracking-wide">Creata il</span>
+                <span class="text-sm text-gray-700">
+                    {{ assignment.created_at.strftime('%d/%m/%Y %H:%M') if assignment.created_at else '—' }}
+                </span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Note -->
+    {% if assignment.notes %}
+    <div>
+        <p class="section-title">Note</p>
+        <div class="card p-4">
+            <p class="text-sm text-gray-700 whitespace-pre-wrap">{{ assignment.notes }}</p>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- AVVIA ATTIVITÀ — pulsante principale per il tecnico -->
+    {% if assignment.status in ('pending', 'in_progress') and (is_manager or assignment.assigned_to == user.username) %}
+    <div>
+        <form method="POST" action="/mobile/assignments/{{ assignment.uuid }}/start">
+            <button type="submit"
+                    style="width:100%;background:linear-gradient(135deg,#15803d,#16a34a);color:white;
+                           font-weight:700;font-size:1rem;padding:16px;border-radius:14px;
+                           border:none;display:flex;align-items:center;justify-content:center;gap:10px;
+                           box-shadow:0 4px 14px rgba(22,163,74,0.35);letter-spacing:0.01em;">
+                <i class="ti ti-player-play-filled" style="font-size:1.3rem;"></i>
+                ▶&nbsp; Avvia Attività
+            </button>
+        </form>
+        <p class="text-xs text-gray-400 text-center mt-1">
+            {% if assignment.device_id %}
+            Imposta "In corso" e apre la scheda del dispositivo per le verifiche
+            {% else %}
+            Imposta "In corso" e apre la sede per selezionare i dispositivi
+            {% endif %}
+        </p>
+    </div>
+    {% endif %}
+
+    <!-- Azioni stato (aggiornamento manuale) -->
+    {% if assignment.status != 'completed' and assignment.status != 'cancelled' %}
+    <div>
+        <p class="section-title">Aggiorna stato</p>
+        <div class="space-y-2">
+            {% if assignment.status == 'pending' %}
+            <form method="POST" action="/mobile/assignments/{{ assignment.uuid }}/status">
+                <input type="hidden" name="status" value="in_progress">
+                <button type="submit" class="btn-primary" style="background:linear-gradient(135deg,#d97706,#f59e0b);">
+                    <i class="ti ti-loader-2" style="margin-right:6px;"></i>
+                    Prendi in carico
+                </button>
+            </form>
+            {% endif %}
+            {% if assignment.status == 'in_progress' %}
+            <form method="POST" action="/mobile/assignments/{{ assignment.uuid }}/status">
+                <input type="hidden" name="status" value="completed">
+                <button type="submit" class="btn-primary" style="background:linear-gradient(135deg,#16a34a,#22c55e);">
+                    <i class="ti ti-circle-check" style="margin-right:6px;"></i>
+                    Segna come Completato
+                </button>
+            </form>
+            {% endif %}
+            {% if is_manager or assignment.assigned_to == user.username %}
+            <form method="POST" action="/mobile/assignments/{{ assignment.uuid }}/status">
+                <input type="hidden" name="status" value="cancelled">
+                <button type="submit" class="btn-secondary" style="color:#dc2626;border-color:#fca5a5;">
+                    <i class="ti ti-ban" style="margin-right:6px;"></i>
+                    Annulla Lavoro
+                </button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Elimina assegnazione (solo manager) -->
+    {% if is_manager %}
+    <form method="POST" action="/mobile/assignments/{{ assignment.uuid }}/delete"
+          onsubmit="return confirm('Eliminare questa assegnazione?')">
+        <button type="submit" class="btn-danger">
+            <i class="ti ti-trash" style="margin-right:6px;"></i>
+            Elimina Assegnazione
+        </button>
+    </form>
+    {% endif %}
+
+</div>
+{% endblock %}

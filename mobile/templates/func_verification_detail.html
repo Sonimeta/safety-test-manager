@@ -2,13 +2,15 @@
 
 {% block title %}Verifica Funzionale — STM Mobile{% endblock %}
 {% block header_title %}Verifica Funzionale{% endblock %}
-{% block header_subtitle %}<p class="text-blue-300 text-xs">{{ device.description or device.model or 'Dispositivo' }}</p>{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">{{ device.description or device.model or 'Dispositivo' }}</p>{% endblock %}
 
 {% block header_actions %}
-<a href="/mobile/func-verifications/{{ fv.uuid }}/report" class="btn-sm bg-blue-700 text-white text-xs">🖨 Stampa</a>
+<a href="/mobile/func-verifications/{{ fv.uuid }}/report" class="btn-sm" style="background:rgba(255,255,255,.15);color:#fff;">
+    <i class="ti ti-printer"></i>
+</a>
 <form method="POST" action="/mobile/func-verifications/{{ fv.uuid }}/delete"
       onsubmit="return confirm('Eliminare questa verifica funzionale?')" style="display:inline">
-    <button type="submit" class="btn-sm bg-red-600 text-white text-xs">🗑</button>
+    <button type="submit" class="btn-sm" style="background:#ef4444;color:#fff;"><i class="ti ti-trash"></i></button>
 </form>
 {% endblock %}
 
@@ -22,12 +24,14 @@
                 <p class="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-0.5">Profilo</p>
                 <p class="text-base font-bold text-gray-900">{{ profile_name or fv.profile_key }}</p>
             </div>
-            {% if fv.overall_status in ('PASSATO', 'PASS', 'OK') %}
-            <span class="badge-pass text-sm px-3 py-1">✓ PASSATO</span>
-            {% elif fv.overall_status in ('NON PASSATO', 'FAIL', 'FALLITO') %}
-            <span class="badge-fail text-sm px-3 py-1">✗ NON PASSATO</span>
+            {% if fv.overall_status == 'CONFORME CON ANNOTAZIONE' %}
+            <span class="badge-warn" style="font-size:.875rem;padding:.25rem .75rem;"><i class="ti ti-alert-circle"></i> CONFORME CON ANNOTAZIONE</span>
+            {% elif fv.overall_status in ('CONFORME', 'PASSATO', 'PASS', 'OK') %}
+            <span class="badge-pass" style="font-size:.875rem;padding:.25rem .75rem;"><i class="ti ti-circle-check"></i> CONFORME</span>
+            {% elif fv.overall_status in ('NON PASSATO', 'FAIL', 'FALLITO', 'NON CONFORME') %}
+            <span class="badge-fail" style="font-size:.875rem;padding:.25rem .75rem;"><i class="ti ti-circle-x"></i> NON CONFORME</span>
             {% else %}
-            <span class="badge-gray text-sm px-3 py-1">{{ fv.overall_status }}</span>
+            <span class="badge-gray" style="font-size:.875rem;padding:.25rem .75rem;">{{ fv.overall_status }}</span>
             {% endif %}
         </div>
 
@@ -48,25 +52,26 @@
                 <p class="text-sm font-mono font-medium">{{ fv.verification_code }}</p>
             </div>
             {% endif %}
-            {% if fv.mti_instrument %}
-            <div>
-                <p class="text-[10px] uppercase text-gray-400 font-semibold">Strumento</p>
-                <p class="text-sm font-medium">{{ fv.mti_instrument }}</p>
-            </div>
-            {% endif %}
-            {% if fv.mti_serial %}
-            <div>
-                <p class="text-[10px] uppercase text-gray-400 font-semibold">Matricola strum.</p>
-                <p class="text-sm font-mono font-medium">{{ fv.mti_serial }}</p>
-            </div>
-            {% endif %}
-            {% if fv.mti_cal_date %}
-            <div>
-                <p class="text-[10px] uppercase text-gray-400 font-semibold">Scad. calibrazione</p>
-                <p class="text-sm font-medium">{{ fv.mti_cal_date }}</p>
-            </div>
-            {% endif %}
         </div>
+
+        {% if used_instruments %}
+        <div class="border-t border-gray-100 pt-3 space-y-1">
+            <p class="text-[10px] uppercase text-gray-400 font-semibold mb-1">Strumenti di misura</p>
+            {% for instr in used_instruments %}
+            <div class="flex items-center gap-2 text-sm">
+                <i class="ti ti-ruler-2 text-indigo-400 flex-shrink-0"></i>
+                <span class="font-medium text-gray-800">{{ instr.instrument or instr.get('name','') }}</span>
+                {% if instr.serial %}<span class="text-xs text-gray-400">S/N: {{ instr.serial }}</span>{% endif %}
+                {% if instr.cal_date %}<span class="text-xs text-gray-400">Scad: {{ instr.cal_date }}</span>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% elif fv.mti_instrument %}
+        <div class="border-t border-gray-100 pt-3">
+            <p class="text-[10px] uppercase text-gray-400 font-semibold mb-1">Strumento</p>
+            <p class="text-sm font-medium">{{ fv.mti_instrument }}{% if fv.mti_serial %} — {{ fv.mti_serial }}{% endif %}{% if fv.mti_cal_date %} (Scad: {{ fv.mti_cal_date }}){% endif %}</p>
+        </div>
+        {% endif %}
 
         {% if fv.notes %}
         <div class="border-t border-gray-100 pt-3">
@@ -87,9 +92,9 @@
                 <div class="flex items-center justify-between px-4 py-3 border-b border-gray-50 last:border-0">
                     <p class="text-sm text-gray-800 flex-1 mr-3">{{ field_key }}</p>
                     {% set v = field_val | string | upper | trim %}
-                    {% if v in ('OK','SI','SÌ','TRUE','1','PASS','PASSATO','CONFORME') %}
+                    {% if v in ('OK','SI','SÌ','TRUE','PASS','PASSATO','CONFORME') %}
                     <span class="badge-pass">✓ OK</span>
-                    {% elif v in ('NON OK','NO','FALSE','0','FAIL','NON PASSATO','KO','NON CONFORME') %}
+                    {% elif v in ('NON OK','NO','FALSE','FAIL','NON PASSATO','KO','NON CONFORME') %}
                     <span class="badge-fail">✗ KO</span>
                     {% elif v in ('N/A','NA','NON APPLICABILE') %}
                     <span class="badge-gray">N/A</span>
@@ -103,9 +108,9 @@
                 <div class="flex items-start justify-between px-4 py-3 border-b border-gray-50 last:border-0 gap-3">
                     <p class="text-sm text-gray-600 flex-1">{{ field_key }}</p>
                     {% set v = field_val | string | upper | trim %}
-                    {% if v in ('PASS','PASSATO','OK','SI','SÌ','CONFORME','TRUE','1') %}
+                    {% if v in ('PASS','PASSATO','OK','SI','SÌ','CONFORME','TRUE') %}
                     <span class="badge-pass">✓ OK</span>
-                    {% elif v in ('FAIL','NON PASSATO','KO','NO','NON CONFORME','FALSE','0') %}
+                    {% elif v in ('FAIL','NON PASSATO','KO','NO','NON CONFORME','FALSE') %}
                     <span class="badge-fail">✗ KO</span>
                     {% elif v in ('N/A','NA') %}
                     <span class="badge-gray">N/A</span>
@@ -119,6 +124,18 @@
     </div>
     {% endfor %}
     {% endif %}
+
+    <!-- Allegati -->
+    <div>
+        <h2 class="section-title px-1"><i class="ti ti-paperclip mr-1"></i>Allegati</h2>
+        <div hx-get="/mobile/attachments/{{ fv.uuid }}?ver_type=functional"
+             hx-trigger="load"
+             hx-swap="innerHTML">
+            <div class="card p-4 text-center text-gray-400 text-sm">
+                <i class="ti ti-loader-2 animate-spin text-xl"></i>
+            </div>
+        </div>
+    </div>
 
 </div>
 {% endblock %}

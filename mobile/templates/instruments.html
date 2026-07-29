@@ -2,53 +2,55 @@
 
 {% block title %}Strumenti — STM Mobile{% endblock %}
 {% block header_title %}Strumenti di misura{% endblock %}
-{% block header_subtitle %}<p class="text-blue-300 text-xs">{{ instruments|length }} strumento{% if instruments|length != 1 %}i{% endif %}</p>{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">{{ instruments|length }} strumento{% if instruments|length != 1 %}i{% endif %}</p>{% endblock %}
 
 {% block header_actions %}
-<a href="/mobile/instruments/new" class="btn-sm bg-white text-blue-900 text-xs font-bold">+ Nuovo</a>
+<a href="/mobile/instruments/new" class="btn-sm" style="background:rgba(255,255,255,.15);color:#fff;">
+    <i class="ti ti-plus"></i> Nuovo
+</a>
 {% endblock %}
 
 {% block content %}
-<div class="px-4 py-4 space-y-4">
+<div class="px-4 py-4">
 
     {% if instruments %}
     <div class="card overflow-hidden">
         {% for instr in instruments %}
+        {% set exp = instr.expiry_date | string if instr.expiry_date else '' %}
         {% set cal = instr.calibration_date | string if instr.calibration_date else '' %}
-        {% set cal_expired  = cal and cal < today %}
-        {% set cal_expiring = cal and cal >= today and cal <= warn_threshold %}
-        <a href="/mobile/instruments/{{ instr.uuid }}/edit"
-           class="list-item gap-3">
-            <div class="flex-shrink-0 w-9 h-9 rounded-full
-                {% if cal_expired %}bg-red-100{% elif cal_expiring %}bg-yellow-100{% else %}bg-indigo-100{% endif %}
-                flex items-center justify-center text-base font-bold
-                {% if cal_expired %}text-red-700{% elif cal_expiring %}text-yellow-700{% else %}text-indigo-700{% endif %}">
-                🔧
+        {% set is_expired  = exp and exp < today %}
+        {% set is_expiring = exp and exp >= today and exp <= warn_threshold %}
+        <a href="/mobile/instruments/{{ instr.uuid }}/edit" class="list-item">
+            <div style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-right:12px;
+                background:{% if is_expired %}#fef2f2{% elif is_expiring %}#fffbeb{% else %}#eef2ff{% endif %};">
+                <i class="ti ti-ruler-2" style="font-size:1.1rem;color:{% if is_expired %}#ef4444{% elif is_expiring %}#f59e0b{% else %}#6366f1{% endif %};"></i>
             </div>
             <div class="flex-1 min-w-0">
-                <p class="text-sm font-semibold text-gray-900 truncate">
-                    {{ instr.instrument_name }}
-                    {% if instr.is_default %}<span class="ml-1 text-[10px] bg-blue-100 text-blue-700 rounded px-1">default</span>{% endif %}
-                </p>
-                <p class="text-xs truncate {% if cal_expired %}text-red-600 font-semibold{% elif cal_expiring %}text-yellow-600 font-semibold{% else %}text-gray-500{% endif %}">
+                <div class="flex items-center gap-2">
+                    <p class="text-sm font-semibold text-gray-900 truncate">{{ instr.instrument_name }}</p>
+                    {% if instr.is_default %}
+                    <span style="font-size:.65rem;font-weight:700;background:#dbeafe;color:#1d4ed8;border-radius:20px;padding:1px 7px;">default</span>
+                    {% endif %}
+                </div>
+                <p class="text-xs truncate mt-0.5" style="color:{% if is_expired %}#ef4444{% elif is_expiring %}#f59e0b{% else %}#94a3b8{% endif %};font-weight:{% if is_expired or is_expiring %}600{% else %}400{% endif %};">
                     {% if instr.serial_number %}S/N: {{ instr.serial_number }}{% endif %}
-                    {% if cal %}{% if instr.serial_number %} · {% endif %}
-                        {% if cal_expired %}⚠️ Cal scaduta: {{ cal }}
-                        {% elif cal_expiring %}⏳ Cal in scadenza: {{ cal }}
-                        {% else %}Cal: {{ cal }}{% endif %}
+                    {% if cal %}{% if instr.serial_number %} · {% endif %}Cal: {{ cal }}{% endif %}
+                    {% if exp %}
+                        {% if cal or instr.serial_number %} · {% endif %}
+                        {% if is_expired %}<i class="ti ti-alert-triangle"></i> Scad: {{ exp }}
+                        {% elif is_expiring %}<i class="ti ti-clock-exclamation"></i> Scad: {{ exp }}
+                        {% else %}Scad: {{ exp }}{% endif %}
                     {% endif %}
                 </p>
             </div>
-            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 text-gray-300 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
-            </svg>
+            <i class="ti ti-chevron-right" style="color:#d1d5db;flex-shrink:0;"></i>
         </a>
         {% endfor %}
     </div>
     {% else %}
-    <div class="text-center py-16 text-gray-400">
-        <div class="text-5xl mb-3">🔧</div>
-        <p class="text-sm">Nessuno strumento presente.</p>
+    <div style="display:flex;flex-direction:column;align-items:center;padding:4rem 1rem;color:#94a3b8;">
+        <i class="ti ti-ruler-2" style="font-size:3.5rem;margin-bottom:.75rem;"></i>
+        <p class="text-sm font-semibold">Nessuno strumento presente</p>
         <p class="text-xs mt-1">Aggiungi il primo strumento.</p>
     </div>
     {% endif %}

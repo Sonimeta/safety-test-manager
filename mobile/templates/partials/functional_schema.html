@@ -1,28 +1,39 @@
 {% if sections %}
 {% for section in sections %}
 <div class="card p-4 space-y-3 mb-3">
-    <h3 class="text-sm font-bold text-gray-700 border-b border-gray-100 pb-2">{{ section.title }}</h3>
+    <h3 class="section-title" style="border-bottom:1px solid #f1f5f9;padding-bottom:.5rem;">{{ section.title }}</h3>
 
     {% if section.section_type == 'checklist' %}
-        {% for field in section.fields %}
-        <div class="flex items-center justify-between py-1">
-            <label class="text-sm text-gray-700 flex-1 mr-3">{{ field.label }}</label>
-            <select name="field_{{ section.key }}_{{ field.key }}" class="form-input" style="width:auto;min-width:100px">
+        {# Checklist: items are stored in rows, each row has one "esito" choice field #}
+        {% for row in section.rows %}
+        <div class="flex items-center justify-between py-1 border-b border-gray-50 last:border-0">
+            <label class="text-sm text-gray-700 flex-1 mr-3">{{ row.label }}</label>
+            {% set row_opts = row.fields[0].options if row.fields else [] %}
+            <select name="fld__{{ section.key }}__{{ row.key }}__esito"
+                    class="form-input" style="width:auto;min-width:110px">
                 <option value="">—</option>
-                <option value="OK">✓ OK</option>
-                <option value="NON OK">✗ Non OK</option>
-                <option value="N/A">N/A</option>
+                {% if row_opts %}
+                    {% for opt in row_opts %}
+                    <option value="{{ opt }}">{{ opt }}</option>
+                    {% endfor %}
+                {% else %}
+                    <option value="OK">✓ OK</option>
+                    <option value="KO">✗ KO</option>
+                    <option value="N.A.">N/A</option>
+                {% endif %}
             </select>
         </div>
         {% endfor %}
 
     {% elif section.section_type == 'table' %}
+        {# Table: each row is a measurement entry with multiple fields #}
         {% for row in section.rows %}
         <div class="border border-gray-100 rounded-lg p-3">
             {% if row.label %}<p class="text-xs font-semibold text-gray-500 mb-2">{{ row.label }}</p>{% endif %}
             {% for field in row.fields %}
             <div class="mb-2">
                 <label class="block text-xs text-gray-500 mb-1">{{ field.label }}{% if field.unit %} ({{ field.unit }}){% endif %}</label>
+                {% set fname_prefix = "fld__" ~ section.key ~ "__" ~ row.key %}
                 {% include "partials/func_field.html" %}
             </div>
             {% endfor %}
@@ -30,6 +41,7 @@
         {% endfor %}
 
     {% else %}
+        {# Generic fields section #}
         {% for field in section.fields %}
         {% if field.field_type != 'header' %}
         <div>
@@ -37,9 +49,8 @@
                 {{ field.label }}{% if field.unit %} <span class="font-normal text-gray-400">({{ field.unit }})</span>{% endif %}
                 {% if field.required %}<span class="text-red-500 ml-0.5">*</span>{% endif %}
             </label>
-            <div data-section="{{ section.key }}" data-field="{{ field.key }}">
-                {% include "partials/func_field.html" %}
-            </div>
+            {% set fname_prefix = "fld__" ~ section.key %}
+            {% include "partials/func_field.html" %}
             {% if field.help_text %}<p class="text-xs text-gray-400 mt-1">{{ field.help_text }}</p>{% endif %}
         </div>
         {% else %}

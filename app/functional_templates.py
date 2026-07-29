@@ -7,6 +7,73 @@ from app.functional_models import (
     FunctionalSection,
 )
 
+# NOTA SULLE FORMULE: devono restare aritmetica semplice (+ - * / e parentesi)
+# perché vengono valutate sia dal motore Python desktop sia da quello
+# JavaScript della versione mobile (sostituzione testuale dei nomi campo).
+
+
+def _esito_field(required: bool = True) -> FunctionalField:
+    """Campo esito standard OK/KO/N.A. usato nelle checklist."""
+    return FunctionalField(
+        key="esito",
+        label="Esito",
+        field_type="choice",
+        options=["OK", "KO", "N.A."],
+        required=required,
+    )
+
+
+def _checklist_row(key: str, label: str, extra_fields: list[FunctionalField] | None = None,
+                   required: bool = True) -> FunctionalRowDefinition:
+    return FunctionalRowDefinition(
+        key=key, label=label,
+        fields=[_esito_field(required)] + list(extra_fields or []),
+    )
+
+
+def build_visual_checks_section() -> FunctionalSection:
+    """Sezione standard di controllo visivo/funzionale, comune a tutti i profili."""
+    return FunctionalSection(
+        key="visual_checks",
+        title="Controllo Visivo/Funzionale",
+        section_type="checklist",
+        rows=[
+            _checklist_row("integrita_generale", "Integrità generale apparecchiatura"),
+            _checklist_row("serigrafie", "Leggibilità delle serigrafie/etichette"),
+            _checklist_row("cavo_alimentazione", "Integrità cavo di alimentazione"),
+            _checklist_row("involucro", "Integrità involucro"),
+            _checklist_row("accessori", "Integrità accessori"),
+            _checklist_row("manuale", "Manuale d'uso disponibile"),
+        ],
+    )
+
+
+def build_normative_section(default_norm: str = "") -> FunctionalSection:
+    return FunctionalSection(
+        key="normative_references",
+        title="Riferimenti Normativi-Procedure",
+        section_type="fields",
+        fields=[
+            FunctionalField(
+                key="norme_procedure",
+                label="Norme/Procedure",
+                field_type="text",
+                default=default_norm or None,
+            )
+        ],
+    )
+
+
+def build_notes_section() -> FunctionalSection:
+    return FunctionalSection(
+        key="notes",
+        title="Note aggiuntive",
+        section_type="fields",
+        fields=[
+            FunctionalField(key="note", label="Note", field_type="multiline"),
+        ],
+    )
+
 
 def build_defibrillator_functional_profile() -> FunctionalProfile:
     visual_section = FunctionalSection(
@@ -95,12 +162,16 @@ def build_defibrillator_functional_profile() -> FunctionalProfile:
                         label="Errore %",
                         field_type="number",
                         unit="%",
+                        read_only=True,
+                        formula="(measured_value - set_value) / set_value * 100",
+                        precision=1,
                     ),
                     FunctionalField(
                         key="error_j",
                         label="Errore (J)",
                         field_type="number",
                         unit="J",
+                        read_only=True,
                         formula="measured_value - set_value",
                         precision=2,
                     ),
@@ -254,8 +325,84 @@ def build_defibrillator_functional_profile() -> FunctionalProfile:
     )
 
 
+def build_ecg_functional_profile() -> FunctionalProfile:
+    return FunctionalProfile(
+        profile_key="ecg_fun",
+        name="ECG/Monitor ECG - Verifica Funzionale",
+        device_type="ECG",
+        sections=[
+            build_normative_section("CEI 62-26/AMS-MOD-PROVECG1"),
+            build_visual_checks_section(),
+            FunctionalSection(
+                key="functional_checks",
+                title="Controllo Funzionalità",
+                section_type="checklist",
+                rows=[
+                    _checklist_row("traccia", "Visualizzazione corretta della traccia ECG"),
+                    _checklist_row("frequenza", "Lettura frequenza cardiaca dal simulatore",
+                                   extra_fields=[FunctionalField(
+                                       key="valore", label="Valore (bpm)",
+                                       field_type="number", unit="bpm")]),
+                    _checklist_row("allarmi", "Funzionamento allarmi"),
+                    _checklist_row("stampa", "Stampa/registrazione traccia"),
+                ],
+            ),
+            build_notes_section(),
+        ],
+    )
+
+
+def build_spo2_functional_profile() -> FunctionalProfile:
+    return FunctionalProfile(
+        profile_key="spo2_fun",
+        name="Monitor SpO2 - Verifica Funzionale",
+        device_type="SPO2",
+        sections=[
+            build_normative_section(),
+            build_visual_checks_section(),
+            FunctionalSection(
+                key="functional_checks",
+                title="Controllo Funzionalità",
+                section_type="checklist",
+                rows=[
+                    _checklist_row("lettura_sat", "Lettura saturazione dal simulatore",
+                                   extra_fields=[FunctionalField(
+                                       key="valore", label="Valore (%)",
+                                       field_type="number", unit="%")]),
+                    _checklist_row("lettura_fc", "Lettura frequenza cardiaca dal simulatore",
+                                   extra_fields=[FunctionalField(
+                                       key="valore", label="Valore (bpm)",
+                                       field_type="number", unit="bpm")]),
+                    _checklist_row("allarmi", "Funzionamento allarmi"),
+                    _checklist_row("sensore", "Integrità sensore e cavo"),
+                ],
+            ),
+            build_notes_section(),
+        ],
+    )
+
+
+def build_generic_functional_profile() -> FunctionalProfile:
+    """Template minimo: checklist visiva standard + note."""
+    return FunctionalProfile(
+        profile_key="generico_fun",
+        name="Verifica Funzionale Generica",
+        device_type=None,
+        sections=[
+            build_normative_section(),
+            build_visual_checks_section(),
+            build_notes_section(),
+        ],
+    )
+
+
+# Unica fonte dei template: usata dal wizard di creazione profili
+# e dall'eventuale seeding iniziale (STM_SEED_FUNCTIONAL_TEMPLATES)
 FUNCTIONAL_PROFILE_TEMPLATES: dict[str, FunctionalProfile] = {
     "defibrillatore_fun": build_defibrillator_functional_profile(),
+    "ecg_fun": build_ecg_functional_profile(),
+    "spo2_fun": build_spo2_functional_profile(),
+    "generico_fun": build_generic_functional_profile(),
 }
 
 

@@ -12,7 +12,7 @@ import platform
 import ctypes
 from urllib.parse import urlparse
 from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-    QPushButton, QLabel, QComboBox, QGroupBox, QFormLayout, QMessageBox, QFileDialog, 
+    QPushButton, QLabel, QComboBox, QGroupBox, QMessageBox, QFileDialog,
     QStatusBar, QGridLayout, QListWidget, QListWidgetItem, QLineEdit, QDialog, QMenu, QInputDialog,
     QScrollArea, QFrame, QProgressDialog, QDialogButtonBox,
     QStackedWidget, QStackedLayout, QSizePolicy)
@@ -53,6 +53,7 @@ from app.ui.dialogs.profile_manager_dialog import ProfileManagerDialog
 from app.ui.dialogs.functional_profile_manager_dialog import FunctionalProfileManagerDialog
 from app.ui.dialogs.qr_device_scanner_dialog import QRDeviceScannerDialog
 from app.ui.dialogs.system_verification_dialogs import SystemDeviceSelectionDialog
+from app.ui.dialogs.assignments_dialog import BulkAssignDialog, AssignmentsManagerDialog
 from app.config import LOG_DIR
 import database
 from app.workers.table_export_worker import InventoryExportWorker
@@ -165,7 +166,61 @@ class MainWindow(QMainWindow):
         # QStackedWidget per navigazione a finestra singola
         self._stacked_widget = QStackedWidget()
         self._stacked_widget.addWidget(main_widget)  # Pagina 0 = vista principale
-        self.setCentralWidget(self._stacked_widget)
+
+        # Barra navigazione embedded - design professionale
+        self._back_bar = QWidget()
+        self._back_bar.setFixedHeight(52)
+        self._back_bar.setStyleSheet(
+            "QWidget#backBar {"
+            "  background: qlineargradient(x1:0,y1:0,x2:1,y2:0,"
+            "    stop:0 #0f172a, stop:0.4 #1e293b, stop:1 #0f172a);"
+            "  border-bottom: 2px solid #3b82f6;"
+            "}"
+        )
+        self._back_bar.setObjectName("backBar")
+        self._back_bar.setVisible(False)
+        back_bar_layout = QHBoxLayout(self._back_bar)
+        back_bar_layout.setContentsMargins(12, 0, 20, 0)
+        back_bar_layout.setSpacing(0)
+        self._back_btn = None  # creato in _show_embedded_dialog
+
+        # Label breadcrumb sinistra ("⌂  Home  ›")
+        utente = auth_manager.get_current_user_info()
+        self._back_bar_breadcrumb = QLabel("")
+        self._back_bar_breadcrumb.setStyleSheet(
+            "color:#64748b; font-size:11px; font-weight:500; letter-spacing:.5px;"
+        )
+        back_bar_layout.addWidget(self._back_bar_breadcrumb)
+
+        back_bar_layout.addStretch(1)
+
+        # Titolo sezione centrato
+        self._back_bar_label = QLabel("")
+        self._back_bar_label.setStyleSheet(
+            "color:#f1f5f9; font-size:13px; font-weight:700; letter-spacing:1.5px;"
+        )
+        self._back_bar_label.setAlignment(Qt.AlignCenter)
+        back_bar_layout.addWidget(self._back_bar_label)
+
+        back_bar_layout.addStretch(1)
+
+        # Label app name destra
+        ruolo = auth_manager.get_current_role()
+        _app_label = QLabel(f"Safety Test Manager - {ruolo}")
+        _app_label.setStyleSheet(
+            "color:#f1f5f9; font-size:10px; font-weight:700; letter-spacing:.5px;"
+        )
+        back_bar_layout.addWidget(_app_label)
+
+        # Container principale: back_bar + stacked
+        _central_container = QWidget()
+        _central_vbox = QVBoxLayout(_central_container)
+        _central_vbox.setContentsMargins(0, 0, 0, 0)
+        _central_vbox.setSpacing(0)
+        _central_vbox.addWidget(self._back_bar)
+        _central_vbox.addWidget(self._stacked_widget)
+        self.setCentralWidget(_central_container)
+
         self._embedded_dialog = None
         self._embedded_on_close = None
 
@@ -206,27 +261,70 @@ class MainWindow(QMainWindow):
         menubar = self.menuBar()
 
         # ===================== MENU FILE =====================
-        file_menu = menubar.addMenu("&File")
+        file_menu = menubar.addMenu("📁 &File")
 
-        # Esporta inventario cliente
         self.export_inventory_action = QAction(get_icon("export", theme=self.current_theme), "Esporta Inventario Cliente...", self)
         self.export_inventory_action.triggered.connect(self.export_customer_inventory)
         file_menu.addAction(self.export_inventory_action)
 
-        # Esporta file di log
         self.export_log_action = QAction(get_icon("report", theme=self.current_theme), "Esporta File Log...", self)
         self.export_log_action.triggered.connect(self.export_log_file)
         file_menu.addAction(self.export_log_action)
 
         file_menu.addSeparator()
 
-        # Logout
         self.logout_action = QAction(get_icon("logout", theme=self.current_theme), "Esci", self)
         self.logout_action.triggered.connect(self.logout)
         file_menu.addAction(self.logout_action)
 
-        # ===================== MENU SINCRONIZZAZIONE / SISTEMA =====================
-        sync_menu = menubar.addMenu("&Sincronizzazione")
+        # ===================== MENU LAVORI =====================
+        jobs_menu = menubar.addMenu("💼 &Lavori")
+
+        self.advanced_search_action = QAction(get_icon("search", theme=self.current_theme), "Ricerca Avanzata...", self)
+        self.advanced_search_action.triggered.connect(self.open_advanced_search)
+        jobs_menu.addAction(self.advanced_search_action)
+
+        jobs_menu.addSeparator()
+
+        self.new_assignment_action = QAction(get_icon("audit", theme=self.current_theme), "Nuova Assegnazione...", self)
+        self.new_assignment_action.triggered.connect(self._open_bulk_assign_dialog)
+        jobs_menu.addAction(self.new_assignment_action)
+
+        self.assignments_action = QAction(get_icon("clipboard", theme=self.current_theme), "Gestione Lavori Assegnati...", self)
+        self.assignments_action.triggered.connect(self.open_assignments_manager)
+        jobs_menu.addAction(self.assignments_action)
+
+        # ===================== MENU REPORT / ANALISI =====================
+        report_menu = menubar.addMenu("📊 &Report / Analisi")
+
+        self.advanced_report_action = QAction(get_icon("report", theme=self.current_theme), "Genera Report...", self)
+        self.advanced_report_action.triggered.connect(self.open_advanced_report_dialog)
+        report_menu.addAction(self.advanced_report_action)
+
+        self.stats_action = QAction(get_icon("chart", theme=self.current_theme), "Dashboard Statistiche...", self)
+        self.stats_action.triggered.connect(self.open_stats_dashboard)
+        report_menu.addAction(self.stats_action)
+
+        self.audit_log_action = QAction(get_icon("audit", theme=self.current_theme), "Log Attività (Chi ha fatto cosa)...", self)
+        self.audit_log_action.triggered.connect(self.open_audit_log)
+        report_menu.addAction(self.audit_log_action)
+
+        report_menu.addSeparator()
+
+        self.correction_action = QAction(get_icon("magic", theme=self.current_theme), "Correggi Descrizioni Dispositivi...", self)
+        self.correction_action.triggered.connect(self.open_correction_dialog)
+        report_menu.addAction(self.correction_action)
+
+        self.duplicates_action = QAction(get_icon("duplicate", theme=self.current_theme), "Trova Dispositivi Duplicati...", self)
+        self.duplicates_action.triggered.connect(self.open_duplicate_devices_dialog)
+        report_menu.addAction(self.duplicates_action)
+
+        self.data_quality_action = QAction(get_icon("quality", theme=self.current_theme), "Controllo Qualità Dati Dispositivi...", self)
+        self.data_quality_action.triggered.connect(self.open_device_data_quality_dialog)
+        report_menu.addAction(self.data_quality_action)
+
+        # ===================== MENU SINCRONIZZAZIONE =====================
+        sync_menu = menubar.addMenu("🔄 &Sincronizzazione")
 
         self.full_sync_action = QAction(get_icon("sync", theme=self.current_theme), "Sincronizza Tutto (Reset Locale)...", self)
         self.full_sync_action.triggered.connect(lambda: self.run_synchronization(full_sync=True))
@@ -242,7 +340,6 @@ class MainWindow(QMainWindow):
 
         sync_menu.addSeparator()
 
-        # Toggle sincronizzazione automatica
         self.disable_auto_sync_action = QAction(get_icon("pending", theme=self.current_theme), "Disattiva Sincronizzazione Automatica", self)
         self.disable_auto_sync_action.setCheckable(True)
         self.disable_auto_sync_action.setChecked(False)
@@ -251,53 +348,14 @@ class MainWindow(QMainWindow):
 
         sync_menu.addSeparator()
 
-        # Operazioni di manutenzione avanzata
         self.ripristina_db_action = QAction(get_icon("restore", theme=self.current_theme), "Ripristina Database...", self)
         self.ripristina_db_action.triggered.connect(self.restore_database)
         sync_menu.addAction(self.ripristina_db_action)
 
-        # ===================== MENU DATI E STRUMENTI =====================
-        data_menu = menubar.addMenu("&Dati / Strumenti")
-
-        self.advanced_search_action = QAction(get_icon("search", theme=self.current_theme), "Ricerca Avanzata...", self)
-        self.advanced_search_action.triggered.connect(self.open_advanced_search)
-        data_menu.addAction(self.advanced_search_action)
-
-        self.advanced_report_action = QAction(get_icon("report", theme=self.current_theme), "Genera Report...", self)
-        self.advanced_report_action.triggered.connect(self.open_advanced_report_dialog)
-        data_menu.addAction(self.advanced_report_action)
-
-        data_menu.addSeparator()
-
-        self.correction_action = QAction(get_icon("magic", theme=self.current_theme), "Correggi Descrizioni Dispositivi...", self)
-        self.correction_action.triggered.connect(self.open_correction_dialog)
-        data_menu.addAction(self.correction_action)
-
-        # Controllo duplicati e qualità dati dispositivi
-        data_menu.addSeparator()
-
-        self.duplicates_action = QAction(get_icon("duplicate", theme=self.current_theme), "Trova Dispositivi Duplicati...", self)
-        self.duplicates_action.triggered.connect(self.open_duplicate_devices_dialog)
-        data_menu.addAction(self.duplicates_action)
-
-        self.data_quality_action = QAction(get_icon("quality", theme=self.current_theme), "Controllo Qualità Dati Dispositivi...", self)
-        self.data_quality_action.triggered.connect(self.open_device_data_quality_dialog)
-        data_menu.addAction(self.data_quality_action)
-
-        data_menu.addSeparator()
-
-        # Dashboard statistiche e log attività
-        self.stats_action = QAction(get_icon("chart", theme=self.current_theme), "Dashboard Statistiche...", self)
-        self.stats_action.triggered.connect(self.open_stats_dashboard)
-        data_menu.addAction(self.stats_action)
-
-        self.audit_log_action = QAction(get_icon("audit", theme=self.current_theme), "Log Attività (Chi ha fatto cosa)...", self)
-        self.audit_log_action.triggered.connect(self.open_audit_log)
-        data_menu.addAction(self.audit_log_action)
-
         # ===================== MENU IMPOSTAZIONI =====================
-        settings_menu = menubar.addMenu("&Impostazioni")
+        settings_menu = menubar.addMenu("⚙️ &Impostazioni")
 
+        # — Hardware —
         self.set_com_port_action = QAction(get_icon("com_port", theme=self.current_theme), "Imposta Porta COM...", self)
         self.set_com_port_action.triggered.connect(self.configure_com_port)
         settings_menu.addAction(self.set_com_port_action)
@@ -308,15 +366,16 @@ class MainWindow(QMainWindow):
 
         settings_menu.addSeparator()
 
+        # — Branding e profili —
         self.set_logo_action = QAction(get_icon("logo", theme=self.current_theme), "Imposta Logo Azienda...", self)
         self.set_logo_action.triggered.connect(self.set_company_logo)
         settings_menu.addAction(self.set_logo_action)
-        
-        self.manage_users_action = QAction(get_icon("users", theme=self.current_theme), "Gestisci Utenti...", self)
-        self.manage_users_action.triggered.connect(self.open_user_manager)
-        settings_menu.addAction(self.manage_users_action)
 
-        self.manage_profiles_action = QAction(get_icon("report", theme=self.current_theme), "Gestisci Profili...", self)
+        self.manage_signature_action = QAction(get_icon("edit", theme=self.current_theme), "Gestisci Firma...", self)
+        self.manage_signature_action.triggered.connect(self.open_signature_manager)
+        settings_menu.addAction(self.manage_signature_action)
+
+        self.manage_profiles_action = QAction(get_icon("report", theme=self.current_theme), "Gestisci Profili Elettrici...", self)
         self.manage_profiles_action.triggered.connect(self.open_profile_manager)
         settings_menu.addAction(self.manage_profiles_action)
 
@@ -324,34 +383,38 @@ class MainWindow(QMainWindow):
         self.manage_functional_profiles_action.triggered.connect(self.open_functional_profile_manager)
         settings_menu.addAction(self.manage_functional_profiles_action)
 
-        self.manage_signature_action = QAction(get_icon("edit", theme=self.current_theme), "Gestisci Firma...", self)
-        self.manage_signature_action.triggered.connect(self.open_signature_manager)
-        settings_menu.addAction(self.manage_signature_action)
-
         settings_menu.addSeparator()
 
-        # Cambia password (disponibile per tutti gli utenti)
+        # — Utenti e accesso —
+        self.manage_users_action = QAction(get_icon("users", theme=self.current_theme), "Gestisci Utenti...", self)
+        self.manage_users_action.triggered.connect(self.open_user_manager)
+        settings_menu.addAction(self.manage_users_action)
+
         self.change_password_action = QAction(get_icon("password", theme=self.current_theme), "Cambia Password...", self)
         self.change_password_action.triggered.connect(self.open_change_password_dialog)
         settings_menu.addAction(self.change_password_action)
 
         settings_menu.addSeparator()
 
-        # Gestione dati eliminati (solo admin)
+        # — Dati e manutenzione —
         self.deleted_data_action = QAction(get_icon("trash", theme=self.current_theme), "Gestione Dati Eliminati...", self)
         self.deleted_data_action.triggered.connect(self.open_deleted_data_manager)
         settings_menu.addAction(self.deleted_data_action)
 
+        self.attachments_storage_action = QAction(get_icon("report", theme=self.current_theme), "Gestione Spazio Allegati...", self)
+        self.attachments_storage_action.triggered.connect(self.open_attachments_storage_dialog)
+        settings_menu.addAction(self.attachments_storage_action)
+
         settings_menu.addSeparator()
 
-        # Cambia tema
+        # — Interfaccia —
         self.theme_action = QAction(get_icon("theme", theme=self.current_theme), "Cambia Tema", self)
         self.theme_action.triggered.connect(self.toggle_theme)
         settings_menu.addAction(self.theme_action)
         self.update_theme_action_text()
 
         # ===================== MENU AIUTO =====================
-        help_menu = menubar.addMenu("&Aiuto")
+        help_menu = menubar.addMenu("❓ &Aiuto")
 
         self.changelog_action = QAction(get_icon("changelog", theme=self.current_theme), "Visualizza Changelog...", self)
         self.changelog_action.triggered.connect(self.show_changelog)
@@ -372,6 +435,194 @@ class MainWindow(QMainWindow):
         self.about_action = QAction(get_icon("about", theme=self.current_theme), "Informazioni su Safety Test Manager...", self)
         self.about_action.triggered.connect(self._show_about_dialog)
         help_menu.addAction(self.about_action)
+
+    def open_assignments_manager(self):
+        """Apre la finestra di gestione dei lavori assegnati."""
+        dialog = AssignmentsManagerDialog(self)
+        dialog.exec()
+        # Navigazione automatica se il tecnico ha avviato un'attività
+        if dialog.started_assignment:
+            QTimer.singleShot(200, lambda: self._navigate_to_assignment(dialog.started_assignment))
+
+    def _navigate_to_assignment(self, assignment: dict):
+        """Naviga alla sede/dispositivo dell'assegnazione avviata."""
+        from app import services
+        device_id = assignment.get("device_id")
+        dest_id   = assignment.get("destination_id")
+
+        dev_name  = assignment.get("description") or assignment.get("model") or ""
+        dest_name = assignment.get("destination_name") or ""
+
+        if device_id:
+            # Navigazione verso il dispositivo specifico
+            device_data = services.database.get_device_by_id(device_id)
+            if device_data:
+                dev = dict(device_data)
+                ok = self.select_device_from_search(dev, notify=False)
+                if ok:
+                    self.show_inline_feedback(
+                        f"▶  Attività avviata: {dev_name or dev.get('description', 'Dispositivo')}"
+                        f"  —  puoi ora avviare le verifiche.",
+                        level="success")
+                    return
+        elif dest_id:
+            # Navigazione verso la sede intera
+            dest_data = services.database.get_destination_by_id(dest_id)
+            if dest_data:
+                d = dict(dest_data)
+                ok = self.select_destination_from_search(d, notify=False)
+                if ok:
+                    self.show_inline_feedback(
+                        f"▶  Attività avviata: Sede {dest_name or d.get('name', '')}"
+                        f"  —  seleziona il dispositivo e avvia le verifiche.",
+                        level="success")
+                    return
+
+        self.show_inline_feedback(
+            "Attività avviata. Naviga manualmente al dispositivo/sede.",
+            level="info")
+
+    def _show_device_context_menu(self, pos):
+        """Menu contestuale sulla lista dispositivi con 'Assegna Verifica'."""
+        item = self.device_list.itemAt(pos)
+        if not item:
+            return
+        device_id = item.data(Qt.UserRole)
+        if not device_id:
+            return
+        menu = QMenu(self)
+        assign_action = menu.addAction("📋  Assegna Verifica...")
+        role = auth_manager.get_current_role()
+        assign_action.setEnabled(role in ("admin", "moderator"))
+        action = menu.exec(self.device_list.viewport().mapToGlobal(pos))
+        if action == assign_action:
+            self._assign_verification_from_device(device_id)
+
+    def _open_bulk_assign_dialog(self):
+        """Apre il dialog di assegnazione multipla con contesto corrente."""
+        from app import auth_manager as _am
+        if _am.get_current_role() not in ('admin', 'moderator'):
+            return
+        dialog = BulkAssignDialog(
+            parent=self,
+            preselect_device_id=getattr(self, 'selected_device_id', None),
+            preselect_destination_id=getattr(self, 'selected_destination_id', None),
+            preselect_customer_id=getattr(self, 'selected_customer_id', None),
+        )
+        dialog.exec()
+
+    def _assign_verification_from_device(self, device_id: int):
+        """Apre il dialog di assegnazione per il dispositivo selezionato."""
+        dialog = BulkAssignDialog(parent=self, preselect_device_id=device_id)
+        dialog.exec()
+
+    def mark_device_unavailable(self, device_id: int):
+        """Apre un dialog per segnare il dispositivo come 'non messo a disposizione'."""
+        from app.ui.dialogs.utility_dialogs import UnavailabilityReportDialog
+        device = services.get_device_by_id(device_id)
+        if not device:
+            QMessageBox.warning(self, "ERRORE", "Dispositivo non trovato.")
+            return
+        device = dict(device)
+        dest_id = device.get('destination_id') or self.selected_destination_id
+        start_str, end_str = self._get_device_filter_period()
+        dialog = UnavailabilityReportDialog(
+            device=device,
+            destination_id=dest_id,
+            default_start=start_str,
+            default_end=end_str,
+            parent=self,
+        )
+        if dialog.exec():
+            period_start, period_end, reason = dialog.get_data()
+            try:
+                from app import auth_manager as _am
+                user = _am.get_current_user_info()
+                services.save_unavailability_report(
+                    device_id=device_id,
+                    destination_id=dest_id,
+                    period_start=period_start,
+                    period_end=period_end,
+                    reason=reason,
+                    technician_name=user.get('full_name') if user else None,
+                    technician_username=user.get('username') if user else None,
+                )
+                self.show_inline_feedback(
+                    f"{str(device.get('description') or '').upper()} segnato come non messo a disposizione.",
+                    level='warning'
+                )
+                self.reload_devices()
+            except Exception as e:
+                QMessageBox.critical(self, "ERRORE", f"Impossibile salvare la segnalazione:\n{e}")
+
+    def remove_device_unavailable(self, device_id: int, reports: list):
+        """Rimuove la segnalazione 'non messo a disposizione' per il dispositivo."""
+        device = services.get_device_by_id(device_id)
+        desc = str(dict(device).get('description') or 'Dispositivo').upper() if device else 'Dispositivo'
+
+        if not reports:
+            QMessageBox.information(self, "Nessuna segnalazione", "Non ci sono segnalazioni da rimuovere nel periodo corrente.")
+            return
+
+        # Se c'è una sola segnalazione, chiedi conferma diretta
+        if len(reports) == 1:
+            r = reports[0]
+            msg = (
+                f"Vuoi rimuovere la segnalazione <b>NON MESSO A DISPOSIZIONE</b> per:<br><br>"
+                f"<b>{desc}</b><br>"
+                f"Periodo: {r.get('period_start','')[:10]} → {r.get('period_end','')[:10]}<br>"
+                f"Motivo: {r.get('reason') or '—'}"
+            )
+            reply = QMessageBox.question(self, "Rimuovi segnalazione", msg,
+                                         QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                try:
+                    services.delete_unavailability_report(r['uuid'])
+                    self.show_inline_feedback(
+                        f"Segnalazione rimossa per {desc}.", level='success'
+                    )
+                    self.reload_devices()
+                except Exception as e:
+                    QMessageBox.critical(self, "ERRORE", f"Impossibile rimuovere la segnalazione:\n{e}")
+            return
+
+        # Più segnalazioni: mostra elenco con checkbox per scegliere quali eliminare
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QCheckBox, QDialogButtonBox, QScrollArea, QWidget
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Rimuovi segnalazioni")
+        dlg.setMinimumWidth(420)
+        lay = QVBoxLayout(dlg)
+        lay.addWidget(QLabel(f"<b>{desc}</b> — seleziona le segnalazioni da rimuovere:"))
+        scroll = QScrollArea(); scroll.setWidgetResizable(True)
+        inner = QWidget(); inner_lay = QVBoxLayout(inner)
+        checkboxes = []
+        for r in reports:
+            text = (f"{r.get('period_start','')[:10]} → {r.get('period_end','')[:10]}"
+                    f"  |  {r.get('reason') or '—'}")
+            cb = QCheckBox(text)
+            cb.setChecked(True)
+            cb.setProperty('report_uuid', r['uuid'])
+            inner_lay.addWidget(cb)
+            checkboxes.append(cb)
+        scroll.setWidget(inner)
+        lay.addWidget(scroll)
+        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        btns.accepted.connect(dlg.accept)
+        btns.rejected.connect(dlg.reject)
+        lay.addWidget(btns)
+        if dlg.exec() != QDialog.Accepted:
+            return
+        removed = 0
+        for cb in checkboxes:
+            if cb.isChecked():
+                try:
+                    services.delete_unavailability_report(cb.property('report_uuid'))
+                    removed += 1
+                except Exception:
+                    pass
+        if removed:
+            self.show_inline_feedback(f"{removed} segnalazione/i rimossa/e per {desc}.", level='success')
+            self.reload_devices()
 
     def open_duplicate_devices_dialog(self):
         """Apre la finestra per la gestione dei dispositivi duplicati."""
@@ -668,6 +919,72 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logging.warning(f"Errore durante la pulizia dei backup all'avvio: {e}")
 
+    def open_attachments_storage_dialog(self):
+        """Mostra dialogo per la gestione dello spazio allegati locali."""
+        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QDialogButtonBox
+        usage = services.get_attachments_disk_usage()
+
+        def _fmt(b):
+            if b < 1024: return f"{b} B"
+            if b < 1024**2: return f"{b//1024} KB"
+            return f"{b/(1024**2):.1f} MB"
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Gestione Spazio Allegati")
+        dlg.setMinimumWidth(440)
+        layout = QVBoxLayout(dlg)
+        layout.setSpacing(10)
+
+        layout.addWidget(QLabel(
+            f"<b>Spazio totale allegati locali:</b> {_fmt(usage['total_bytes'])} "
+            f"({usage['total_files']} file)"
+        ))
+        layout.addWidget(QLabel(
+            f"<b>Di cui già sincronizzati con il server:</b> "
+            f"{_fmt(usage['synced_bytes'])} ({usage['synced_files']} file)"
+        ))
+        note = QLabel(
+            "<small>I file già sincronizzati possono essere rimossi dal disco locale. "
+            "I metadati rimangono nel database e i file restano accessibili sul server.</small>"
+        )
+        note.setWordWrap(True)
+        layout.addWidget(note)
+
+        def do_purge():
+            if usage['synced_files'] == 0:
+                QMessageBox.information(dlg, "Nessun file da rimuovere",
+                    "Non ci sono allegati sincronizzati da rimuovere.")
+                return
+            reply = QMessageBox.question(
+                dlg, "Conferma pulizia",
+                f"Verranno rimossi {usage['synced_files']} file locali "
+                f"({_fmt(usage['synced_bytes'])}) già presenti sul server.\n"
+                "Continuare?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            )
+            if reply != QMessageBox.Yes:
+                return
+            result = services.purge_synced_attachments()
+            msg = (f"Liberati {_fmt(result['freed_bytes'])} "
+                   f"({result['deleted_files']} file rimossi).")
+            if result['errors']:
+                msg += f"\n{result['errors']} file non rimovibili (vedi log)."
+            QMessageBox.information(dlg, "Pulizia completata", msg)
+            dlg.accept()
+
+        btn_purge = QPushButton(
+            f"🗑  Rimuovi file già sincronizzati  "
+            f"({usage['synced_files']} file — {_fmt(usage['synced_bytes'])})"
+        )
+        btn_purge.clicked.connect(do_purge)
+        btn_purge.setEnabled(usage['synced_files'] > 0)
+        layout.addWidget(btn_purge)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Close)
+        buttons.rejected.connect(dlg.reject)
+        layout.addWidget(buttons)
+        dlg.exec()
+
     # === NAVIGAZIONE EMBEDDED (finestra singola) ===
 
     def _show_embedded_dialog(self, dialog, title, on_close=None):
@@ -697,17 +1014,41 @@ class MainWindow(QMainWindow):
 
         dialog.done = _embedded_done
 
-        # Pulsante "indietro" nella status bar (affianco alle info utente, non occupa spazio)
-        self._back_btn = QPushButton(qta.icon('fa5s.arrow-left', color='white', scale_factor=0.7), "")
+
+        # Pulsante "indietro" nel back_bar fisso (mai nella status bar)
+        # Rimuovi eventuale pulsante precedente
+        if hasattr(self, '_back_btn') and self._back_btn:
+            self._back_btn.deleteLater()
+            self._back_btn = None
+
+        self._back_btn = QPushButton(qta.icon('fa5s.arrow-left', color='#93c5fd', scale_factor=0.75), "  Indietro")
         self._back_btn.setCursor(Qt.PointingHandCursor)
-        self._back_btn.setFixedSize(22, 22)
-        self._back_btn.setToolTip("Torna alla Home")
+        self._back_btn.setFixedHeight(32)
+        self._back_btn.setFixedWidth(110)
+        self._back_btn.setToolTip("Torna alla Home (Esc)")
         self._back_btn.setStyleSheet(
-            "QPushButton { background: #334155; border: none; border-radius: 11px; padding: 0; }"
-            "QPushButton:hover { background: #1e293b; }"
+            "QPushButton {"
+            "  background: rgba(59,130,246,0.15);"
+            "  border: 1px solid rgba(59,130,246,0.4);"
+            "  border-radius: 7px;"
+            "  padding: 0 12px;"
+            "  color: #93c5fd;"
+            "  font-weight: 700;"
+            "  font-size: 12px;"
+            "  letter-spacing: .3px;"
+            "}"
+            "QPushButton:hover {"
+            "  background: rgba(59,130,246,0.30);"
+            "  border-color: #3b82f6;"
+            "  color: #bfdbfe;"
+            "}"
+            "QPushButton:pressed { background: rgba(59,130,246,0.45); }"
         )
         self._back_btn.clicked.connect(lambda: dialog.done(QDialog.Rejected))
-        self.statusBar().insertWidget(0, self._back_btn)
+        # Inserisci il pulsante all'inizio del layout del back_bar
+        self._back_bar.layout().insertWidget(0, self._back_btn)
+        self._back_bar_label.setText(f"  {title}  ")
+        self._back_bar.setVisible(True)
 
         # Aggiorna titolo finestra per mostrare la sezione corrente
         self._original_window_title = self.windowTitle()
@@ -732,15 +1073,18 @@ class MainWindow(QMainWindow):
         # Ripristina il menu
         self.menuBar().setVisible(True)
 
-        # Ripristina titolo e rimuovi pulsante indietro dalla status bar
+        # Ripristina titolo e nascondi back_bar
         if hasattr(self, '_original_window_title') and self._original_window_title:
             self.setWindowTitle(self._original_window_title)
             self._original_window_title = None
         if hasattr(self, '_back_btn') and self._back_btn:
-            self.statusBar().removeWidget(self._back_btn)
             self._back_btn.deleteLater()
             self._back_btn = None
-
+        if hasattr(self, '_back_bar'):
+            self._back_bar.setVisible(False)
+            self._back_bar_label.setText("")
+            if hasattr(self, '_back_bar_breadcrumb'):
+                self._back_bar_breadcrumb.setText("")
         # Salva riferimenti prima della pulizia
         on_close = self._embedded_on_close
         self._embedded_on_close = None
@@ -955,6 +1299,40 @@ class MainWindow(QMainWindow):
                 verif["verification_type"] = "SISTEMA"
                 all_verifications.append(verif)
 
+        # Aggiungi segnalazioni "non messo a disposizione" come righe sintetiche
+        try:
+            if scope == "all":
+                unavail_rows = database.get_unavailability_reports_by_date_range(start_date, end_date)
+            elif scope == "customer" and customer_id:
+                unavail_rows = database.get_unavailability_reports_by_date_range(
+                    start_date, end_date, customer_id=customer_id)
+                if destination_ids:
+                    unavail_rows = [r for r in unavail_rows if r.get('destination_id') in destination_ids]
+            else:
+                unavail_rows = database.get_unavailability_reports_by_date_range(
+                    start_date, end_date, destination_id=destination_id)
+            for r in unavail_rows:
+                all_verifications.append({
+                    "verification_type": "NON_DISPONIBILE",
+                    "id": None,
+                    "device_id": r.get("device_id"),
+                    "verification_date": r.get("period_start"),
+                    "overall_status": "NON MESSO A DISPOSIZIONE",
+                    "notes": r.get("reason", ""),
+                    "description": r.get("description"),
+                    "manufacturer": r.get("manufacturer"),
+                    "model": r.get("model"),
+                    "serial_number": r.get("serial_number"),
+                    "ams_inventory": r.get("ams_inventory"),
+                    "customer_inventory": r.get("customer_inventory"),
+                    "department": r.get("department"),
+                    "destination_name": r.get("destination_name"),
+                    "technician_name": r.get("technician_name"),
+                    "unavail_report_uuid": r.get("uuid"),
+                })
+        except Exception as _e:
+            logging.warning(f"Impossibile recuperare segnalazioni non disponibili: {_e}")
+
         if not all_verifications:
             return QMessageBox.information(self, "NESSUNA VERIFICA", "NESSUNA VERIFICA TROVATA NEL PERIODO SELEZIONATO.")
 
@@ -1056,15 +1434,20 @@ class MainWindow(QMainWindow):
             return str(value or "").strip().upper()
         
         # Conteggio dispositivi unici (apparecchi controllati)
-        # Le verifiche di sistema non rappresentano un singolo dispositivo.
+        # Le verifiche di sistema e le segnalazioni non disponibili non rappresentano
+        # un singolo dispositivo verificato.
         unique_devices = set(
             v.get("device_id")
             for v in verifications
-            if v.get("device_id") and v.get("verification_type") != "SISTEMA"
+            if v.get("device_id") and v.get("verification_type") not in ("SISTEMA", "NON_DISPONIBILE")
         )
         devices_count = len(unique_devices)
+
+        non_disponibili_count = sum(
+            1 for v in verifications if v.get("verification_type") == "NON_DISPONIBILE"
+        )
         
-        # Conteggio verifiche conformi e non conformi
+        # Conteggio verifiche conformi e non conformi (totale)
         conformi_count = sum(
             1 for v in verifications
             if _normalize_status(v.get("overall_status")) in ("PASSATO", "CONFORME")
@@ -1077,6 +1460,20 @@ class MainWindow(QMainWindow):
             1 for v in verifications
             if _normalize_status(v.get("overall_status")) in ("FALLITO", "NON CONFORME")
         )
+
+        # Conteggi separati per tipo di verifica (frontespizio)
+        el_verifs  = [v for v in verifications if v.get("verification_type") == "ELETTRICA"]
+        fun_verifs = [v for v in verifications if v.get("verification_type") == "FUNZIONALE"]
+        sys_verifs = [v for v in verifications if v.get("verification_type") == "SISTEMA"]
+        el_conformi_count  = sum(1 for v in el_verifs if _normalize_status(v.get("overall_status")) in ("PASSATO", "CONFORME"))
+        el_cca_count       = sum(1 for v in el_verifs if _normalize_status(v.get("overall_status")) == "CONFORME CON ANNOTAZIONE")
+        el_nc_count        = sum(1 for v in el_verifs if _normalize_status(v.get("overall_status")) in ("FALLITO", "NON CONFORME"))
+        fun_conformi_count = sum(1 for v in fun_verifs if _normalize_status(v.get("overall_status")) in ("PASSATO", "CONFORME"))
+        fun_cca_count      = sum(1 for v in fun_verifs if _normalize_status(v.get("overall_status")) == "CONFORME CON ANNOTAZIONE")
+        fun_nc_count       = sum(1 for v in fun_verifs if _normalize_status(v.get("overall_status")) in ("FALLITO", "NON CONFORME"))
+        sys_conformi_count = sum(1 for v in sys_verifs if _normalize_status(v.get("overall_status")) in ("PASSATO", "CONFORME"))
+        sys_cca_count      = sum(1 for v in sys_verifs if _normalize_status(v.get("overall_status")) == "CONFORME CON ANNOTAZIONE")
+        sys_nc_count       = sum(1 for v in sys_verifs if _normalize_status(v.get("overall_status")) in ("FALLITO", "NON CONFORME"))
 
         return {
             "customer_name": customer_name,
@@ -1092,6 +1489,16 @@ class MainWindow(QMainWindow):
             "conformi_count": conformi_count,
             "conformi_con_annotazione_count": conformi_con_annotazione_count,
             "non_conformi_count": non_conformi_count,
+            "non_disponibili_count": non_disponibili_count,
+            "el_conformi_count": el_conformi_count,
+            "el_cca_count": el_cca_count,
+            "el_nc_count": el_nc_count,
+            "fun_conformi_count": fun_conformi_count,
+            "fun_cca_count": fun_cca_count,
+            "fun_nc_count": fun_nc_count,
+            "sys_conformi_count": sys_conformi_count,
+            "sys_cca_count": sys_cca_count,
+            "sys_nc_count": sys_nc_count,
             "logo_path": self.logo_path,
             "created_by": self.current_technician_name or "",
         }
@@ -1561,11 +1968,27 @@ class MainWindow(QMainWindow):
         self._update_device_period_button_tooltip()
         toolbar.addWidget(self.device_period_button)
 
+        self.device_sort_combo = QComboBox()
+        self.device_sort_combo.setFixedHeight(38)
+        self.device_sort_combo.setToolTip("Ordina i dispositivi")
+        self.device_sort_combo.addItem("↕ Tipologia",  "description")
+        self.device_sort_combo.addItem("↕ S/N",         "serial_number")
+        self.device_sort_combo.addItem("↕ Inv. AMS",    "ams_inventory")
+        self.device_sort_combo.addItem("↕ Inv. Cliente", "customer_inventory")
+        self.device_sort_combo.setCurrentIndex(0)
+        self.device_sort_combo.currentIndexChanged.connect(
+            lambda *_: self._populate_device_list(self._get_device_cache(),
+                                                   self.device_search.text() if hasattr(self, 'device_search') else '')
+        )
+        toolbar.addWidget(self.device_sort_combo)
+
         lay.addLayout(toolbar)
 
         self.device_list = QListWidget()
         self.device_list.setObjectName("drillListWidget")
         self.device_list.itemClicked.connect(self.on_device_selected_new)
+        self.device_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.device_list.customContextMenuRequested.connect(self._show_device_context_menu)
         lay.addWidget(self.device_list, 1)
 
         self.device_count_label = QLabel("<i>Seleziona una destinazione</i>")
@@ -2511,74 +2934,62 @@ class MainWindow(QMainWindow):
             lbl.setObjectName("summaryCaptionLabel")
             summary_layout.addWidget(lbl, row, col)
 
-        # Col 0-3: dettagli dispositivo (compatti su 2 righe)
-        add_caption("Dispositivo", 0, 0)
-        self.summary_device_label = QLabel("<i>Nessuna selezione</i>")
-        self.summary_device_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_device_label, 0, 1)
-
-        add_caption("S/N", 0, 2)
-        self.summary_serial_label = QLabel("—")
-        self.summary_serial_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_serial_label, 0, 3)
-
-        add_caption("Costruttore", 1, 0)
-        self.summary_manufacturer_label = QLabel("—")
-        self.summary_manufacturer_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_manufacturer_label, 1, 1)
-
-        add_caption("Modello", 1, 2)
-        self.summary_model_label = QLabel("—")
-        self.summary_model_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_model_label, 1, 3)
-
-        add_caption("Inv. Cliente", 2, 0)
-        self.summary_customer_inventory_label = QLabel("—")
-        self.summary_customer_inventory_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_customer_inventory_label, 2, 1)
-
-        add_caption("Inv. AMS", 2, 2)
-        self.summary_ams_inventory_label = QLabel("—")
-        self.summary_ams_inventory_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_ams_inventory_label, 2, 3)
-
-        add_caption("Reparto", 3, 0)
-        self.summary_department_label = QLabel("—")
-        self.summary_department_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_department_label, 3, 1)
-
-        add_caption("Destinazione", 3, 2)
-        self.summary_destination_label = QLabel("—")
-        self.summary_destination_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_destination_label, 3, 3)
-
-        # Separatore verticale tra dettagli e profili+azioni
-        v_sep = QFrame()
-        v_sep.setFrameShape(QFrame.VLine)
-        v_sep.setObjectName("sectionDivider")
-        summary_layout.addWidget(v_sep, 0, 4, 5, 1)
-
-        # Col 5-6: profili
-        add_caption("Profilo elettrico", 0, 5)
+        # Col 0-3: dettagli dispositivo + selettori profilo
+        # (Dispositivo e Destinazione sono gia mostrati nel breadcrumb sopra)
+        # Riga 0: i due selettori di profilo affiancati
+        add_caption("⚡ Profilo elettrico", 0, 0)
         self.profile_selector = QComboBox()
         self.profile_selector.setMinimumHeight(32)
+        self.profile_selector.setMaximumWidth(360)
         self.profile_selector.setAutoFillBackground(False)
         self._update_summary_fields_background()
-        summary_layout.addWidget(self.profile_selector, 1, 5, 1, 2)
+        summary_layout.addWidget(self.profile_selector, 0, 1)
 
-        add_caption("Profilo funzionale", 2, 5)
+        add_caption("💜 Profilo funzionale", 0, 2)
         self.functional_profile_selector = QComboBox()
         self.functional_profile_selector.setMinimumHeight(32)
+        self.functional_profile_selector.setMaximumWidth(360)
         self.functional_profile_selector.setAutoFillBackground(False)
-        summary_layout.addWidget(self.functional_profile_selector, 3, 5, 1, 2)
+        summary_layout.addWidget(self.functional_profile_selector, 0, 3)
+
+        # Righe 1-3: dettagli dispositivo
+        add_caption("🔢 S/N", 1, 0)
+        self.summary_serial_label = QLabel("—")
+        self.summary_serial_label.setObjectName("summaryLabel")
+        summary_layout.addWidget(self.summary_serial_label, 1, 1)
+
+        add_caption("🏭 Costruttore", 1, 2)
+        self.summary_manufacturer_label = QLabel("—")
+        self.summary_manufacturer_label.setObjectName("summaryLabel")
+        summary_layout.addWidget(self.summary_manufacturer_label, 1, 3)
+
+        add_caption("🏷️ Modello", 2, 0)
+        self.summary_model_label = QLabel("—")
+        self.summary_model_label.setObjectName("summaryLabel")
+        summary_layout.addWidget(self.summary_model_label, 2, 1)
+
+        add_caption("📋 Inv. Cliente", 2, 2)
+        self.summary_customer_inventory_label = QLabel("—")
+        self.summary_customer_inventory_label.setObjectName("summaryLabel")
+        summary_layout.addWidget(self.summary_customer_inventory_label, 2, 3)
+
+        add_caption("🗂️ Inv. AMS", 3, 0)
+        self.summary_ams_inventory_label = QLabel("—")
+        self.summary_ams_inventory_label.setObjectName("summaryLabel")
+        summary_layout.addWidget(self.summary_ams_inventory_label, 3, 1)
+
+        add_caption("🏥 Reparto", 3, 2)
+        self.summary_department_label = QLabel("—")
+        self.summary_department_label.setObjectName("summaryLabel")
+        summary_layout.addWidget(self.summary_department_label, 3, 3)
 
         QTimer.singleShot(100, self._update_summary_fields_background)
 
-        # Separatore verticale
+        # Separatore verticale tra dettagli e azioni
         v_sep2 = QFrame()
         v_sep2.setFrameShape(QFrame.VLine)
         v_sep2.setObjectName("sectionDivider")
-        summary_layout.addWidget(v_sep2, 0, 7, 5, 1)
+        summary_layout.addWidget(v_sep2, 0, 4, 4, 1)
 
         # Col 8: pulsanti azione in verticale (sempre visibili, disabilitati se non pronti)
         action_col = QVBoxLayout()
@@ -2591,6 +3002,7 @@ class MainWindow(QMainWindow):
         self.btn_edit_device.setEnabled(False)
         self.btn_edit_device.clicked.connect(self.on_edit_selected_device_new)
         action_col.addWidget(self.btn_edit_device)
+
 
         self.start_electrical_button = QPushButton(get_icon("electrical_verify", theme=self.current_theme), " Verifica Elettrica ▼")
         self.start_electrical_button.setObjectName("secondaryButton")
@@ -2625,13 +3037,11 @@ class MainWindow(QMainWindow):
         self.start_functional_button.clicked.connect(self.start_functional_verification)
         action_col.addWidget(self.start_functional_button)
 
-        summary_layout.addLayout(action_col, 0, 8, 5, 1)
+        summary_layout.addLayout(action_col, 0, 5, 4, 1)
 
         summary_layout.setColumnStretch(1, 2)
         summary_layout.setColumnStretch(3, 2)
-        summary_layout.setColumnStretch(5, 2)
-        summary_layout.setColumnStretch(6, 1)
-        summary_layout.setColumnStretch(8, 2)
+        summary_layout.setColumnStretch(5, 0)
 
         outer.addWidget(summary_frame)
         return panel
@@ -2978,12 +3388,20 @@ class MainWindow(QMainWindow):
                 index = self.profile_selector.findData(default_profile_key)
                 if index != -1:
                     self.profile_selector.setCurrentIndex(index)
+                else:
+                    self.profile_selector.setCurrentIndex(0)
+            else:
+                self.profile_selector.setCurrentIndex(0)
 
             default_func_key = dev.get('default_functional_profile_key')
             if default_func_key:
                 func_index = self.functional_profile_selector.findData(default_func_key)
                 if func_index != -1:
                     self.functional_profile_selector.setCurrentIndex(func_index)
+                else:
+                    self.functional_profile_selector.setCurrentIndex(0)
+            else:
+                self.functional_profile_selector.setCurrentIndex(0)
         
         self.update_summary_panel()
         
@@ -3023,11 +3441,7 @@ class MainWindow(QMainWindow):
             device_data = services.database.get_device_by_id(self.selected_device_id)
             if device_data:
                 dev = dict(device_data)
-                self.summary_device_label.setText(f"<b>{dev.get('description', 'N/A')}</b>")
-                self.summary_device_label.setProperty("state", "device")
-                self.summary_device_label.style().unpolish(self.summary_device_label)
-                self.summary_device_label.style().polish(self.summary_device_label)
-                
+
                 # Numero di Serie
                 serial_number = dev.get('serial_number', '—') or '—'
                 self.summary_serial_label.setText(f"<b>{serial_number}</b>")
@@ -3051,15 +3465,6 @@ class MainWindow(QMainWindow):
                 # Reparto
                 department = dev.get('department', '—') or '—'
                 self.summary_department_label.setText(f"<b>{department}</b>")
-
-                # Destinazione
-                destination = '—'
-                destination_id = dev.get('destination_id')
-                if destination_id:
-                    dest_row = services.database.get_destination_by_id(destination_id)
-                    if dest_row:
-                        destination = dict(dest_row).get('name', '—') or '—'
-                self.summary_destination_label.setText(f"<b>{destination}</b>")
             else:
                 self._clear_summary_device()
         else:
@@ -3067,17 +3472,12 @@ class MainWindow(QMainWindow):
     
     def _clear_summary_device(self):
         """Pulisce i dettagli dispositivo nel summary."""
-        self.summary_device_label.setText("<i>Nessuna selezione</i>")
-        self.summary_device_label.setProperty("state", "empty")
-        self.summary_device_label.style().unpolish(self.summary_device_label)
-        self.summary_device_label.style().polish(self.summary_device_label)
         self.summary_serial_label.setText("—")
         self.summary_manufacturer_label.setText("—")
         self.summary_model_label.setText("—")
         self.summary_customer_inventory_label.setText("—")
         self.summary_ams_inventory_label.setText("—")
         self.summary_department_label.setText("—")
-        self.summary_destination_label.setText("—")
         self.btn_edit_device.setEnabled(False)
         self.start_electrical_button.setEnabled(False)
         self.start_functional_button.setEnabled(False)
@@ -3108,22 +3508,60 @@ class MainWindow(QMainWindow):
             
             if dlg.exec():
                 data = dlg.get_data()
-                services.update_device(
-                    self.selected_device_id,
-                    data["destination_id"],
-                    data["serial"],
-                    data["desc"],
-                    data["mfg"],
-                    data["model"],
-                    data.get("department"),
-                    data.get("applied_parts", []),
-                    data.get("customer_inv"),
-                    data.get("ams_inv"),
-                    data.get("verification_interval"),
-                    data.get("default_profile_key"),
-                    data.get("default_functional_profile_key"),
-                    reactivate=False,
-                )
+                try:
+                    services.update_device(
+                        self.selected_device_id,
+                        data["destination_id"],
+                        data["serial"],
+                        data["desc"],
+                        data["mfg"],
+                        data["model"],
+                        data.get("department"),
+                        data.get("applied_parts", []),
+                        data.get("customer_inv"),
+                        data.get("ams_inv"),
+                        data.get("verification_interval"),
+                        data.get("default_profile_key"),
+                        data.get("default_functional_profile_key"),
+                        reactivate=False,
+                    )
+                except services.DuplicateActiveSerialException as e:
+                    existing = e.existing_device
+                    dest_info = services.database.get_destination_by_id(existing.get('destination_id')) if existing.get('destination_id') else None
+                    dest_name = dict(dest_info).get('name', 'N/D') if dest_info else 'N/D'
+                    msg = (
+                        f"Il numero di serie <b>{e.serial_number}</b> è già presente nel database:\n\n"
+                        f"• Dispositivo: {existing.get('description', 'N/D')}\n"
+                        f"• Costruttore: {existing.get('manufacturer', 'N/D')}\n"
+                        f"• Modello: {existing.get('model', 'N/D')}\n"
+                        f"• Destinazione: {dest_name}\n\n"
+                        f"Vuoi salvare comunque le modifiche mantenendo questo numero di serie duplicato?"
+                    )
+                    reply = QMessageBox.question(self, "Numero di Serie Duplicato", msg,
+                                                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                    if reply != QMessageBox.Yes:
+                        return
+                    try:
+                        services.update_device(
+                            self.selected_device_id,
+                            data["destination_id"],
+                            data["serial"],
+                            data["desc"],
+                            data["mfg"],
+                            data["model"],
+                            data.get("department"),
+                            data.get("applied_parts", []),
+                            data.get("customer_inv"),
+                            data.get("ams_inv"),
+                            data.get("verification_interval"),
+                            data.get("default_profile_key"),
+                            data.get("default_functional_profile_key"),
+                            reactivate=False,
+                            force_duplicate_serial=True,
+                        )
+                    except Exception as ex:
+                        QMessageBox.critical(self, "Errore", f"Modifica non riuscita:\n{ex}")
+                        return
                 
                 # Ricarica la UI mantenendo la selezione
                 current_device_id = self.selected_device_id
@@ -3253,10 +3691,25 @@ class MainWindow(QMainWindow):
         electrical_ids = {dict(row).get('device_id') for row in electrical_verifs if dict(row).get('device_id') is not None}
         functional_ids = {dict(row).get('device_id') for row in functional_verifs if dict(row).get('device_id') is not None}
 
+        # Dispositivi segnati come "non messo a disposizione" nel periodo:
+        # vengono esclusi da tutti i filtri (trattati come già gestiti).
+        try:
+            unavail_reports = services.get_unavailability_reports_for_period(
+                destination_id, start_date_str, end_date_str
+            )
+            unavail_ids = {r.get('device_id') for r in unavail_reports if r.get('device_id') is not None}
+        except Exception:
+            unavail_ids = set()
+
         filtered = []
         for dev_row in all_devices:
             dev = dict(dev_row)
             dev_id = dev.get('id')
+
+            # Dispositivi non disponibili: escludi sempre dai filtri "da verificare"
+            if dev_id in unavail_ids:
+                continue
+
             has_electrical = dev_id in electrical_ids
             has_functional = dev_id in functional_ids
 
@@ -3297,13 +3750,25 @@ class MainWindow(QMainWindow):
         current_selected_id = self.selected_device_id
         filtered_devices = [dev for dev in devices if self._device_matches_query(dev, search_query)]
 
+        # ── Ordinamento ────────────────────────────────────────────────────────
+        sort_key = "description"
+        if hasattr(self, "device_sort_combo"):
+            sort_key = self.device_sort_combo.currentData() or "description"
+
+        def _nat_sort_key(dev):
+            import re as _re
+            val = str(dev.get(sort_key) or "").strip().upper()
+            return [int(t) if t.isdigit() else t for t in _re.split(r'(\d+)', val)]
+
+        filtered_devices.sort(key=_nat_sort_key)
+
         selected_item = None
         for dev in filtered_devices:
             item = QListWidgetItem()
             item.setData(Qt.UserRole, dev.get('id'))
             item.setSizeHint(QSize(0, 96))
             self.device_list.addItem(item)
-            widget = self._make_device_row_widget(dev)
+            widget = self._make_device_row_widget(dev, item)
             self.device_list.setItemWidget(item, widget)
             if current_selected_id and dev.get('id') == current_selected_id:
                 selected_item = item
@@ -3333,14 +3798,24 @@ class MainWindow(QMainWindow):
         if hasattr(self, "drill_count_label") and getattr(self, "_drill_step", 0) == 2:
             self.drill_count_label.setText(f"{visible_count} dispositivi")
 
-    def _make_device_row_widget(self, dev: dict) -> QWidget:
+    def _make_device_row_widget(self, dev: dict, list_item=None) -> QWidget:
         """Crea un widget ricco a 3 righe per un item della lista dispositivi."""
         container = QWidget()
         container.setObjectName("deviceRowWidget")
-        container.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+        # Non usiamo WA_TransparentForMouseEvents sul container così i pulsanti
+        # interni possono ricevere i click; forwardiamo manualmente i click
+        # sul container (non su un pulsante) alla selezione dell'item.
+        if list_item is not None:
+            def _container_press(ev, _item=list_item):
+                from PySide6.QtCore import QEvent
+                # Forwardare il click alla lista solo se non intercettato da un figlio
+                # (i figli con un proprio handler lo consumano prima)
+                self.device_list.setCurrentItem(_item)
+                self.on_device_selected_new(_item)
+            container.mousePressEvent = _container_press
 
         lay = QVBoxLayout(container)
-        lay.setContentsMargins(14, 10, 14, 10)
+        lay.setContentsMargins(14, 10, 6, 10)
         lay.setSpacing(4)
 
         description = (dev.get('description') or 'Dispositivo senza nome').upper()
@@ -3352,7 +3827,7 @@ class MainWindow(QMainWindow):
         department = dev.get('department') or ''
         status = dev.get('status', 'active')
 
-        # ── Riga 1: Descrizione + badge stato ────────────────────────────────
+        # ── Riga 1: Descrizione + badge stato + pulsante non disponibile ─────
         row1 = QHBoxLayout()
         row1.setSpacing(8)
 
@@ -3373,6 +3848,44 @@ class MainWindow(QMainWindow):
             dept_badge.setObjectName("deviceDeptBadge")
             dept_badge.setAttribute(Qt.WA_TransparentForMouseEvents, True)
             row1.addWidget(dept_badge)
+
+        # Pulsante "Non messo a disposizione" / "Rimuovi segnalazione"
+        device_id = dev.get('id')
+        # Controlla se esiste una segnalazione attiva nel periodo corrente
+        _is_unavail = False
+        _unavail_reports = []
+        try:
+            start_str, end_str = self._get_device_filter_period()
+            _unavail_reports = services.get_unavailability_reports_for_period(
+                dev.get('destination_id') or self.selected_destination_id,
+                start_str, end_str
+            )
+            _is_unavail = any(r.get('device_id') == device_id for r in _unavail_reports)
+        except Exception:
+            pass
+
+        unavail_btn = QPushButton("✅" if _is_unavail else "🚫")
+        if _is_unavail:
+            unavail_btn.setToolTip("Dispositivo NON MESSO A DISPOSIZIONE nel periodo — clicca per rimuovere la segnalazione")
+            unavail_btn.setStyleSheet(
+                "QPushButton { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5;"
+                " border-radius: 5px; font-size: 12px; padding: 0; font-weight: bold; }"
+                " QPushButton:hover { background: #fecaca; }"
+            )
+            _dev_reports = [r for r in _unavail_reports if r.get('device_id') == device_id]
+            unavail_btn.clicked.connect(
+                lambda _checked=False, did=device_id, reports=_dev_reports: self.remove_device_unavailable(did, reports)
+            )
+        else:
+            unavail_btn.setToolTip("Segna come non messo a disposizione")
+            unavail_btn.setStyleSheet(
+                "QPushButton { background: #ede9fe; color: #7c3aed; border: 1px solid #c4b5fd;"
+                " border-radius: 5px; font-size: 12px; padding: 0; }"
+                " QPushButton:hover { background: #ddd6fe; }"
+            )
+            unavail_btn.clicked.connect(lambda _checked=False, did=device_id: self.mark_device_unavailable(did))
+        unavail_btn.setFixedSize(26, 26)
+        row1.addWidget(unavail_btn)
 
         lay.addLayout(row1)
 
@@ -4156,9 +4669,11 @@ class MainWindow(QMainWindow):
                 self.test_runner_widget.print_pdf_button.setEnabled(True)
                 self.test_runner_widget.finish_button.setEnabled(True)
 
-                # Override anche generate PDF per usare il report di sistema
+                # Override generate PDF e stampa per usare il report di sistema
                 self.test_runner_widget.generate_pdf_report_from_summary = \
                     lambda: self._generate_system_pdf_from_runner(new_id, system_name)
+                self.test_runner_widget.print_pdf_report_from_summary = \
+                    lambda: self._print_system_pdf_from_runner(new_id)
 
                 self.statusBar().showMessage(
                     f"Verifica di sistema ID {new_id} salvata (Codice: {verification_code}).",
@@ -4192,6 +4707,15 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Errore", f"Impossibile generare il report:\n{e}")
             logging.error(f"Errore generazione report di sistema: {e}", exc_info=True)
+
+    def _print_system_pdf_from_runner(self, sv_id):
+        """Stampa il report di una verifica di sistema dal test runner."""
+        try:
+            report_settings = {"logo_path": self.logo_path}
+            services.print_system_pdf_report(sv_id, report_settings, parent_widget=self)
+        except Exception as e:
+            QMessageBox.critical(self, "Errore di Stampa", f"Impossibile stampare il report:\n{e}")
+            logging.error(f"Errore stampa report di sistema: {e}", exc_info=True)
 
     def reset_main_ui(self):
         QApplication.restoreOverrideCursor()
@@ -4277,6 +4801,29 @@ class MainWindow(QMainWindow):
                     # Seleziona il dispositivo appena creato
                     self._select_device_by_id(new_device_id)
                 self.update_summary_panel()
+            except services.DuplicateActiveSerialException as e:
+                # Numero di serie già usato da un dispositivo ATTIVO
+                existing = e.existing_device
+                dest_info = services.database.get_destination_by_id(existing.get('destination_id')) if existing.get('destination_id') else None
+                dest_name = dict(dest_info).get('name', 'N/D') if dest_info else 'N/D'
+                msg = (
+                    f"Il numero di serie <b>{e.serial_number}</b> è già presente nel database:\n\n"
+                    f"• Dispositivo: {existing.get('description', 'N/D')}\n"
+                    f"• Costruttore: {existing.get('manufacturer', 'N/D')}\n"
+                    f"• Modello: {existing.get('model', 'N/D')}\n"
+                    f"• Destinazione: {dest_name}\n\n"
+                    f"Vuoi inserire comunque il nuovo dispositivo con lo stesso numero di serie?"
+                )
+                reply = QMessageBox.question(self, "Numero di Serie Duplicato", msg,
+                                             QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+                if reply == QMessageBox.Yes:
+                    try:
+                        new_device_id = services.add_device(**data, force_duplicate_serial=True)
+                        self.reload_devices()
+                        self._select_device_by_id(new_device_id)
+                        self.update_summary_panel()
+                    except Exception as ex:
+                        QMessageBox.critical(self, "Errore", f"Impossibile creare il dispositivo:\n{ex}")
             except services.DeletedDeviceFoundException as e:
                 # Dispositivo eliminato trovato con lo stesso S/N
                 from app.ui.dialogs.reactivate_device_dialog import ReactivateDeviceDialog
@@ -4424,6 +4971,8 @@ class MainWindow(QMainWindow):
             self.stats_action.setVisible(is_quality_manager)
         if hasattr(self, 'audit_log_action'):
             self.audit_log_action.setVisible(is_quality_manager)
+        if hasattr(self, 'new_assignment_action'):
+            self.new_assignment_action.setVisible(not is_technician)
 
     def open_profile_manager(self):
         """Apre la finestra di dialogo per la gestione dei profili."""
@@ -4688,7 +5237,7 @@ class MainWindow(QMainWindow):
         current_port = self.settings.value("global_com_port", "COM1")
         try:
             available_ports = FlukeESA612.list_available_ports()
-        except:
+        except Exception:
             available_ports = ["COM1", "COM2", "COM3", "COM4"]
         
         # Prova a rilevare automaticamente la porta COM
@@ -5113,6 +5662,8 @@ class MainWindow(QMainWindow):
 
         # Salva ogni conflitto PUSH nel database locale
         import uuid as uuid_module
+        # Ignora i serial_conflict: i duplicati di numero di serie sono ora permessi
+        conflicts = [c for c in (conflicts or []) if c.get('reason') not in ('serial_conflict', 'duplicate_serial_number')]
         persisted = 0
         for conflict in (conflicts or []):
             try:
@@ -5262,7 +5813,7 @@ class MainWindow(QMainWindow):
             s.connect(("8.8.8.8", 80))
             local_ip = s.getsockname()[0]
             s.close()
-        except:
+        except Exception:
             local_ip = "127.0.0.1"
         
         port = 8766
@@ -5312,7 +5863,7 @@ class MainWindow(QMainWindow):
             try:
                 if self.qr_scanner_server:
                     self.qr_scanner_server.handle_request()
-            except:
+            except Exception:
                 pass
     
     def _stop_qr_scanner_server(self):
@@ -5322,7 +5873,7 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'qr_scanner_server') and self.qr_scanner_server:
             try:
                 self.qr_scanner_server.socket.close()
-            except:
+            except Exception:
                 pass
             self.qr_scanner_server = None
         

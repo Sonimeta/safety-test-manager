@@ -1,0 +1,1140 @@
+{
+  "profile_key": "bilance",
+  "name": "Bilance",
+  "device_type": "BILANCIA",
+  "norma": "UNI CEI EN 45501",
+  "sections": [
+    {
+      "key": "normative_references",
+      "title": "Riferimenti Normativi-Procedure",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "norme_procedure",
+          "label": "Norme/Procedure",
+          "field_type": "text",
+          "required": false,
+          "unit": null,
+          "options": [],
+          "read_only": false,
+          "default": "UNI CEI EN 45501",
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "device_data",
+      "title": "Dati Apparecchiatura",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "portata_max",
+          "label": "Portata max (kg)",
+          "field_type": "number",
+          "required": false,
+          "unit": "kg",
+          "options": [],
+          "read_only": false,
+          "default": null,
+          "help_text": "Portata massima della bilancia",
+          "formula": null,
+          "precision": 3
+        },
+        {
+          "key": "portata_min",
+          "label": "Portata min (kg)",
+          "field_type": "number",
+          "required": false,
+          "unit": "kg",
+          "options": [],
+          "read_only": false,
+          "default": null,
+          "help_text": "Portata minima della bilancia",
+          "formula": null,
+          "precision": 3
+        },
+        {
+          "key": "risoluzione",
+          "label": "Risoluzione / Divisione (d)",
+          "field_type": "number",
+          "required": false,
+          "unit": "g",
+          "options": [],
+          "read_only": false,
+          "default": null,
+          "help_text": "Divisione di scala della bilancia",
+          "formula": null,
+          "precision": 3
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "instruments_used",
+      "title": "Strumentazione Usata per il Controllo",
+      "section_type": "fields",
+      "description": "Indicare i codici/pesi campione utilizzati per la verifica.",
+      "fields": [
+        {
+          "key": "pesi_campione",
+          "label": "Pesi campione utilizzati",
+          "field_type": "multiline",
+          "required": false,
+          "unit": null,
+          "options": [],
+          "read_only": false,
+          "default": "STRUM55 (1kg)\nSTRUM56-1 (5kg) - STRUM56-2 (5kg)\nSTRUM57-1 (10kg) - STRUM57-2 (10kg)\nSTRUM58-1 (20kg) - STRUM58-2 (20kg) - STRUM58-3 (20kg) - STRUM58-4 (20kg) - STRUM58-5 (20kg) - STRUM58-6 (20kg)",
+          "help_text": "Elenco dei pesi campione certificati utilizzati per la verifica",
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "visual_functional_control",
+      "title": "Controllo Visivo/Funzionale",
+      "section_type": "checklist",
+      "description": "",
+      "fields": [],
+      "rows": [
+        {
+          "key": "serigrafie",
+          "label": "Leggibilità delle serigrafie",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "manuale_uso",
+          "label": "Manuale d'uso disponibile",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "display_spie",
+          "label": "Funzionamento display/spie",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "involucro",
+          "label": "Integrità involucro",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "piatto_pesata",
+          "label": "Integrità piatto di pesata",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "livellamento",
+          "label": "Livellamento corretto (bolla)",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": "Verificare che la bolla sia centrata",
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "tara_zero",
+          "label": "Funzione tara/zero operativa",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        },
+        {
+          "key": "stampa",
+          "label": "Funzione stampa/interfaccia operativa",
+          "fields": [
+            {
+              "key": "esito",
+              "label": "Esito",
+              "field_type": "choice",
+              "required": true,
+              "unit": null,
+              "options": ["OK", "KO", "N.A."],
+              "read_only": false,
+              "default": null,
+              "help_text": null,
+              "formula": null,
+              "precision": null
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "prova1_carico_crescente",
+      "title": "Prova N. 1 – Determinazione degli Errori di Pesatura (Carico Crescente)",
+      "section_type": "table",
+      "description": "Errore massimo ammesso come da specifiche del produttore. Inserire peso campione, valore misurato e calcolare l'errore.",
+      "fields": [],
+      "rows": [
+        {
+          "key": "cres_1",
+          "label": "Misura 1",
+          "fields": [
+            {
+              "key": "peso_campione",
+              "label": "Peso campione (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "errore",
+              "label": "Errore (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            }
+          ]
+        },
+        {
+          "key": "cres_2",
+          "label": "Misura 2",
+          "fields": [
+            {
+              "key": "peso_campione",
+              "label": "Peso campione (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "errore",
+              "label": "Errore (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            }
+          ]
+        },
+        {
+          "key": "cres_3",
+          "label": "Misura 3",
+          "fields": [
+            {
+              "key": "peso_campione",
+              "label": "Peso campione (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "errore",
+              "label": "Errore (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            }
+          ]
+        },
+        {
+          "key": "cres_4",
+          "label": "Misura 4",
+          "fields": [
+            {
+              "key": "peso_campione",
+              "label": "Peso campione (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "errore",
+              "label": "Errore (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            }
+          ]
+        },
+        {
+          "key": "cres_5",
+          "label": "Misura 5",
+          "fields": [
+            {
+              "key": "peso_campione",
+              "label": "Peso campione (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "errore",
+              "label": "Errore (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "prova1_carico_decrescente",
+      "title": "Prova N. 1 – Determinazione degli Errori di Pesatura (Carico Decrescente)",
+      "section_type": "table",
+      "description": "Errore massimo ammesso come da specifiche del produttore.",
+      "fields": [],
+      "rows": [
+        {
+          "key": "decr_1",
+          "label": "Misura 1",
+          "fields": [
+            {
+              "key": "peso_campione",
+              "label": "Peso campione (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "errore",
+              "label": "Errore (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            }
+          ]
+        },
+        {
+          "key": "decr_2",
+          "label": "Misura 2",
+          "fields": [
+            {
+              "key": "peso_campione",
+              "label": "Peso campione (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "errore",
+              "label": "Errore (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            }
+          ]
+        },
+        {
+          "key": "decr_3",
+          "label": "Misura 3",
+          "fields": [
+            {
+              "key": "peso_campione",
+              "label": "Peso campione (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "errore",
+              "label": "Errore (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            }
+          ]
+        },
+        {
+          "key": "decr_4",
+          "label": "Misura 4",
+          "fields": [
+            {
+              "key": "peso_campione",
+              "label": "Peso campione (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "errore",
+              "label": "Errore (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            }
+          ]
+        },
+        {
+          "key": "decr_5",
+          "label": "Misura 5",
+          "fields": [
+            {
+              "key": "peso_campione",
+              "label": "Peso campione (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "errore",
+              "label": "Errore (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "prova2_ripetibilita",
+      "title": "Prova N. 2 – Ripetibilità",
+      "section_type": "table",
+      "description": "Errore massimo ammesso come da specifiche del produttore. Applicare lo stesso peso per tutte e 3 le misure.",
+      "fields": [
+        {
+          "key": "peso_campione_ripet",
+          "label": "Peso campione (kg)",
+          "field_type": "number",
+          "required": false,
+          "unit": "kg",
+          "options": [],
+          "read_only": false,
+          "default": null,
+          "help_text": "Peso campione utilizzato per tutta la prova di ripetibilità",
+          "formula": null,
+          "precision": 3
+        }
+      ],
+      "rows": [
+        {
+          "key": "ripet_1",
+          "label": "Misura 1",
+          "fields": [
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "errore",
+              "label": "Errore (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            }
+          ]
+        },
+        {
+          "key": "ripet_2",
+          "label": "Misura 2",
+          "fields": [
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "errore",
+              "label": "Errore (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            }
+          ]
+        },
+        {
+          "key": "ripet_3",
+          "label": "Misura 3",
+          "fields": [
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "errore",
+              "label": "Errore (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "prova3_decentramento",
+      "title": "Prova N. 3 – Decentramento",
+      "section_type": "table",
+      "description": "Errore massimo ammesso come da specifiche del produttore. Posizionare il peso campione in 5 posizioni diverse del piatto (centro + 4 angoli).",
+      "fields": [
+        {
+          "key": "prova_non_eseguibile",
+          "label": "Prova non eseguibile",
+          "field_type": "choice",
+          "required": false,
+          "unit": null,
+          "options": ["SI", "NO"],
+          "read_only": false,
+          "default": "NO",
+          "help_text": "Indicare SI se la prova di decentramento non è eseguibile (es. piatto troppo piccolo)",
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": [
+        {
+          "key": "dec_1",
+          "label": "Posizione 1 (Centro)",
+          "fields": [
+            {
+              "key": "peso_campione",
+              "label": "Peso campione (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "errore",
+              "label": "Errore (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            }
+          ]
+        },
+        {
+          "key": "dec_2",
+          "label": "Posizione 2 (Angolo anteriore sinistro)",
+          "fields": [
+            {
+              "key": "peso_campione",
+              "label": "Peso campione (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "errore",
+              "label": "Errore (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            }
+          ]
+        },
+        {
+          "key": "dec_3",
+          "label": "Posizione 3 (Angolo anteriore destro)",
+          "fields": [
+            {
+              "key": "peso_campione",
+              "label": "Peso campione (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "errore",
+              "label": "Errore (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            }
+          ]
+        },
+        {
+          "key": "dec_4",
+          "label": "Posizione 4 (Angolo posteriore sinistro)",
+          "fields": [
+            {
+              "key": "peso_campione",
+              "label": "Peso campione (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "errore",
+              "label": "Errore (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            }
+          ]
+        },
+        {
+          "key": "dec_5",
+          "label": "Posizione 5 (Angolo posteriore destro)",
+          "fields": [
+            {
+              "key": "peso_campione",
+              "label": "Peso campione (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "valore_misurato",
+              "label": "Valore misurato (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            },
+            {
+              "key": "errore",
+              "label": "Errore (kg)",
+              "field_type": "number",
+              "required": false,
+              "unit": "kg",
+              "options": [],
+              "read_only": false,
+              "default": 0.0,
+              "help_text": null,
+              "formula": null,
+              "precision": 3
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "key": "decommissioning",
+      "title": "Messa in Fuori Uso",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "fuori_uso",
+          "label": "Messa in Fuori Uso",
+          "field_type": "choice",
+          "required": false,
+          "unit": null,
+          "options": ["SI", "NO"],
+          "read_only": false,
+          "default": "NO",
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    },
+    {
+      "key": "notes",
+      "title": "Note",
+      "section_type": "fields",
+      "description": "",
+      "fields": [
+        {
+          "key": "note",
+          "label": "Note",
+          "field_type": "multiline",
+          "required": false,
+          "unit": null,
+          "options": [],
+          "read_only": false,
+          "default": null,
+          "help_text": null,
+          "formula": null,
+          "precision": null
+        }
+      ],
+      "rows": []
+    }
+  ]
+}

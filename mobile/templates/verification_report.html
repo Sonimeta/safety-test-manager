@@ -77,10 +77,12 @@
     <div class="field"><label>Data</label><p>{{ verification.verification_date }}</p></div>
     <div class="field"><label>Esito complessivo</label>
         <p>
-        {% if verification.overall_status in ('PASSATO','PASS','OK') %}
-        <span class="badge badge-pass">✓ PASSATO</span>
-        {% elif verification.overall_status in ('NON PASSATO','FAIL','FALLITO') %}
-        <span class="badge badge-fail">✗ NON PASSATO</span>
+        {% if verification.overall_status == 'CONFORME CON ANNOTAZIONE' %}
+        <span class="badge badge-warn">⚠ CONFORME CON ANNOTAZIONE</span>
+        {% elif verification.overall_status in ('CONFORME','PASSATO','PASS','OK') %}
+        <span class="badge badge-pass">✓ CONFORME</span>
+        {% elif verification.overall_status in ('NON PASSATO','FAIL','FALLITO','NON CONFORME') %}
+        <span class="badge badge-fail">✗ NON CONFORME</span>
         {% else %}
         <span class="badge badge-gray">{{ verification.overall_status }}</span>
         {% endif %}
@@ -114,8 +116,9 @@
             <td>{{ test_name }}</td>
             <td>
                 {% set s = result.get('status','') %}
-                {% if s in ('PASS','PASSATO','OK') %}<span class="badge badge-pass">✓ PASS</span>
-                {% elif s in ('FAIL','NON PASSATO','FALLITO') %}<span class="badge badge-fail">✗ FAIL</span>
+                {% if s == 'CONFORME CON ANNOTAZIONE' %}<span class="badge badge-warn">⚠ C.C.A.</span>
+                {% elif s in ('CONFORME','PASS','PASSATO','OK') %}<span class="badge badge-pass">✓ CONF.</span>
+                {% elif s in ('FAIL','NON PASSATO','FALLITO','NON CONFORME') %}<span class="badge badge-fail">✗ N.CONF.</span>
                 {% elif s == 'N/A' %}<span class="badge badge-na">N/A</span>
                 {% else %}<span class="badge badge-gray">{{ s }}</span>{% endif %}
             </td>

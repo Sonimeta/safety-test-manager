@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (QApplication, QGroupBox, QHBoxLayout, QLabel,
 from app import config, services
 import database
 from app.data_models import AppliedPart
+from app.verification_logic import evaluate_measure
 from app.functional_models import (
     FunctionalField,
     FunctionalProfile,
@@ -25,6 +26,23 @@ from app.functional_models import (
 from app.ui.state_manager import AppState
 from app.hardware.fluke_esa612 import FLUKE_ERROR_CODES, FlukeESA612
 
+
+def fix_calendar_popup(date_edit: QDateEdit) -> None:
+    """Imposta dimensioni minime corrette sul QCalendarWidget popup di un QDateEdit.
+    Necessario perché Qt non ridimensiona automaticamente le celle del calendario,
+    causando la visualizzazione di '...' al posto dei numeri dei giorni."""
+    cal = date_edit.calendarWidget()
+    if cal is None:
+        return
+    cal.setMinimumSize(420, 300)
+    # Accede al QTableView interno per impostare le section size
+    from PySide6.QtWidgets import QTableView
+    table = cal.findChild(QTableView)
+    if table:
+        table.horizontalHeader().setMinimumSectionSize(48)
+        table.horizontalHeader().setDefaultSectionSize(48)
+        table.verticalHeader().setMinimumSectionSize(34)
+        table.verticalHeader().setDefaultSectionSize(34)
 
 class NoAutoSelectLineEdit(QLineEdit):
     """QLineEdit che non seleziona automaticamente il testo quando riceve il focus."""
@@ -674,10 +692,10 @@ class TestRunnerWidget(QWidget):
                 return False
             else:
                 raise InterruptedError("Lettura dello strumento fallita (valore vuoto).")
-        try:
-            cleaned_value_str = re.sub(r'[^\d.-]', '', value_str)
-            value_float = float(cleaned_value_str)
-        except (ValueError, TypeError):
+        # Parsing e valutazione delegati alla logica pura testabile
+        # (gestisce anche la virgola decimale: "0,5" -> 0.5)
+        result_data = evaluate_measure(test, value_str, applied_part)
+        if result_data is None:
             if self.manual_mode:
                 QMessageBox.warning(self, "Valore Non Valido", "Inserire un valore numerico.")
                 self.value_input.setStyleSheet("border: 1px solid red;")
@@ -685,34 +703,7 @@ class TestRunnerWidget(QWidget):
             else:
                 raise ValueError(f"Risposta non valida dallo strumento: '{value_str}'")
         self.value_input.setStyleSheet("")
-        result_name = f"{test.name} ({test.parameter})" if test.parameter else test.name
-        limit_key = "::ST"
-        polarity = None  # <-- AGGIUNTO
-        
-        if applied_part:
-            result_name = f"{test.name} - {applied_part.name} - {applied_part.part_type}"
-            limit_key = f"::{applied_part.part_type}"
-            # <-- AGGIUNTO: Estrai la polarità dal parametro del test
-            if test.parameter:
-                polarity = test.parameter
-                
-        limit_obj = test.limits.get(limit_key)
-        is_passed = True
-        limit_value = None
-        unit = limit_obj.unit if limit_obj else ""
-        if limit_obj and limit_obj.high_value is not None:
-            is_passed = (value_float <= limit_obj.high_value)
-            limit_value = limit_obj.high_value
-        
-        result_data = {
-            "name": result_name, 
-            "value": value_str, 
-            "limit_value": limit_value, 
-            "unit": unit, 
-            "passed": is_passed,
-            "polarity": polarity  # <-- AGGIUNTO
-        }
-        
+
         self.results.append(result_data)
         self.update_results_table(result_data)
         return True
@@ -1480,15 +1471,16 @@ class FunctionalTestRunnerWidget(QWidget):
 
     def _get_suggested_overall_status(self) -> str:
         counters = self._collect_outcome_counters()
+
+        # KO presenti → NON CONFORME indipendentemente da tutto
         if counters["ko_count"] > 0:
             return "FALLITO"
 
-        if counters["na_count"] > 0:
-            return "CONFORME CON ANNOTAZIONE"
-
+        # Note compilate → CONFORME CON ANNOTAZIONE
         if self.notes_edit.toPlainText().strip():
             return "CONFORME CON ANNOTAZIONE"
 
+        # Solo N/A senza KO e senza note → CONFORME (N/A non è un'anomalia)
         return "PASSATO"
 
     def _set_status_combo_value(self, value: str):
@@ -1891,6 +1883,7 @@ class FunctionalTestRunnerWidget(QWidget):
         elif field_type == "date":
             widget = QDateEdit()
             widget.setCalendarPopup(True)
+            fix_calendar_popup(widget)
             widget.setDisplayFormat("dd/MM/yyyy")
             if default_value not in (None, ""):
                 try:

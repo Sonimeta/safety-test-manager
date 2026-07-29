@@ -58,7 +58,7 @@ class QRScannerHTTPHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self._send_cors_headers()
             self.end_headers()
-        except:
+        except Exception:
             pass
     
     def do_GET(self):
@@ -231,7 +231,7 @@ class QRScannerHTTPHandler(BaseHTTPRequestHandler):
                 self._send_cors_headers()
                 self.end_headers()
                 self.wfile.write(json.dumps({'status': 'error', 'message': str(e)}).encode('utf-8'))
-            except:
+            except Exception:
                 pass
 
     def _sanitize_scan_code(self, code: str) -> str:
@@ -273,7 +273,7 @@ class QRScannerHTTPHandler(BaseHTTPRequestHandler):
                             elif value == 8:
                                 image = image.rotate(90, expand=True)
                             break
-            except:
+            except Exception:
                 pass
             
             gray_image = image.convert('L')
@@ -1333,7 +1333,7 @@ class QRDeviceScannerDialog(QDialog):
             ip = s.getsockname()[0]
             s.close()
             return ip
-        except:
+        except Exception:
             return "127.0.0.1"
     
     def _start_server(self):
@@ -1372,7 +1372,7 @@ class QRDeviceScannerDialog(QDialog):
         while self.running:
             try:
                 self.server.handle_request()
-            except:
+            except Exception:
                 pass
     
     def _stop_server(self):
@@ -1381,7 +1381,7 @@ class QRDeviceScannerDialog(QDialog):
         if self.server:
             try:
                 self.server.socket.close()
-            except:
+            except Exception:
                 pass
             self.server = None
     
