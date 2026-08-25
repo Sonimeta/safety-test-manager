@@ -8,6 +8,11 @@ import re
 from app import config
 from app.data_models import VerificationProfile, Test, Limit
 from app.functional_models import FunctionalField, FunctionalProfile, FunctionalRowDefinition, FunctionalSection
+from app.ecografo_quality_models import (
+    EcografoQualityCheck,
+    EcografoQualityControl,
+    EcografoQualityProbe,
+)
 import uuid
 
 IGNORABLE_ERROR_SNIPPETS = (
@@ -1575,7 +1580,8 @@ def save_verification(uuid, device_id, profile_name, results, overall_status,
                       visual_inspection_data, mti_info,
                       technician_name, technician_username,
                       timestamp, verification_date=None,
-                      verification_code: str = None):
+                      verification_code: str = None,
+                      duration_seconds: int | None = None):
     if verification_date is None:
         verification_date = datetime.now().strftime('%Y-%m-%d')
 
@@ -1603,9 +1609,9 @@ def save_verification(uuid, device_id, profile_name, results, overall_status,
                 results_json, overall_status, visual_inspection_json,
                 mti_instrument, mti_serial, mti_version, mti_cal_date,
                 technician_name, technician_username,
-                verification_code,
+                verification_code, duration_seconds,
                 last_modified, is_deleted, is_synced
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
         """
 
         params = (
@@ -1616,7 +1622,7 @@ def save_verification(uuid, device_id, profile_name, results, overall_status,
             mti_data.get('version'),
             mti_data.get('cal_date'),
             technician_name, technician_username,
-            verification_code,
+            verification_code, duration_seconds,
             timestamp
         )
         cursor.execute(sql_query, params)
@@ -2296,52 +2302,65 @@ def get_system_verifications_by_date_range(start_date: str, end_date: str) -> li
 
 # --- Gestione Strumenti (Instruments) ---
 
-def get_all_instruments(instrument_type: str = None):
+def _ensure_mti_instruments_columns():
+    """Assicura che la tabella mti_instruments abbia tutte le colonne necessarie (inclusa sede)."""
+    with DatabaseConnection() as conn:
+        try:
+            existing_cols = {r[1] for r in conn.execute("PRAGMA table_info(mti_instruments)").fetchall()}
+            if "sede" not in existing_cols:
+                conn.execute("ALTER TABLE mti_instruments ADD COLUMN sede TEXT")
+            if "instrument_type" not in existing_cols:
+                conn.execute("ALTER TABLE mti_instruments ADD COLUMN instrument_type TEXT DEFAULT 'electrical'")
+        except Exception:
+            pass
+
+
+def get_all_instruments(instrument_type: str = None, user_sede: str = None):
     """
-    Recupera tutti gli strumenti, opzionalmente filtrati per tipo.
+    Recupera tutti gli strumenti, opzionalmente filtrati per tipo e per sede dell'utente.
     
     Args:
         instrument_type: 'electrical' per strumenti elettrici, 'functional' per strumenti funzionali, None per tutti
+        user_sede: Sede dell'utente loggato. Se specificata (e non vuota/TUTTE), filtra solo gli strumenti
+                   assegnati a quella sede oppure condivisi (senza sede specificata).
     """
+    _ensure_mti_instruments_columns()
+    conditions = ["is_deleted = 0"]
+    params = []
+
+    if instrument_type:
+        conditions.append("instrument_type = ?")
+        params.append(instrument_type)
+
+    if user_sede:
+        clean_sede = str(user_sede).strip().upper()
+        if clean_sede and clean_sede not in ("TUTTE", "ALL", "ADMIN"):
+            conditions.append("(UPPER(TRIM(sede)) = ? OR sede IS NULL OR TRIM(sede) = '')")
+            params.append(clean_sede)
+
+    where_clause = " AND ".join(conditions)
+    query = f"SELECT * FROM mti_instruments WHERE {where_clause} ORDER BY instrument_name"
+
     with DatabaseConnection() as conn:
-        if instrument_type:
-            # Verifica se la colonna instrument_type esiste
-            try:
-                return conn.execute(
-                    "SELECT * FROM mti_instruments WHERE is_deleted = 0 AND instrument_type = ? ORDER BY instrument_name",
-                    (instrument_type,)
-                ).fetchall()
-            except sqlite3.OperationalError:
-                # Se la colonna non esiste, restituisci tutti gli strumenti (comportamento legacy)
-                return conn.execute("SELECT * FROM mti_instruments WHERE is_deleted = 0 ORDER BY instrument_name").fetchall()
-        else:
-            return conn.execute("SELECT * FROM mti_instruments WHERE is_deleted = 0 ORDER BY instrument_name").fetchall()
+        return conn.execute(query, tuple(params)).fetchall()
 
 def add_instrument(uuid: str, name: str, serial: str, fw: str, 
-                   cal_date: str, timestamp: str, instrument_type: str = 'electrical'):
+                   cal_date: str, timestamp: str, instrument_type: str = 'electrical',
+                   sede: str = None):
     """Add a new instrument to the database."""
+    _ensure_mti_instruments_columns()
+    clean_sede = str(sede).strip().upper() if sede and str(sede).strip() else None
     with DatabaseConnection() as conn:
-        # Verifica se la colonna instrument_type esiste
-        try:
-            conn.execute(
-                """INSERT INTO mti_instruments 
-                   (uuid, instrument_name, serial_number, fw_version, 
-                    calibration_date, instrument_type, last_modified, is_synced) 
-                   VALUES (?, ?, ?, ?, ?, ?, ?, 0)""",
-                (uuid, name, serial, fw, cal_date, instrument_type, timestamp)
-            )
-        except sqlite3.OperationalError:
-            # Se la colonna non esiste, usa la query senza instrument_type
-            conn.execute(
-                """INSERT INTO mti_instruments 
-                   (uuid, instrument_name, serial_number, fw_version, 
-                    calibration_date, last_modified, is_synced) 
-                   VALUES (?, ?, ?, ?, ?, ?, 0)""",
-                (uuid, name, serial, fw, cal_date, timestamp)
-            )
+        conn.execute(
+            """INSERT INTO mti_instruments 
+               (uuid, instrument_name, serial_number, fw_version, 
+                calibration_date, instrument_type, sede, last_modified, is_synced) 
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)""",
+            (uuid, name, serial, fw, cal_date, instrument_type, clean_sede, timestamp)
+        )
         conn.commit()
 
-def update_instrument(inst_id, name, serial, fw, cal_date, timestamp, instrument_type: str = None, com_port: str = None):
+def update_instrument(inst_id, name, serial, fw, cal_date, timestamp, instrument_type: str = None, com_port: str = None, sede: str = None):
     """Update an instrument in the database.
     
     Args:
@@ -2353,25 +2372,20 @@ def update_instrument(inst_id, name, serial, fw, cal_date, timestamp, instrument
         timestamp: Last modified timestamp
         instrument_type: Optional instrument type ('electrical' or 'functional')
         com_port: Optional COM port (not used in update, kept for backward compatibility)
+        sede: Sede assegnata allo strumento
     """
+    _ensure_mti_instruments_columns()
+    clean_sede = str(sede).strip().upper() if sede and str(sede).strip() else None
     with DatabaseConnection() as conn:
-        # Verifica se la colonna instrument_type esiste
-        try:
-            if instrument_type is not None:
-                conn.execute(
-                    "UPDATE mti_instruments SET instrument_name=?, serial_number=?, fw_version=?, calibration_date=?, instrument_type=?, last_modified=?, is_synced=0 WHERE id=?",
-                    (name, serial, fw, cal_date, instrument_type, timestamp, inst_id)
-                )
-            else:
-                conn.execute(
-                    "UPDATE mti_instruments SET instrument_name=?, serial_number=?, fw_version=?, calibration_date=?, last_modified=?, is_synced=0 WHERE id=?",
-                    (name, serial, fw, cal_date, timestamp, inst_id)
-                )
-        except sqlite3.OperationalError:
-            # Se la colonna non esiste, usa la query senza instrument_type
+        if instrument_type is not None:
             conn.execute(
-                "UPDATE mti_instruments SET instrument_name=?, serial_number=?, fw_version=?, calibration_date=?, last_modified=?, is_synced=0 WHERE id=?",
-                (name, serial, fw, cal_date, timestamp, inst_id)
+                "UPDATE mti_instruments SET instrument_name=?, serial_number=?, fw_version=?, calibration_date=?, instrument_type=?, sede=?, last_modified=?, is_synced=0 WHERE id=?",
+                (name, serial, fw, cal_date, instrument_type, clean_sede, timestamp, inst_id)
+            )
+        else:
+            conn.execute(
+                "UPDATE mti_instruments SET instrument_name=?, serial_number=?, fw_version=?, calibration_date=?, sede=?, last_modified=?, is_synced=0 WHERE id=?",
+                (name, serial, fw, cal_date, clean_sede, timestamp, inst_id)
             )
 
 def soft_delete_instrument(inst_id, timestamp):
@@ -3215,6 +3229,7 @@ def save_functional_verification(
     verification_date: str | None = None,
     verification_code: str | None = None,
     used_instruments: list | None = None,
+    duration_seconds: int | None = None,
 ) -> int:
     if verification_date is None:
         verification_date = datetime.now().strftime("%Y-%m-%d")
@@ -3232,7 +3247,7 @@ def save_functional_verification(
                 table_name="functional_verifications",
             )
 
-        # Prova prima con used_instruments_json (nuovo campo)
+        # Prova prima con used_instruments_json e duration_seconds (campi nuovi)
         try:
             cursor = conn.execute(
                 """
@@ -3241,10 +3256,10 @@ def save_functional_verification(
                     technician_name, technician_username,
                     mti_instrument, mti_serial, mti_version, mti_cal_date,
                     results_json, overall_status, notes, verification_code, structured_results_json,
-                    used_instruments_json,
+                    used_instruments_json, duration_seconds,
                     last_modified, is_synced, is_deleted
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
                 RETURNING id
                 """,
                 (
@@ -3264,11 +3279,12 @@ def save_functional_verification(
                     verification_code,
                     json.dumps(structured_results or {}),
                     used_instruments_json,
+                    duration_seconds,
                     timestamp,
                 ),
             )
         except sqlite3.OperationalError:
-            # Se used_instruments_json non esiste, usa la query senza questo campo
+            # Se used_instruments_json/duration_seconds non esistono, usa la query senza questi campi
             cursor = conn.execute(
                 """
                 INSERT INTO functional_verifications (
@@ -3302,6 +3318,241 @@ def save_functional_verification(
             )
         new_id = cursor.fetchone()[0]
     return verification_code, new_id
+
+
+def get_billing_summary(customer_id: int, destination_id: int | None, start_date: str, end_date: str) -> dict:
+    """
+    Calcola le statistiche per il report di fatturazione: apparecchi verificati
+    (distinti, totali e per tipologia), verifiche elettriche/funzionali eseguite
+    con relativo esito, e tempo totale impiegato (solo verifiche che hanno
+    registrato una durata).
+    """
+    dest_filter = ""
+    dest_params: list = []
+    if destination_id:
+        dest_filter = " AND dev.destination_id = ?"
+        dest_params = [destination_id]
+
+    esito_case = """
+        CASE
+            WHEN {alias}.overall_status IN ('PASSATO', 'CONFORME') THEN 'CONFORME'
+            WHEN {alias}.overall_status = 'CONFORME CON ANNOTAZIONE' THEN 'CONFORME CON ANNOTAZIONE'
+            WHEN {alias}.overall_status IN ('FALLITO', 'NON CONFORME') THEN 'NON CONFORME'
+            ELSE 'NON VERIFICATO'
+        END
+    """
+
+    with DatabaseConnection() as conn:
+        # --- Dispositivi distinti verificati nel periodo (elettrica o funzionale) ---
+        devices_query = f"""
+            SELECT DISTINCT dev.id, dev.description
+            FROM devices dev
+            JOIN destinations dest ON dev.destination_id = dest.id
+            WHERE dest.customer_id = ?{dest_filter}
+            AND dev.is_deleted = 0
+            AND dev.id IN (
+                SELECT device_id FROM verifications
+                WHERE is_deleted = 0 AND verification_date BETWEEN ? AND ?
+                UNION
+                SELECT device_id FROM functional_verifications
+                WHERE is_deleted = 0 AND verification_date BETWEEN ? AND ?
+            )
+        """
+        device_rows = conn.execute(
+            devices_query,
+            tuple([customer_id, *dest_params, start_date, end_date, start_date, end_date]),
+        ).fetchall()
+
+        devices_by_type: dict[str, int] = {}
+        for row in device_rows:
+            tipo = (row["description"] or "N/D").strip() or "N/D"
+            devices_by_type[tipo] = devices_by_type.get(tipo, 0) + 1
+
+        # --- Verifiche funzionali per esito ---
+        func_query = f"""
+            SELECT {esito_case.format(alias="fv")} AS esito,
+                   COUNT(*) AS conteggio,
+                   COALESCE(SUM(fv.duration_seconds), 0) AS durata
+            FROM functional_verifications fv
+            JOIN devices dev ON fv.device_id = dev.id
+            JOIN destinations dest ON dev.destination_id = dest.id
+            WHERE dest.customer_id = ?{dest_filter}
+            AND fv.is_deleted = 0
+            AND fv.verification_date BETWEEN ? AND ?
+            GROUP BY esito
+        """
+        func_rows = conn.execute(
+            func_query, tuple([customer_id, *dest_params, start_date, end_date])
+        ).fetchall()
+
+        # --- Verifiche elettriche per esito ---
+        elec_query = f"""
+            SELECT {esito_case.format(alias="v")} AS esito,
+                   COUNT(*) AS conteggio,
+                   COALESCE(SUM(v.duration_seconds), 0) AS durata
+            FROM verifications v
+            JOIN devices dev ON v.device_id = dev.id
+            JOIN destinations dest ON dev.destination_id = dest.id
+            WHERE dest.customer_id = ?{dest_filter}
+            AND v.is_deleted = 0
+            AND v.verification_date BETWEEN ? AND ?
+            GROUP BY esito
+        """
+        elec_rows = conn.execute(
+            elec_query, tuple([customer_id, *dest_params, start_date, end_date])
+        ).fetchall()
+
+        # --- Verifiche elettriche per tipologia apparecchio ---
+        elec_by_type_query = f"""
+            SELECT COALESCE(NULLIF(TRIM(dev.description), ''), 'N/D') AS tipologia,
+                   COUNT(*) AS conteggio
+            FROM verifications v
+            JOIN devices dev ON v.device_id = dev.id
+            JOIN destinations dest ON dev.destination_id = dest.id
+            WHERE dest.customer_id = ?{dest_filter}
+            AND v.is_deleted = 0
+            AND v.verification_date BETWEEN ? AND ?
+            GROUP BY tipologia
+            ORDER BY tipologia
+        """
+        elec_by_type_rows = conn.execute(
+            elec_by_type_query, tuple([customer_id, *dest_params, start_date, end_date])
+        ).fetchall()
+
+        # --- Verifiche funzionali per tipologia apparecchio ---
+        func_by_type_query = f"""
+            SELECT COALESCE(NULLIF(TRIM(dev.description), ''), 'N/D') AS tipologia,
+                   COUNT(*) AS conteggio
+            FROM functional_verifications fv
+            JOIN devices dev ON fv.device_id = dev.id
+            JOIN destinations dest ON dev.destination_id = dest.id
+            WHERE dest.customer_id = ?{dest_filter}
+            AND fv.is_deleted = 0
+            AND fv.verification_date BETWEEN ? AND ?
+            GROUP BY tipologia
+            ORDER BY tipologia
+        """
+        func_by_type_rows = conn.execute(
+            func_by_type_query, tuple([customer_id, *dest_params, start_date, end_date])
+        ).fetchall()
+
+        # --- Controlli Qualità Sonde Ecografiche per Ecografo ---
+        _ensure_ecografo_quality_tables()
+        cq_query = f"""
+            SELECT
+                dev.id AS device_id,
+                COALESCE(NULLIF(TRIM(dev.ams_inventory), ''), 'N/D') AS ams_inventory,
+                COALESCE(NULLIF(TRIM(dev.customer_inventory), ''), 'N/D') AS customer_inventory,
+                COALESCE(NULLIF(TRIM(dev.description), ''), 'Ecografo') AS description,
+                COALESCE(NULLIF(TRIM(dev.model), ''), 'N/D') AS model,
+                COALESCE(NULLIF(TRIM(dev.serial_number), ''), 'N/D') AS serial_number,
+                COALESCE(NULLIF(TRIM(dev.department), ''), 'N/D') AS department,
+                COUNT(DISTINCT eqc.id) AS check_count,
+                COUNT(eqp.id) AS probe_count
+            FROM ecografo_quality_checks eqc
+            LEFT JOIN ecografo_quality_probes eqp ON eqp.check_id = eqc.id
+            JOIN devices dev ON eqc.device_id = dev.id
+            JOIN destinations dest ON dev.destination_id = dest.id
+            WHERE dest.customer_id = ?{dest_filter}
+            AND eqc.is_deleted = 0
+            AND dev.is_deleted = 0
+            AND eqc.verification_date BETWEEN ? AND ?
+            GROUP BY dev.id, dev.ams_inventory, dev.customer_inventory, dev.description, dev.model, dev.serial_number, dev.department
+            ORDER BY dev.ams_inventory, dev.serial_number
+        """
+        cq_rows = conn.execute(
+            cq_query, tuple([customer_id, *dest_params, start_date, end_date])
+        ).fetchall()
+
+        # --- Calcolo eventuale durata Verifiche di Sistema e CQ Sonde ---
+        sys_durata = 0
+        try:
+            sys_cols = {r[1] for r in conn.execute("PRAGMA table_info(system_verifications)").fetchall()}
+            if "duration_seconds" in sys_cols:
+                dest_filter_sv = dest_filter.replace('dev.', 'sv.')
+                sys_d_query = f"""
+                    SELECT COALESCE(SUM(sv.duration_seconds), 0) AS durata
+                    FROM system_verifications sv
+                    JOIN destinations dest ON sv.destination_id = dest.id
+                    WHERE dest.customer_id = ?{dest_filter_sv}
+                    AND sv.is_deleted = 0
+                    AND sv.verification_date BETWEEN ? AND ?
+                """
+                sys_d_row = conn.execute(sys_d_query, tuple([customer_id, *dest_params, start_date, end_date])).fetchone()
+                if sys_d_row:
+                    sys_durata = sys_d_row["durata"] or 0
+        except Exception:
+            sys_durata = 0
+
+        cq_durata = 0
+        try:
+            cq_cols = {r[1] for r in conn.execute("PRAGMA table_info(ecografo_quality_checks)").fetchall()}
+            if "duration_seconds" in cq_cols:
+                cq_d_query = f"""
+                    SELECT COALESCE(SUM(eqc.duration_seconds), 0) AS durata
+                    FROM ecografo_quality_checks eqc
+                    JOIN devices dev ON eqc.device_id = dev.id
+                    JOIN destinations dest ON dev.destination_id = dest.id
+                    WHERE dest.customer_id = ?{dest_filter}
+                    AND eqc.is_deleted = 0
+                    AND dev.is_deleted = 0
+                    AND eqc.verification_date BETWEEN ? AND ?
+                """
+                cq_d_row = conn.execute(cq_d_query, tuple([customer_id, *dest_params, start_date, end_date])).fetchone()
+                if cq_d_row:
+                    cq_durata = cq_d_row["durata"] or 0
+        except Exception:
+            cq_durata = 0
+
+    # Costruisci dizionari verifiche per tipologia
+    elec_per_tipologia: dict[str, int] = {}
+    for row in elec_by_type_rows:
+        elec_per_tipologia[row["tipologia"]] = row["conteggio"]
+
+    func_per_tipologia: dict[str, int] = {}
+    for row in func_by_type_rows:
+        func_per_tipologia[row["tipologia"]] = row["conteggio"]
+
+    ecografi_cq = [dict(row) for row in cq_rows]
+    totale_sonde_controllate = sum(r["probe_count"] for r in ecografi_cq)
+    totale_controlli_cq = sum(r["check_count"] for r in ecografi_cq)
+
+    def _build_breakdown(rows) -> dict:
+        breakdown = {"CONFORME": 0, "CONFORME CON ANNOTAZIONE": 0, "NON CONFORME": 0, "NON VERIFICATO": 0}
+        total = 0
+        duration = 0
+        for row in rows:
+            esito = row["esito"]
+            count = row["conteggio"] or 0
+            breakdown[esito] = breakdown.get(esito, 0) + count
+            total += count
+            duration += row["durata"] or 0
+        return {"totale": total, "per_esito": breakdown, "durata_secondi": duration}
+
+    functional_stats = _build_breakdown(func_rows)
+    electrical_stats = _build_breakdown(elec_rows)
+
+    tempo_totale_secondi = (
+        electrical_stats["durata_secondi"]
+        + functional_stats["durata_secondi"]
+        + sys_durata
+        + cq_durata
+    )
+    tempo_totale_ore_decimali = round(tempo_totale_secondi / 3600.0, 2)
+
+    return {
+        "totale_apparecchi": len(device_rows),
+        "apparecchi_per_tipologia": dict(sorted(devices_by_type.items(), key=lambda kv: kv[0])),
+        "verifiche_elettriche_per_tipologia": dict(sorted(elec_per_tipologia.items(), key=lambda kv: kv[0])),
+        "verifiche_funzionali_per_tipologia": dict(sorted(func_per_tipologia.items(), key=lambda kv: kv[0])),
+        "verifiche_funzionali": functional_stats,
+        "verifiche_elettriche": electrical_stats,
+        "ecografi_cq": ecografi_cq,
+        "totale_sonde_controllate": totale_sonde_controllate,
+        "totale_controlli_cq": totale_controlli_cq,
+        "tempo_totale_secondi": tempo_totale_secondi,
+        "tempo_totale_ore_decimali": tempo_totale_ore_decimali,
+    }
 
 
 def has_functional_verification_today(device_id: int, verification_date: str) -> bool:
@@ -4256,6 +4507,20 @@ def get_deleted_instruments():
             "SELECT id, uuid, instrument_name, serial_number, fw_version, calibration_date, instrument_type, last_modified FROM mti_instruments WHERE is_deleted = 1 ORDER BY last_modified DESC"
         ).fetchall()
 
+def get_deleted_ecografo_quality_checks():
+    """Restituisce tutti i controlli qualità ecografo marcati come eliminati."""
+    with DatabaseConnection() as conn:
+        return conn.execute("""
+            SELECT eq.id, eq.uuid, eq.verification_date, eq.overall_status,
+                   eq.technician_name, eq.verification_code, eq.last_modified,
+                   COALESCE(d.serial_number, 'N/A') as device_serial,
+                   COALESCE(d.description, 'N/A') as device_description
+            FROM ecografo_quality_checks eq
+            LEFT JOIN devices d ON eq.device_id = d.id
+            WHERE eq.is_deleted = 1
+            ORDER BY eq.last_modified DESC
+        """).fetchall()
+
 def hard_delete_record(table_name: str, record_id: int) -> bool:
     """
     Elimina definitivamente un record dal database.
@@ -4265,7 +4530,7 @@ def hard_delete_record(table_name: str, record_id: int) -> bool:
     allowed_tables = {
         'customers', 'destinations', 'devices', 'verifications',
         'functional_verifications', 'profiles', 'functional_profiles',
-        'mti_instruments'
+        'mti_instruments', 'ecografo_quality_checks'
     }
     if table_name not in allowed_tables:
         logging.error(f"Tentativo di hard delete su tabella non consentita: {table_name}")
@@ -4291,7 +4556,7 @@ def hard_delete_all_for_entity(table_name: str) -> int:
     allowed_tables = {
         'customers', 'destinations', 'devices', 'verifications',
         'functional_verifications', 'profiles', 'functional_profiles',
-        'mti_instruments'
+        'mti_instruments', 'ecografo_quality_checks'
     }
     if table_name not in allowed_tables:
         logging.error(f"Tentativo di hard delete massivo su tabella non consentita: {table_name}")
@@ -4312,7 +4577,7 @@ def get_deleted_counts() -> dict:
     counts = {}
     tables = ['customers', 'destinations', 'devices', 'verifications',
               'functional_verifications', 'profiles', 'functional_profiles',
-              'mti_instruments']
+              'mti_instruments', 'ecografo_quality_checks']
     with DatabaseConnection() as conn:
         for table in tables:
             count = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE is_deleted = 1").fetchone()[0]
@@ -4693,6 +4958,27 @@ def delete_verification_attachment(attachment_id: int) -> bool:
                 logging.warning(f"Impossibile eliminare il file allegato {abs_path}: {e}")
         logging.info(f"Allegato id={attachment_id} eliminato.")
     return deleted
+
+
+def update_attachment_file_path(
+    attachment_id: int, file_path: str, file_size: int | None = None
+) -> bool:
+    """Aggiorna il percorso e la dimensione di un allegato nel database."""
+    if not attachment_id:
+        return False
+    timestamp = datetime.now(timezone.utc).isoformat()
+    with DatabaseConnection() as conn:
+        fields = ["file_path = ?", "last_modified = ?"]
+        params = [file_path, timestamp]
+        if file_size is not None:
+            fields.append("file_size = ?")
+            params.append(file_size)
+        params.append(attachment_id)
+        cursor = conn.execute(
+            f"UPDATE verification_attachments SET {', '.join(fields)} WHERE id = ?",
+            tuple(params),
+        )
+        return cursor.rowcount > 0
 
 
 def get_attachments_count(
@@ -5251,8 +5537,601 @@ def get_all_unavailability_reports_for_destination(destination_id: int) -> list:
     return [dict(r) for r in rows]
 
 
+# ==============================================================================
+# SEZIONE: CONTROLLO QUALITÀ SONDE ECOGRAFO
+# ==============================================================================
+
+def _ensure_ecografo_quality_tables():
+    """Crea le tabelle del controllo qualità sonde se non esistono (compatibilità)."""
+    with DatabaseConnection() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ecografo_quality_checks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uuid TEXT NOT NULL UNIQUE,
+                device_id INTEGER NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+                verification_date TEXT NOT NULL,
+                technician_name TEXT,
+                technician_username TEXT,
+                verification_code TEXT,
+                overall_status TEXT NOT NULL DEFAULT 'NON VALUTATO',
+                notes TEXT,
+                last_modified TEXT NOT NULL,
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                is_synced INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ecografo_quality_probes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uuid TEXT NOT NULL UNIQUE,
+                check_id INTEGER NOT NULL REFERENCES ecografo_quality_checks(id) ON DELETE CASCADE,
+                probe_order INTEGER NOT NULL DEFAULT 0,
+                inventory TEXT,
+                manufacturer TEXT,
+                probe_type TEXT,
+                serial_number TEXT,
+                model TEXT,
+                test_model TEXT,
+                preset TEXT,
+                gain TEXT,
+                power TEXT,
+                baseline TEXT,
+                control_stage TEXT DEFAULT 'Baseline',
+                overall_judgment TEXT,
+                creation_year TEXT,
+                notes TEXT,
+                last_modified TEXT NOT NULL,
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                is_synced INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        # Aggiunta colonne se mancanti per retrocompatibilità
+        existing_cols = {r[1] for r in conn.execute("PRAGMA table_info(ecografo_quality_probes)").fetchall()}
+        for col_name, col_def in [
+            ("control_stage", "TEXT DEFAULT 'Baseline'"),
+            ("overall_judgment", "TEXT"),
+            ("creation_year", "TEXT"),
+            ("notes", "TEXT"),
+        ]:
+            if col_name not in existing_cols:
+                conn.execute(f"ALTER TABLE ecografo_quality_probes ADD COLUMN {col_name} {col_def}")
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ecografo_quality_controls (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uuid TEXT NOT NULL UNIQUE,
+                probe_id INTEGER NOT NULL REFERENCES ecografo_quality_probes(id) ON DELETE CASCADE,
+                control_key TEXT NOT NULL,
+                control_label TEXT,
+                value TEXT,
+                unit TEXT,
+                passed INTEGER,
+                notes TEXT,
+                last_modified TEXT NOT NULL,
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                is_synced INTEGER NOT NULL DEFAULT 0
+            )
+        """)
+        conn.execute("""
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_ecografo_quality_checks_code_unique
+            ON ecografo_quality_checks(verification_code)
+            WHERE verification_code IS NOT NULL AND verification_code <> ''
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_ecografo_quality_checks_device
+            ON ecografo_quality_checks(device_id, verification_date DESC)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_ecografo_quality_probes_check
+            ON ecografo_quality_probes(check_id, probe_order)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_ecografo_quality_controls_probe
+            ON ecografo_quality_controls(probe_id, control_key)
+        """)
+
+
+def save_ecografo_quality_check(
+    check: EcografoQualityCheck,
+    timestamp: str,
+    verification_code: str | None = None,
+) -> tuple[str, int]:
+    """Salva una verifica di controllo qualità sonde ecografo con tutte le sonde."""
+    _ensure_ecografo_quality_tables()
+
+    if not check.uuid:
+        check.uuid = str(uuid.uuid4())
+    if not check.verification_date:
+        check.verification_date = datetime.now().strftime("%Y-%m-%d")
+
+    with DatabaseConnection() as conn:
+        if not verification_code:
+            verification_code = generate_verification_code(
+                conn,
+                check.verification_date,
+                check.technician_name or "",
+                check.technician_username or "",
+                suffix="EQ",
+                table_name="ecografo_quality_checks",
+            )
+        check.verification_code = verification_code
+
+        cursor = conn.execute(
+            """
+            INSERT INTO ecografo_quality_checks (
+                uuid, device_id, verification_date,
+                technician_name, technician_username,
+                verification_code, overall_status, notes,
+                last_modified, is_deleted, is_synced
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
+            RETURNING id
+            """,
+            (
+                check.uuid,
+                check.device_id,
+                check.verification_date,
+                check.technician_name,
+                check.technician_username,
+                check.verification_code,
+                check.overall_status,
+                check.notes,
+                timestamp,
+            ),
+        )
+        check_id = cursor.fetchone()[0]
+        check.id = check_id
+
+        for probe in check.probes:
+            if not probe.uuid:
+                probe.uuid = str(uuid.uuid4())
+            probe.check_id = check_id
+            probe_cursor = conn.execute(
+                """
+                INSERT INTO ecografo_quality_probes (
+                    uuid, check_id, probe_order,
+                    inventory, manufacturer, probe_type, serial_number, model,
+                    test_model, preset, gain, power, baseline,
+                    control_stage, overall_judgment, creation_year, notes,
+                    last_modified, is_deleted, is_synced
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
+                RETURNING id
+                """,
+                (
+                    probe.uuid,
+                    probe.check_id,
+                    probe.probe_order,
+                    probe.inventory,
+                    probe.manufacturer,
+                    probe.probe_type,
+                    probe.serial_number,
+                    probe.model,
+                    probe.test_model,
+                    probe.preset,
+                    probe.gain,
+                    probe.power,
+                    probe.baseline,
+                    probe.control_stage or "Baseline",
+                    probe.overall_judgment,
+                    probe.creation_year,
+                    probe.notes,
+                    timestamp,
+                ),
+            )
+            probe_id = probe_cursor.fetchone()[0]
+            probe.id = probe_id
+
+            for control in probe.controls:
+                if not control.uuid:
+                    control.uuid = str(uuid.uuid4())
+                conn.execute(
+                    """
+                    INSERT INTO ecografo_quality_controls (
+                        uuid, probe_id, control_key, control_label,
+                        value, unit, passed, notes,
+                        last_modified, is_deleted, is_synced
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
+                    """,
+                    (
+                        control.uuid,
+                        probe_id,
+                        control.control_key,
+                        control.control_label,
+                        control.value,
+                        control.unit,
+                        1 if control.passed is True else (0 if control.passed is False else None),
+                        control.notes,
+                        timestamp,
+                    ),
+                )
+
+    return verification_code, check_id
+
+
+def _row_to_check(row: sqlite3.Row) -> dict:
+    data = dict(row)
+    return data
+
+
+def get_ecografo_quality_checks_for_device(device_id: int) -> list[dict]:
+    """Restituisce lo storico dei controlli qualità per un dispositivo."""
+    _ensure_ecografo_quality_tables()
+    with DatabaseConnection() as conn:
+        rows = conn.execute(
+            """
+            SELECT *
+            FROM ecografo_quality_checks
+            WHERE device_id = ? AND is_deleted = 0
+            ORDER BY verification_date DESC, id DESC
+            """,
+            (device_id,),
+        ).fetchall()
+    return [_row_to_check(r) for r in rows]
+
+
+def get_probe_history_for_device(device_id: int) -> dict[str, list[EcografoQualityProbe]]:
+    """Restituisce le verifiche storiche per ciascuna sonda dell'ecografo.
+
+    La chiave è il serial_number (o inventario o indice ordine) della sonda.
+    Il valore è la lista ordinata in senso cronologico dei test effettuati su quella sonda.
+    """
+    _ensure_ecografo_quality_tables()
+    with DatabaseConnection() as conn:
+        rows = conn.execute(
+            """
+            SELECT id
+            FROM ecografo_quality_checks
+            WHERE device_id = ? AND is_deleted = 0
+            ORDER BY verification_date ASC, id ASC
+            """,
+            (device_id,),
+        ).fetchall()
+
+    history: dict[str, list[EcografoQualityProbe]] = {}
+    for r in rows:
+        check = get_ecografo_quality_check(r["id"])
+        if not check:
+            continue
+        for probe in check.probes:
+            probe.verification_date = check.verification_date
+            probe.technician_name = check.technician_name
+            probe.technician_username = check.technician_username
+            # Identificatore primario per abbinare la stessa sonda nel tempo
+            key = (probe.serial_number or probe.inventory or f"probe_order_{probe.probe_order}").strip()
+            if not key:
+                key = f"probe_order_{probe.probe_order}"
+            if key not in history:
+                history[key] = []
+            history[key].append(probe)
+
+    return history
+
+
+def get_ecografo_quality_check(check_id: int) -> EcografoQualityCheck | None:
+    """Recupera una verifica completa con sonde e controlli."""
+    _ensure_ecografo_quality_tables()
+    with DatabaseConnection() as conn:
+        row = conn.execute(
+            """
+            SELECT *
+            FROM ecografo_quality_checks
+            WHERE id = ? AND is_deleted = 0
+            """,
+            (check_id,),
+        ).fetchone()
+        if not row:
+            return None
+
+        check = EcografoQualityCheck(
+            id=row["id"],
+            uuid=row["uuid"],
+            device_id=row["device_id"],
+            verification_date=row["verification_date"],
+            technician_name=row["technician_name"],
+            technician_username=row["technician_username"],
+            verification_code=row["verification_code"],
+            overall_status=row["overall_status"],
+            notes=row["notes"],
+        )
+
+        probe_rows = conn.execute(
+            """
+            SELECT *
+            FROM ecografo_quality_probes
+            WHERE check_id = ? AND is_deleted = 0
+            ORDER BY probe_order
+            """,
+            (check_id,),
+        ).fetchall()
+
+        for probe_row in probe_rows:
+            probe_keys = probe_row.keys()
+            probe = EcografoQualityProbe(
+                id=probe_row["id"],
+                uuid=probe_row["uuid"],
+                check_id=probe_row["check_id"],
+                probe_order=probe_row["probe_order"],
+                inventory=probe_row["inventory"],
+                manufacturer=probe_row["manufacturer"],
+                probe_type=probe_row["probe_type"],
+                serial_number=probe_row["serial_number"],
+                model=probe_row["model"],
+                test_model=probe_row["test_model"],
+                preset=probe_row["preset"],
+                gain=probe_row["gain"],
+                power=probe_row["power"],
+                baseline=probe_row["baseline"],
+                control_stage=probe_row["control_stage"] if "control_stage" in probe_keys and probe_row["control_stage"] else "Baseline",
+                overall_judgment=probe_row["overall_judgment"] if "overall_judgment" in probe_keys else None,
+                creation_year=probe_row["creation_year"] if "creation_year" in probe_keys else None,
+                notes=probe_row["notes"] if "notes" in probe_keys else None,
+            )
+
+            control_rows = conn.execute(
+                """
+                SELECT *
+                FROM ecografo_quality_controls
+                WHERE probe_id = ? AND is_deleted = 0
+                ORDER BY id
+                """,
+                (probe.id,),
+            ).fetchall()
+
+            for control_row in control_rows:
+                passed_raw = control_row["passed"]
+                passed = None
+                if passed_raw == 1:
+                    passed = True
+                elif passed_raw == 0:
+                    passed = False
+
+                probe.controls.append(
+                    EcografoQualityControl(
+                        id=control_row["id"],
+                        uuid=control_row["uuid"],
+                        control_key=control_row["control_key"],
+                        control_label=control_row["control_label"],
+                        value=control_row["value"],
+                        unit=control_row["unit"],
+                        passed=passed,
+                        notes=control_row["notes"],
+                    )
+                )
+
+            check.probes.append(probe)
+
+    return check
+
+
+def get_ecografo_quality_check_with_device_info(check_id: int) -> dict | None:
+    """Recupera una verifica con i dati principali del dispositivo."""
+    _ensure_ecografo_quality_tables()
+    with DatabaseConnection() as conn:
+        row = conn.execute(
+            """
+            SELECT
+                eqc.id,
+                eqc.device_id,
+                eqc.verification_code,
+                eqc.verification_date,
+                eqc.overall_status,
+                eqc.technician_name,
+                eqc.technician_username,
+                eqc.notes,
+                d.description,
+                d.serial_number,
+                d.manufacturer,
+                d.model,
+                d.department,
+                d.customer_inventory,
+                d.ams_inventory,
+                d.destination_id,
+                dest.name AS destination_name,
+                dest.customer_id,
+                c.name AS customer_name
+            FROM ecografo_quality_checks eqc
+            LEFT JOIN devices d ON eqc.device_id = d.id
+            LEFT JOIN destinations dest ON d.destination_id = dest.id
+            LEFT JOIN customers c ON dest.customer_id = c.id
+            WHERE eqc.id = ? AND eqc.is_deleted = 0
+            LIMIT 1
+            """,
+            (check_id,),
+        ).fetchone()
+        return dict(row) if row else None
+
+
+def update_ecografo_quality_check(
+    check_id: int,
+    check: EcografoQualityCheck,
+    timestamp: str,
+) -> bool:
+    """Aggiorna una verifica esistente: sostituisce sonde e controlli."""
+    _ensure_ecografo_quality_tables()
+    with DatabaseConnection() as conn:
+        cur = conn.execute(
+            """
+            UPDATE ecografo_quality_checks
+            SET verification_date = ?,
+                technician_name = ?,
+                technician_username = ?,
+                overall_status = ?,
+                notes = ?,
+                last_modified = ?,
+                is_synced = 0
+            WHERE id = ? AND is_deleted = 0
+            """,
+            (
+                check.verification_date,
+                check.technician_name,
+                check.technician_username,
+                check.overall_status,
+                check.notes,
+                timestamp,
+                check_id,
+            ),
+        )
+        if cur.rowcount == 0:
+            return False
+
+        # Soft-delete sonde e controlli precedenti
+        conn.execute(
+            """
+            UPDATE ecografo_quality_probes
+            SET is_deleted = 1, is_synced = 0, last_modified = ?
+            WHERE check_id = ?
+            """,
+            (timestamp, check_id),
+        )
+        conn.execute(
+            """
+            UPDATE ecografo_quality_controls
+            SET is_deleted = 1, is_synced = 0, last_modified = ?
+            WHERE probe_id IN (
+                SELECT id FROM ecografo_quality_probes WHERE check_id = ?
+            )
+            """,
+            (timestamp, check_id),
+        )
+
+        # Reinserisce sonde e controlli
+        for probe in check.probes:
+            if not probe.uuid:
+                probe.uuid = str(uuid.uuid4())
+            probe.check_id = check_id
+            probe_cursor = conn.execute(
+                """
+                INSERT INTO ecografo_quality_probes (
+                    uuid, check_id, probe_order,
+                    inventory, manufacturer, probe_type, serial_number, model,
+                    test_model, preset, gain, power, baseline,
+                    last_modified, is_deleted, is_synced
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
+                RETURNING id
+                """,
+                (
+                    probe.uuid,
+                    probe.check_id,
+                    probe.probe_order,
+                    probe.inventory,
+                    probe.manufacturer,
+                    probe.probe_type,
+                    probe.serial_number,
+                    probe.model,
+                    probe.test_model,
+                    probe.preset,
+                    probe.gain,
+                    probe.power,
+                    probe.baseline,
+                    timestamp,
+                ),
+            )
+            probe_id = probe_cursor.fetchone()[0]
+
+            for control in probe.controls:
+                if not control.uuid:
+                    control.uuid = str(uuid.uuid4())
+                conn.execute(
+                    """
+                    INSERT INTO ecografo_quality_controls (
+                        uuid, probe_id, control_key, control_label,
+                        value, unit, passed, notes,
+                        last_modified, is_deleted, is_synced
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
+                    """,
+                    (
+                        control.uuid,
+                        probe_id,
+                        control.control_key,
+                        control.control_label,
+                        control.value,
+                        control.unit,
+                        1 if control.passed is True else (0 if control.passed is False else None),
+                        control.notes,
+                        timestamp,
+                    ),
+                )
+
+    return True
+
+
+def delete_ecografo_quality_check(check_id: int, timestamp: str) -> bool:
+    """Soft-delete di una verifica di controllo qualità sonde."""
+    _ensure_ecografo_quality_tables()
+    with DatabaseConnection() as conn:
+        cur = conn.execute(
+            """
+            UPDATE ecografo_quality_checks
+            SET is_deleted = 1, is_synced = 0, last_modified = ?
+            WHERE id = ?
+            """,
+            (timestamp, check_id),
+        )
+        if cur.rowcount == 0:
+            return False
+        conn.execute(
+            """
+            UPDATE ecografo_quality_probes
+            SET is_deleted = 1, is_synced = 0, last_modified = ?
+            WHERE check_id = ?
+            """,
+            (timestamp, check_id),
+        )
+        conn.execute(
+            """
+            UPDATE ecografo_quality_controls
+            SET is_deleted = 1, is_synced = 0, last_modified = ?
+            WHERE probe_id IN (
+                SELECT id FROM ecografo_quality_probes WHERE check_id = ?
+            )
+            """,
+            (timestamp, check_id),
+        )
+    return True
+
+
+def get_ecografo_quality_checks_by_date_range(
+    start_date: str,
+    end_date: str,
+    destination_id: int | None = None,
+    customer_id: int | None = None,
+) -> list:
+    """Recupera i controlli qualità in un intervallo, opzionalmente filtrati."""
+    _ensure_ecografo_quality_tables()
+    with DatabaseConnection() as conn:
+        params = [start_date, end_date]
+        extra_where = ""
+        if destination_id is not None:
+            extra_where = " AND d.destination_id = ?"
+            params.append(destination_id)
+        elif customer_id is not None:
+            extra_where = " AND dest.customer_id = ?"
+            params.append(customer_id)
+
+        query = f"""
+            SELECT eqc.*,
+                   d.serial_number, d.ams_inventory, d.customer_inventory,
+                   d.description, d.manufacturer, d.model, d.department,
+                   dest.name as destination_name
+            FROM ecografo_quality_checks eqc
+            JOIN devices d ON eqc.device_id = d.id
+            JOIN destinations dest ON d.destination_id = dest.id
+            WHERE eqc.is_deleted = 0 AND d.is_deleted = 0
+            AND eqc.verification_date BETWEEN ? AND ?
+            {extra_where}
+            ORDER BY d.description, eqc.verification_date
+        """
+        return conn.execute(query, tuple(params)).fetchall()
+
+
 # Applica le migrazioni del database all'avvio del modulo
 migrate_database()
 ensure_assignments_table()
 ensure_unavailability_table()
+_ensure_ecografo_quality_tables()
+_ensure_mti_instruments_columns()
 

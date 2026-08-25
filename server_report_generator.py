@@ -24,7 +24,7 @@ from reportlab.lib.enums import TA_CENTER
 from PIL import Image as PILImage, ExifTags
 
 # ─── Costanti (identiche al desktop) ─────────────────────────────────────────
-COLOR_GRID          = colors.HexColor('#e2e8f0')
+COLOR_GRID          = colors.HexColor('#475569')
 COLOR_HEADER_BG     = colors.HexColor('#1e3a5f')
 COLOR_HEADER_TEXT   = colors.HexColor('#ffffff')
 COLOR_MAIN_BLUE     = colors.HexColor('#1e3a5f')

@@ -21,7 +21,8 @@ LOCK_FILE = config.LOCK_FILE_DIR
 SYNC_ORDER = [
     "customers", "mti_instruments", "signatures", "profiles", "profile_tests", "functional_profiles",
     "destinations", "devices", "verifications", "functional_verifications", "verification_attachments",
-    "system_verifications", "system_verification_devices", "verification_assignments", "device_unavailability_reports", "audit_log"
+    "system_verifications", "system_verification_devices", "verification_assignments", "device_unavailability_reports",
+    "ecografo_quality_checks", "ecografo_quality_probes", "ecografo_quality_controls", "audit_log"
 ]
 
 # Timeout e retry configuration
@@ -327,6 +328,9 @@ class ConflictAnalyzer:
             'verification_attachments': ['filename', 'file_data', 'verification_id', 'uuid'],
             'system_verifications': ['system_name', 'verification_date', 'overall_status', 'destination_id'],
             'system_verification_devices': ['system_verification_id', 'device_id'],
+            'ecografo_quality_checks': ['device_id', 'verification_date', 'overall_status'],
+            'ecografo_quality_probes': ['check_id', 'serial_number', 'model'],
+            'ecografo_quality_controls': ['probe_id', 'control_key', 'value'],
         }
         return critical_by_table.get(table, [])
 
@@ -695,6 +699,27 @@ def _get_unsynced_local_changes():
             "WHERE r.is_synced = 0",
             ["device_id", "destination_id"]
         ),
+        "ecografo_quality_checks": (
+            "SELECT eq.*, d.uuid as device_uuid "
+            "FROM ecografo_quality_checks eq "
+            "JOIN devices d ON eq.device_id = d.id "
+            "WHERE eq.is_synced = 0",
+            ["device_id"]
+        ),
+        "ecografo_quality_probes": (
+            "SELECT eqp.*, eq.uuid as check_uuid "
+            "FROM ecografo_quality_probes eqp "
+            "JOIN ecografo_quality_checks eq ON eqp.check_id = eq.id "
+            "WHERE eqp.is_synced = 0",
+            ["check_id"]
+        ),
+        "ecografo_quality_controls": (
+            "SELECT eqc.*, eqp.uuid as probe_uuid "
+            "FROM ecografo_quality_controls eqc "
+            "JOIN ecografo_quality_probes eqp ON eqc.probe_id = eqp.id "
+            "WHERE eqc.is_synced = 0",
+            ["probe_id"]
+        ),
         "audit_log": ("SELECT * FROM {table} WHERE is_synced = 0", [])
     }
 
@@ -782,7 +807,10 @@ def _apply_server_changes(conn, changes):
     """
     applied_counts = {table: 0 for table in SYNC_ORDER}
     conflicts_list = []  # Lista dei conflitti generati durante l'applicazione
-    uuid_to_local_id = {"customers": {}, "devices": {}, "profiles": {}, "destinations": {}, "system_verifications": {}}
+    uuid_to_local_id = {
+        "customers": {}, "devices": {}, "profiles": {}, "destinations": {},
+        "system_verifications": {}, "ecografo_quality_checks": {}, "ecografo_quality_probes": {}
+    }
     cursor = conn.cursor()
     
     # Log inizio applicazione cambiamenti
@@ -1013,6 +1041,33 @@ def _apply_server_changes(conn, changes):
                         fk_missing = True
                     else:
                         record['destination_id'] = local_dest_id
+
+                if table == 'ecografo_quality_checks' and not fk_missing and not fk_orphan:
+                    local_device_id = resolve_fk("devices", "device_uuid")
+                    if local_device_id == -1:
+                        fk_orphan = True
+                    elif local_device_id is None:
+                        fk_missing = True
+                    else:
+                        record['device_id'] = local_device_id
+
+                if table == 'ecografo_quality_probes' and not fk_missing and not fk_orphan:
+                    local_check_id = resolve_fk("ecografo_quality_checks", "check_uuid")
+                    if local_check_id == -1:
+                        fk_orphan = True
+                    elif local_check_id is None:
+                        fk_missing = True
+                    else:
+                        record['check_id'] = local_check_id
+
+                if table == 'ecografo_quality_controls' and not fk_missing and not fk_orphan:
+                    local_probe_id = resolve_fk("ecografo_quality_probes", "probe_uuid")
+                    if local_probe_id == -1:
+                        fk_orphan = True
+                    elif local_probe_id is None:
+                        fk_missing = True
+                    else:
+                        record['probe_id'] = local_probe_id
 
                 # Record orfano dal server (UUID padre assente nel payload) → salta silenziosamente
                 if fk_orphan:
@@ -1270,7 +1325,8 @@ def _apply_hard_deletes(conn, hard_deletes: dict) -> dict:
         'functional_verifications', 'profiles', 'profile_tests',
         'functional_profiles', 'mti_instruments', 'audit_log',
         'verification_attachments', 'system_verifications',
-        'system_verification_devices'
+        'system_verification_devices', 'ecografo_quality_checks',
+        'ecografo_quality_probes', 'ecografo_quality_controls'
     }
     
     for table_name, uuids in hard_deletes.items():
@@ -1735,6 +1791,9 @@ def run_sync(full_sync=False):
                 "verifications": "verifiche elettriche",
                 "functional_verifications": "verifiche funzionali",
                 "verification_attachments": "allegati",
+                "ecografo_quality_checks": "controlli qualità ecografo",
+                "ecografo_quality_probes": "sonde ecografo",
+                "ecografo_quality_controls": "parametri controllo qualità",
                 "audit_log": "log delle operazioni"
             }
 
@@ -1751,6 +1810,9 @@ def run_sync(full_sync=False):
                 "verifications": "verifica elettrica",
                 "functional_verifications": "verifica funzionale",
                 "verification_attachments": "allegato",
+                "ecografo_quality_checks": "controllo qualità ecografo",
+                "ecografo_quality_probes": "sonda ecografo",
+                "ecografo_quality_controls": "parametro controllo qualità",
                 "audit_log": "log delle operazioni"
             }
             

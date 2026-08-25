@@ -79,6 +79,7 @@ ICONS: dict[str, str] = {
     "stats":                "fa5s.chart-line",
     "audit":                "fa5s.list-alt",
     "quality":              "fa5s.check-double",
+    "ultrasound":           "fa5s.wave-square",
     # ── Temi / personalizzazione ───────────────────────────────────────────
     "theme":                "fa5s.palette",
     "logo":                 "fa5s.image",

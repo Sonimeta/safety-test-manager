@@ -11,6 +11,7 @@ CURRENT_USER = {
     "role": None,
     "token": None,
     "full_name": None,
+    "sede": None,
     "last_sync_timestamp": None
 }
 
@@ -28,17 +29,18 @@ def set_user_sync_timestamp(username: str, timestamp: str | None):
     settings = QSettings("ELSON META", "SafetyTester")
     settings.setValue(f"sync_timestamp_{username}", timestamp)
 
-def set_current_user(username: str, role: str, token: str, full_name: str):
+def set_current_user(username: str, role: str, token: str, full_name: str, sede: str = None):
     """Imposta l'utente attivo per la sessione corrente e carica il suo timestamp personale."""
     CURRENT_USER["username"] = username
     CURRENT_USER["role"] = role
     CURRENT_USER["token"] = f"Bearer {token}"
     CURRENT_USER["full_name"] = full_name
+    CURRENT_USER["sede"] = sede.strip().upper() if sede and str(sede).strip() else None
     # Carica il timestamp specifico per questo utente dalle impostazioni persistenti
     CURRENT_USER["last_sync_timestamp"] = get_user_sync_timestamp(username)
 
 def save_session_to_disk():
-    """Salva i dati della sessione corrente (token, ruolo) su file, escludendo il timestamp."""
+    """Salva i dati della sessione corrente (token, ruolo, sede) su file, escludendo il timestamp."""
     session_data = CURRENT_USER.copy()
     session_data.pop('last_sync_timestamp', None)
     with open(config.SESSION_FILE, 'w') as f:
@@ -71,6 +73,10 @@ def get_current_username() -> str:
     """Restituisce lo username dell'utente loggato."""
     return CURRENT_USER["username"] or ""
 
+def get_current_sede() -> str | None:
+    """Restituisce la sede dell'utente loggato."""
+    return CURRENT_USER.get("sede")
+
 def get_current_user_info() -> dict:
     """Restituisce l'intero dizionario con le informazioni dell'utente corrente."""
     return CURRENT_USER
@@ -84,7 +90,7 @@ def logout():
     global CURRENT_USER
     CURRENT_USER = {
         "username": None, "role": None, "token": None,
-        "full_name": None, "last_sync_timestamp": None
+        "full_name": None, "sede": None, "last_sync_timestamp": None
     }
     if os.path.exists(config.SESSION_FILE):
         os.remove(config.SESSION_FILE)

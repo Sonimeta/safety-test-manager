@@ -193,9 +193,11 @@ class AdvancedReportDialog(QDialog):
         self.electrical_check = QCheckBox("Verifiche Elettriche")
         self.functional_check = QCheckBox("Verifiche Funzionali")
         self.system_check = QCheckBox("Verifiche di Sistema")
+        self.ecografo_cq_check = QCheckBox("CQ Sonde")
         self.electrical_check.setChecked(True)
         self.functional_check.setChecked(True)
         self.system_check.setChecked(True)
+        self.ecografo_cq_check.setChecked(True)
 
         self.latest_only_check = QCheckBox("Solo ultima verifica per dispositivo")
         self.latest_only_check.setChecked(True)
@@ -226,6 +228,7 @@ class AdvancedReportDialog(QDialog):
         type_row.addWidget(self.electrical_check)
         type_row.addWidget(self.functional_check)
         type_row.addWidget(self.system_check)
+        type_row.addWidget(self.ecografo_cq_check)
         options_layout.addRow("Tipi:", type_row)
         options_layout.addRow(self.latest_only_check)
         options_layout.addRow("Formato nome file:", self.naming_format_combo)
@@ -373,6 +376,7 @@ class AdvancedReportDialog(QDialog):
             "include_electrical": self.electrical_check.isChecked(),
             "include_functional": self.functional_check.isChecked(),
             "include_system": self.system_check.isChecked(),
+            "include_ecografo_cq": self.ecografo_cq_check.isChecked(),
             "latest_only": self.latest_only_check.isChecked(),
             "naming_format": self.naming_format_combo.currentData(),
             "output_folder": self.output_path_edit.text().strip(),
@@ -391,7 +395,7 @@ class AdvancedReportDialog(QDialog):
         if not options["start_date"] or not options["end_date"]:
             QMessageBox.warning(self, "DATI MANCANTI", "Seleziona un intervallo di date.")
             return
-        if not options["include_electrical"] and not options["include_functional"] and not options.get("include_system"):
+        if not options["include_electrical"] and not options["include_functional"] and not options.get("include_system") and not options.get("include_ecografo_cq"):
             QMessageBox.warning(self, "DATI MANCANTI", "Seleziona almeno un tipo di verifica.")
             return
         if options["scope"] == "customer" and not options["customer_id"]:
@@ -971,7 +975,8 @@ class InstrumentSelectionDialog(QDialog):
         if self.instruments:
             for i, inst_row in enumerate(self.instruments):
                 instrument = dict(inst_row)
-                self.combo.addItem(f"{str(instrument.get('instrument_name')).upper()} (S/N: {str(instrument.get('serial_number')).upper()})", instrument.get('id'))
+                sede_txt = f" [{str(instrument.get('sede')).upper()}]" if instrument.get('sede') else ""
+                self.combo.addItem(f"{str(instrument.get('instrument_name')).upper()} (S/N: {str(instrument.get('serial_number')).upper()}){sede_txt}", instrument.get('id'))
                 if instrument.get('is_default'): default_idx = i
             if default_idx != -1: self.combo.setCurrentIndex(default_idx)
         layout.addRow("STRUMENTO:", self.combo)
@@ -1984,6 +1989,38 @@ class EditVerificationDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+    # ── Parsing date ───────────────────────────────────────────────────
+    def _parse_to_qdate(self, raw_value) -> QDate:
+        if not raw_value:
+            return QDate()
+        raw_str = str(raw_value).strip()
+        if not raw_str or raw_str.upper() in ('N/D', 'NONE', 'NULL', 'UNDEFINED'):
+            return QDate()
+
+        if 'T' in raw_str:
+            raw_str = raw_str.split('T')[0]
+        elif ' ' in raw_str:
+            raw_str = raw_str.split(' ')[0]
+
+        qd = QDate.fromString(raw_str, Qt.ISODate)
+        if qd.isValid():
+            return qd
+
+        formats = [
+            "yyyy-MM-dd",
+            "dd/MM/yyyy",
+            "dd-MM-yyyy",
+            "yyyy/MM/dd",
+            "yyyy.MM.dd",
+            "dd.MM.yyyy",
+        ]
+        for fmt in formats:
+            qd = QDate.fromString(raw_str, fmt)
+            if qd.isValid():
+                return qd
+
+        return QDate()
+
     # ── Tab Generale ────────────────────────────────────────────────────
     def _build_general_tab(self):
         tab = QWidget()
@@ -2004,38 +2041,29 @@ class EditVerificationDialog(QDialog):
         self.date_edit.setDisplayFormat("yyyy-MM-dd")
         from app.ui.widgets import fix_calendar_popup
         fix_calendar_popup(self.date_edit)
-        raw_date = self.data.get('verification_date', '')
-        try:
-            qd = QDate.fromString(raw_date, "yyyy-MM-dd")
-            if qd.isValid():
-                self.date_edit.setDate(qd)
-            else:
-                self.date_edit.setDate(QDate.currentDate())
-        except Exception:
+        raw_date = self.data.get('verification_date') or self.data.get('date') or ''
+        qd_date = self._parse_to_qdate(raw_date)
+        if qd_date.isValid():
+            self.date_edit.setDate(qd_date)
+        else:
             self.date_edit.setDate(QDate.currentDate())
         form.addRow("Data verifica:", self.date_edit)
 
         self.status_combo = QComboBox()
         if self.verification_type == "FUNZIONALE":
-            self.status_combo.addItems(["CONFORME", "CONFORME CON ANNOTAZIONE", "NON CONFORME"])
+            default_statuses = ["CONFORME", "CONFORME CON ANNOTAZIONE", "NON CONFORME", "PASSATO", "FALLITO"]
         else:
-            self.status_combo.addItems(["PASSATO", "CONFORME CON ANNOTAZIONE", "FALLITO"])
-        current_status = str(self.data.get('overall_status', '')).upper()
-        idx = self.status_combo.findText(current_status)
-        if idx >= 0:
-            self.status_combo.setCurrentIndex(idx)
-        else:
-            # Mappatura tra nomenclature alternative
-            status_aliases = {
-                "CONFORME": "PASSATO",
-                "PASSATO": "CONFORME",
-                "NON CONFORME": "FALLITO",
-                "FALLITO": "NON CONFORME",
-            }
-            alias = status_aliases.get(current_status, '')
-            alias_idx = self.status_combo.findText(alias)
-            if alias_idx >= 0:
-                self.status_combo.setCurrentIndex(alias_idx)
+            default_statuses = ["CONFORME", "PASSATO", "CONFORME CON ANNOTAZIONE", "NON CONFORME", "FALLITO"]
+        self.status_combo.addItems(default_statuses)
+
+        current_status = str(self.data.get('overall_status', '')).strip().upper()
+        if current_status:
+            idx = self.status_combo.findText(current_status)
+            if idx >= 0:
+                self.status_combo.setCurrentIndex(idx)
+            else:
+                self.status_combo.addItem(current_status)
+                self.status_combo.setCurrentText(current_status)
         form.addRow("Esito globale:", self.status_combo)
 
         self.technician_edit = QLineEdit(self.data.get('technician_name', ''))
@@ -2251,15 +2279,24 @@ class EditVerificationDialog(QDialog):
         self.mti_cal_date_edit.setDisplayFormat("yyyy-MM-dd")
         from app.ui.widgets import fix_calendar_popup
         fix_calendar_popup(self.mti_cal_date_edit)
-        raw_cal = str(self.data.get('mti_cal_date', '') or '')
-        try:
-            qd = QDate.fromString(raw_cal, "yyyy-MM-dd")
-            if qd.isValid():
-                self.mti_cal_date_edit.setDate(qd)
-            else:
-                self.mti_cal_date_edit.setDate(QDate.currentDate())
-        except Exception:
+
+        raw_cal = (
+            self.data.get('mti_cal_date') or 
+            self.data.get('cal_date') or 
+            self.data.get('calibration_date') or 
+            ''
+        )
+        qd_cal = self._parse_to_qdate(raw_cal)
+        if qd_cal.isValid():
+            self.mti_cal_date_edit.setDate(qd_cal)
+            self._has_valid_mti_cal_date = True
+        else:
             self.mti_cal_date_edit.setDate(QDate.currentDate())
+            self._has_valid_mti_cal_date = False
+
+        self._user_modified_mti_cal_date = False
+        self.mti_cal_date_edit.dateChanged.connect(lambda d: setattr(self, '_user_modified_mti_cal_date', True))
+
         form.addRow("Data calibrazione:", self.mti_cal_date_edit)
 
         self.tabs.addTab(tab, "Strumento MTI")
@@ -2276,6 +2313,19 @@ class EditVerificationDialog(QDialog):
 
     # ── Raccolta dati ───────────────────────────────────────────────────
     def get_data(self) -> dict:
+        raw_original_cal = (
+            self.data.get('mti_cal_date')
+            if 'mti_cal_date' in self.data else (
+                self.data.get('cal_date')
+                if 'cal_date' in self.data else
+                self.data.get('calibration_date')
+            )
+        )
+        if getattr(self, '_has_valid_mti_cal_date', False) or getattr(self, '_user_modified_mti_cal_date', False):
+            mti_cal_date_str = self.mti_cal_date_edit.date().toString("yyyy-MM-dd")
+        else:
+            mti_cal_date_str = raw_original_cal if raw_original_cal is not None else ""
+
         result: dict = {
             'verification_date': self.date_edit.date().toString("yyyy-MM-dd"),
             'overall_status': self.status_combo.currentText(),
@@ -2283,7 +2333,7 @@ class EditVerificationDialog(QDialog):
             'mti_instrument': self.mti_instrument_edit.text().strip(),
             'mti_serial': self.mti_serial_edit.text().strip(),
             'mti_version': self.mti_version_edit.text().strip(),
-            'mti_cal_date': self.mti_cal_date_edit.date().toString("yyyy-MM-dd"),
+            'mti_cal_date': mti_cal_date_str,
         }
 
         if self.verification_type == "FUNZIONALE":

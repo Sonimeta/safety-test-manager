@@ -17,8 +17,8 @@ class UserManagerDialog(QDialog):
         
         layout = QVBoxLayout(self)
         self.table = QTableWidget()
-        self.table.setColumnCount(4)
-        self.table.setHorizontalHeaderLabels(["USERNAME", "NOME", "COGNOME", "RUOLO"])
+        self.table.setColumnCount(5)
+        self.table.setHorizontalHeaderLabels(["USERNAME", "NOME", "COGNOME", "RUOLO", "SEDE"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -55,6 +55,7 @@ class UserManagerDialog(QDialog):
                 self.table.setItem(row, 1, QTableWidgetItem(str(user.get('first_name', '')).upper()))
                 self.table.setItem(row, 2, QTableWidgetItem(str(user.get('last_name', '')).upper()))
                 self.table.setItem(row, 3, QTableWidgetItem(str(user['role']).upper()))
+                self.table.setItem(row, 4, QTableWidgetItem(str(user.get('sede', '') or '').upper()))
         except requests.RequestException as e:
             self.users_data = []
             self.table.setRowCount(0)
@@ -110,11 +111,13 @@ class UserManagerDialog(QDialog):
                 payload['password'] = updated_data.get('password')
             # --- FINE MODIFICA ---
         
-            # Aggiungiamo il controllo per nome e cognome
+            # Aggiungiamo il controllo per nome, cognome e sede
             if updated_data['first_name'] != user_data_to_edit.get('first_name', ''):
                 payload['first_name'] = updated_data['first_name']
             if updated_data['last_name'] != user_data_to_edit.get('last_name', ''):
                 payload['last_name'] = updated_data['last_name']
+            if (updated_data.get('sede') or '') != (user_data_to_edit.get('sede') or ''):
+                payload['sede'] = updated_data.get('sede')
         
             if not payload:
                 QMessageBox.warning(self, "NESSUNA MODIFICA", "NESSUNA MODIFICA EFFETTUATA.")

@@ -66,11 +66,11 @@ class UsedInstrumentsSelectionDialog(QDialog):
             except (TypeError, ValueError):
                 pass
         
-        # Carica gli strumenti disponibili.
+        # Carica gli strumenti disponibili filtrati per sede dell'utente.
         # Usiamo sempre anche la lista completa per coprire profili legacy o strumenti
         # salvati con tipo diverso da "functional".
-        functional_instruments = services.database.get_all_instruments('functional') or []
-        all_instruments_full = services.database.get_all_instruments() or []
+        functional_instruments = services.get_all_instruments('functional') or []
+        all_instruments_full = services.get_all_instruments() or []
 
         instruments_by_id = {}
         for inst_row in all_instruments_full:
@@ -89,7 +89,8 @@ class UsedInstrumentsSelectionDialog(QDialog):
         for instrument in instruments_by_id.values():
             inst_id = instrument.get('id')
             if (inst_id in allowed_ids_int) or (str(inst_id) in allowed_ids_str):
-                display_text = f"{instrument.get('instrument_name', 'N/A')} (S/N: {instrument.get('serial_number', 'N/A')})"
+                sede_txt = f" [{str(instrument.get('sede')).upper()}]" if instrument.get('sede') else ""
+                display_text = f"{instrument.get('instrument_name', 'N/A')} (S/N: {instrument.get('serial_number', 'N/A')}){sede_txt}"
                 cal_date = instrument.get('calibration_date')
                 if cal_date:
                     display_text += f" - Cal: {cal_date}"
@@ -188,7 +189,7 @@ class UsedInstrumentsSelectionDialog(QDialog):
     def get_selected_instruments(self) -> list:
         """Restituisce una lista di dizionari con i dati degli strumenti selezionati."""
         selected_instruments = []
-        all_instruments = services.database.get_all_instruments()
+        all_instruments = services.get_all_instruments(apply_user_filter=False)
         instruments_dict = {dict(inst)['id']: dict(inst) for inst in all_instruments}
 
         for item in self.instruments_list.selectedItems():

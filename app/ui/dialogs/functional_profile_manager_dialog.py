@@ -1423,8 +1423,8 @@ class FunctionalProfileEditorDialog(QDialog):
 
         self.instruments_list = QListWidget()
         self.instruments_list.setSelectionMode(QAbstractItemView.MultiSelection)
-        # Carica solo strumenti funzionali
-        functional_instruments = services.database.get_all_instruments('functional')
+        # Carica solo strumenti funzionali (tutti gli strumenti disponibili per configurazione profilo)
+        functional_instruments = services.get_all_instruments('functional', apply_user_filter=False)
         self.all_instruments = {}  # Dizionario per mappare ID -> dati strumento
         # Normalizza gli ID già associati al profilo (int + fallback stringa)
         selected_ids_raw = self.profile.instrument_ids or []
@@ -1445,7 +1445,7 @@ class FunctionalProfileEditorDialog(QDialog):
             self.all_instruments[inst_id] = instrument
         if not self.all_instruments:
             # Fallback: se non esiste distinzione per tipo, usa tutti gli strumenti
-            for inst_row in (services.database.get_all_instruments() or []):
+            for inst_row in (services.get_all_instruments(apply_user_filter=False) or []):
                 instrument = dict(inst_row)
                 inst_id = instrument.get('id')
                 self.all_instruments[inst_id] = instrument
@@ -1881,7 +1881,8 @@ class FunctionalProfileEditorDialog(QDialog):
                 status_txt = " [CALIBRAZIONE SCADUTA]"
 
         missing_txt = " [MANCANTE]" if instrument.get("_missing") else ""
-        return f"{name} (S/N: {serial}) - Tipo: {type_txt} - Cal: {cal_txt}{status_txt}{missing_txt}"
+        sede_txt = f" - Sede: {str(instrument.get('sede')).upper()}" if instrument.get('sede') else ""
+        return f"{name} (S/N: {serial}){sede_txt} - Tipo: {type_txt} - Cal: {cal_txt}{status_txt}{missing_txt}"
 
     def _refresh_instruments_list(self):
         search = self.instruments_search_edit.text().strip().lower() if hasattr(self, "instruments_search_edit") else ""

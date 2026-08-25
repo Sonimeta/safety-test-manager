@@ -692,6 +692,7 @@ class User(BaseModel):
     role: str
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    sede: Optional[str] = None
 
     @field_validator('username')
     @classmethod
@@ -726,6 +727,7 @@ class UserUpdate(BaseModel):
     password: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    sede: Optional[str] = None
 
     @field_validator('role')
     @classmethod
@@ -754,6 +756,7 @@ class SyncRecord(BaseModel):
 
 class InstrumentRecord(SyncRecord):
     is_default: bool
+    sede: Optional[str] = None
 
 class SyncChanges(BaseModel):
     customers: List[SyncRecord] = []
@@ -771,6 +774,9 @@ class SyncChanges(BaseModel):
     system_verification_devices: List[SyncRecord] = []
     verification_assignments: List[SyncRecord] = []
     device_unavailability_reports: List[SyncRecord] = []
+    ecografo_quality_checks: List[SyncRecord] = []
+    ecografo_quality_probes: List[SyncRecord] = []
+    ecografo_quality_controls: List[SyncRecord] = []
     audit_log: List[SyncRecord] = []
 
 class SyncPayload(BaseModel):
@@ -799,6 +805,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
             raise credentials_exception
         first_name = payload.get("first_name")
         last_name = payload.get("last_name")
+        sede = payload.get("sede")
         # Retrocompatibilità: token emessi prima della fix contenevano solo full_name.
         if first_name is None and last_name is None:
             full_name: str = payload.get("full_name", "")
@@ -810,6 +817,7 @@ def get_current_user(token: str = Depends(oauth2_scheme)):
             role=role,
             first_name=first_name or None,
             last_name=last_name or None,
+            sede=sede or None,
         )
     except ExpiredSignatureError:
         logger.warning("Token di accesso scaduto")
@@ -858,7 +866,8 @@ def get_db_connection():
     return psycopg2.connect(**DB_PARAMS)
 
 def _ensure_hard_deletes_table():
-    """Crea la tabella hard_deletes se non esiste (tombstone per propagazione eliminazioni definitive)."""
+    """Crea la tabella hard_deletes se non esiste (tombstone per propagazione eliminazioni definitive)
+    e assicura la presenza delle colonne necessarie (come sede)."""
     conn = None
     try:
         conn = get_db_connection()
@@ -874,10 +883,15 @@ def _ensure_hard_deletes_table():
         """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_hard_deletes_deleted_at ON hard_deletes(deleted_at)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_hard_deletes_table_uuid ON hard_deletes(table_name, record_uuid)")
+        
+        # Colonne aggiuntive (migrazioni idempotenti)
+        cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS sede TEXT")
+        cursor.execute("ALTER TABLE mti_instruments ADD COLUMN IF NOT EXISTS sede TEXT")
+
         conn.commit()
-        logger.info("✓ Tabella hard_deletes verificata/creata con successo")
+        logger.info("✓ Tabelle server e colonne sede verificate con successo")
     except Exception as e:
-        logger.error(f"Errore nella creazione tabella hard_deletes: {e}")
+        logger.error(f"Errore nella verifica schema/tabelle: {e}")
         if conn: conn.rollback()
     finally:
         if conn: conn.close()
@@ -1062,17 +1076,43 @@ def process_client_changes(conn_or_cursor, table_name: str, records: list[dict],
             if dev_uuid:
                 cursor.execute("SELECT id FROM devices WHERE uuid=%s AND is_deleted=FALSE", (dev_uuid,))
                 row = cursor.fetchone()
-                if not row:
-                    logging.warning(f"Salto unavailability report: device {dev_uuid} assente sul server.")
-                    continue
-                r["device_id"] = row["id"]
+                if row:
+                    r["device_id"] = row["id"]
             if dest_uuid:
                 cursor.execute("SELECT id FROM destinations WHERE uuid=%s AND is_deleted=FALSE", (dest_uuid,))
                 row = cursor.fetchone()
+                if row:
+                    r["destination_id"] = row["id"]
+
+        elif table_name == "ecografo_quality_checks":
+            dev_uuid = r.pop("device_uuid", None)
+            if dev_uuid:
+                cursor.execute("SELECT id FROM devices WHERE uuid=%s AND is_deleted=FALSE", (dev_uuid,))
+                row = cursor.fetchone()
                 if not row:
-                    logging.warning(f"Salto unavailability report: destination {dest_uuid} assente sul server.")
+                    logging.warning(f"Salto ecografo_quality_check: device {dev_uuid} assente sul server.")
                     continue
-                r["destination_id"] = row["id"]
+                r["device_id"] = row["id"]
+
+        elif table_name == "ecografo_quality_probes":
+            check_uuid = r.pop("check_uuid", None)
+            if check_uuid:
+                cursor.execute("SELECT id FROM ecografo_quality_checks WHERE uuid=%s AND is_deleted=FALSE", (check_uuid,))
+                row = cursor.fetchone()
+                if not row:
+                    logging.warning(f"Salto ecografo_quality_probe: check {check_uuid} assente sul server.")
+                    continue
+                r["check_id"] = row["id"]
+
+        elif table_name == "ecografo_quality_controls":
+            probe_uuid = r.pop("probe_uuid", None)
+            if probe_uuid:
+                cursor.execute("SELECT id FROM ecografo_quality_probes WHERE uuid=%s AND is_deleted=FALSE", (probe_uuid,))
+                row = cursor.fetchone()
+                if not row:
+                    logging.warning(f"Salto ecografo_quality_control: probe {probe_uuid} assente sul server.")
+                    continue
+                r["probe_id"] = row["id"]
 
         for k, v in list(r.items()):
             r[k] = _normalize_incoming_value(table_name, k, v)
@@ -1264,6 +1304,7 @@ def login_for_access_token(request: Request, form_data: OAuth2PasswordRequestFor
             "first_name": first_name,
             "last_name": last_name,
             "full_name": full_name,
+            "sede": user.get('sede') or '',
         },
         expires_delta=access_token_expires
     )
@@ -1399,7 +1440,8 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                 tables_order = ["customers", "mti_instruments", "profiles", "profile_tests", "functional_profiles",
                                 "destinations", "devices", "verifications", "functional_verifications", "verification_attachments",
                                 "system_verifications", "system_verification_devices", "verification_assignments",
-                                "device_unavailability_reports", "signatures", "audit_log"]
+                                "device_unavailability_reports", "ecografo_quality_checks", "ecografo_quality_probes",
+                                "ecografo_quality_controls", "signatures", "audit_log"]
 
                 for table in tables_order:
                     records = changes_dict.get(table, [])
@@ -1578,6 +1620,31 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                     """)
                     changes_to_send["device_unavailability_reports"] = cursor.fetchall()
 
+                    # Ecografo Quality Checks & Probes & Controls
+                    cursor.execute("""
+                        SELECT eq.*, d.uuid as device_uuid
+                        FROM ecografo_quality_checks eq
+                        INNER JOIN devices d ON eq.device_id = d.id
+                        WHERE eq.is_deleted = FALSE
+                    """)
+                    changes_to_send["ecografo_quality_checks"] = cursor.fetchall()
+
+                    cursor.execute("""
+                        SELECT eqp.*, eq.uuid as check_uuid
+                        FROM ecografo_quality_probes eqp
+                        INNER JOIN ecografo_quality_checks eq ON eqp.check_id = eq.id
+                        WHERE eqp.is_deleted = FALSE
+                    """)
+                    changes_to_send["ecografo_quality_probes"] = cursor.fetchall()
+
+                    cursor.execute("""
+                        SELECT eqc.*, eqp.uuid as probe_uuid
+                        FROM ecografo_quality_controls eqc
+                        INNER JOIN ecografo_quality_probes eqp ON eqc.probe_id = eqp.id
+                        WHERE eqc.is_deleted = FALSE
+                    """)
+                    changes_to_send["ecografo_quality_controls"] = cursor.fetchall()
+
                 else:  # sync incrementale
                     last_sync_ts = payload.last_sync_timestamp
                     if last_sync_ts is None:
@@ -1689,6 +1756,31 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                     """, (last_sync_dt, new_sync_timestamp))
                     changes_to_send["device_unavailability_reports"] = cursor.fetchall()
 
+                    # Ecografo Quality Checks & Probes & Controls (incrementale)
+                    cursor.execute("""
+                        SELECT eq.*, d.uuid as device_uuid
+                        FROM ecografo_quality_checks eq
+                        INNER JOIN devices d ON eq.device_id = d.id
+                        WHERE eq.last_modified > %s AND eq.last_modified <= %s
+                    """, (last_sync_dt, new_sync_timestamp))
+                    changes_to_send["ecografo_quality_checks"] = cursor.fetchall()
+
+                    cursor.execute("""
+                        SELECT eqp.*, eq.uuid as check_uuid
+                        FROM ecografo_quality_probes eqp
+                        INNER JOIN ecografo_quality_checks eq ON eqp.check_id = eq.id
+                        WHERE eqp.last_modified > %s AND eqp.last_modified <= %s
+                    """, (last_sync_dt, new_sync_timestamp))
+                    changes_to_send["ecografo_quality_probes"] = cursor.fetchall()
+
+                    cursor.execute("""
+                        SELECT eqc.*, eqp.uuid as probe_uuid
+                        FROM ecografo_quality_controls eqc
+                        INNER JOIN ecografo_quality_probes eqp ON eqc.probe_id = eqp.id
+                        WHERE eqc.last_modified > %s AND eqc.last_modified <= %s
+                    """, (last_sync_dt, new_sync_timestamp))
+                    changes_to_send["ecografo_quality_controls"] = cursor.fetchall()
+
                 if "signatures" in changes_to_send:
                     for signature_record in changes_to_send["signatures"]:
                         if signature_record.get("signature_data"):
@@ -1764,7 +1856,7 @@ def read_users(current_user: User = Depends(get_current_user)):
     try:
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
-        cursor.execute("SELECT username, role, first_name, last_name FROM users ORDER BY username")
+        cursor.execute("SELECT username, role, first_name, last_name, sede FROM users ORDER BY username")
         users = cursor.fetchall()
         return users
     except Exception:
@@ -1782,8 +1874,8 @@ def create_user(user: UserCreate, current_user: User = Depends(get_current_user)
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute(
-            "INSERT INTO users (username, hashed_password, role, first_name, last_name) VALUES (%s, %s, %s, %s, %s) RETURNING username, role, first_name, last_name",
-            (user.username, hashed_password, user.role, user.first_name, user.last_name)
+            "INSERT INTO users (username, hashed_password, role, first_name, last_name, sede) VALUES (%s, %s, %s, %s, %s, %s) RETURNING username, role, first_name, last_name, sede",
+            (user.username, hashed_password, user.role, user.first_name, user.last_name, user.sede)
         )
         new_user = cursor.fetchone()
         conn.commit()
@@ -1820,6 +1912,9 @@ def update_user(username: str, user_update: UserUpdate, current_user: User = Dep
     if user_update.last_name is not None:
         fields_to_update.append("last_name = %(last_name)s")
         params["last_name"] = user_update.last_name
+    if user_update.sede is not None:
+        fields_to_update.append("sede = %(sede)s")
+        params["sede"] = user_update.sede or None
     if not fields_to_update:
         raise HTTPException(status_code=400, detail="Nessun dato da aggiornare fornito.")
     params["username"] = username
@@ -1828,7 +1923,7 @@ def update_user(username: str, user_update: UserUpdate, current_user: User = Dep
         conn = get_db_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         # Costruzione sicura: i nomi dei campi sono hardcoded sopra (non input utente)
-        query = f"UPDATE users SET {', '.join(fields_to_update)} WHERE username = %(username)s RETURNING username, role, first_name, last_name"  # nosec B608 - field names are hardcoded, not user input
+        query = f"UPDATE users SET {', '.join(fields_to_update)} WHERE username = %(username)s RETURNING username, role, first_name, last_name, sede"  # nosec B608 - field names are hardcoded, not user input
         cursor.execute(query, params)
         if cursor.rowcount == 0:
             raise HTTPException(status_code=404, detail="Utente non trovato.")
@@ -4518,7 +4613,7 @@ def mobile_instruments_list(request: Request, mobile_session: Optional[str] = Co
         cur  = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("""
             SELECT uuid, instrument_name, serial_number, calibration_date,
-                   fw_version, instrument_type, is_default
+                   fw_version, instrument_type, sede, is_default
             FROM mti_instruments WHERE is_deleted = FALSE
             ORDER BY is_default DESC, instrument_name ASC
         """)
@@ -4579,6 +4674,7 @@ async def mobile_instrument_create(request: Request, mobile_session: Optional[st
     calibration_date = form.get("calibration_date") or None
     fw_version      = (form.get("fw_version") or "").strip() or None
     instrument_type = (form.get("instrument_type") or "").strip() or None
+    sede            = (form.get("sede") or "").strip().upper() or None
     is_default      = bool(form.get("is_default"))
 
     if not instrument_name:
@@ -4596,11 +4692,11 @@ async def mobile_instrument_create(request: Request, mobile_session: Optional[st
         cur.execute("""
             INSERT INTO mti_instruments
                 (uuid, instrument_name, serial_number, calibration_date,
-                 fw_version, instrument_type, is_default,
+                 fw_version, instrument_type, sede, is_default,
                  is_deleted, is_synced, last_modified)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,FALSE,FALSE,%s)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,FALSE,FALSE,%s)
         """, (new_uuid, instrument_name, serial_number, calibration_date or None,
-              fw_version, instrument_type, is_default, now_ts))
+              fw_version, instrument_type, sede, is_default, now_ts))
         conn.commit()
         conn.close()
     except Exception as e:
@@ -4659,6 +4755,7 @@ async def mobile_instrument_update(uuid: str, request: Request, mobile_session: 
     calibration_date = form.get("calibration_date") or None
     fw_version      = (form.get("fw_version") or "").strip() or None
     instrument_type = (form.get("instrument_type") or "").strip() or None
+    sede            = (form.get("sede") or "").strip().upper() or None
     is_default      = bool(form.get("is_default"))
 
     if not instrument_name:
@@ -4684,11 +4781,11 @@ async def mobile_instrument_update(uuid: str, request: Request, mobile_session: 
         cur.execute("""
             UPDATE mti_instruments SET
                 instrument_name=%s, serial_number=%s, calibration_date=%s,
-                fw_version=%s, instrument_type=%s, is_default=%s,
+                fw_version=%s, instrument_type=%s, sede=%s, is_default=%s,
                 is_synced=FALSE, last_modified=%s
             WHERE uuid=%s AND is_deleted=FALSE
         """, (instrument_name, serial_number, calibration_date or None,
-              fw_version, instrument_type, is_default, now_ts, uuid))
+              fw_version, instrument_type, sede, is_default, now_ts, uuid))
         conn.commit()
         conn.close()
     except Exception as e:
@@ -6255,9 +6352,10 @@ if __name__ == "__main__":
     import uvicorn
     import asyncio
     import platform
+    import sys
     
     # Fix per Windows: evita "Exception in callback _ProactorBasePipeTransport._call_connection_lost()"
-    if platform.system() == "Windows":
+    if platform.system() == "Windows" and sys.version_info < (3, 12):
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     
     # --- MODALITÀ CLOUDFLARE TUNNEL ---

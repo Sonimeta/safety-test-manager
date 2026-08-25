@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import math
+from datetime import datetime
 from PySide6.QtCore import Qt, QTimer, QDate, QTime, Signal
 from PySide6.QtGui import QFont, QColor, QFocusEvent, QWheelEvent, QMouseEvent, QEnterEvent, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QApplication, QGroupBox, QHBoxLayout, QLabel,
@@ -370,6 +371,7 @@ class TestRunnerWidget(QWidget):
         self.is_running_auto = False
         self.saved_verification_id = None
         self.fluke_connection = None
+        self._start_time = datetime.now()
 
         self.test_plan = self._build_test_plan()
         self.current_step_index = -1
@@ -807,12 +809,14 @@ class TestRunnerWidget(QWidget):
     def save_verification_to_db(self):
         self.parent_window.statusBar().showMessage("Salvataggio verifica in corso...")
         try:
+            duration_seconds = int((datetime.now() - self._start_time).total_seconds())
             verification_code, new_id = services.finalizza_e_salva_verifica(
                 device_id=self.device_info['id'], profile_name=self.profile_name,
                 results=self.results, visual_inspection_data=self.visual_inspection_data,
                 mti_info=self.mti_info, technician_name=self.technician_name,
                 technician_username=self.technician_username,
-                device_info=self.device_info
+                device_info=self.device_info,
+                duration_seconds=duration_seconds,
             )
             self.saved_verification_id = new_id
             self.save_db_button.setEnabled(False)
@@ -905,6 +909,7 @@ class FunctionalTestRunnerWidget(QWidget):
         self._allow_next_table_focus_until: float = 0.0
         self._overall_status_user_locked = False
         self._status_update_in_progress = False
+        self._start_time = datetime.now()
         self._table_view_mode = os.getenv("STM_FUNCTIONAL_TABLE_MODE", "cards").strip().lower()
         
         # Nuove variabili per la navigazione migliorata
@@ -2671,6 +2676,7 @@ class FunctionalTestRunnerWidget(QWidget):
             structured_results = self.collect_results_with_metadata()
             status = self.status_combo.currentText()
             notes = self.notes_edit.toPlainText().strip()
+            duration_seconds = int((datetime.now() - self._start_time).total_seconds())
 
             verification_code, new_id = services.finalizza_e_salva_verifica_funzionale(
                 device_id=self.device_info["id"],
@@ -2684,6 +2690,7 @@ class FunctionalTestRunnerWidget(QWidget):
                 technician_username=self.technician_username,
                 device_info=self.device_info,
                 used_instruments=self.used_instruments,  # Passa gli strumenti usati
+                duration_seconds=duration_seconds,
             )
             self.saved_verification_id = new_id
             self.saved_verification_code = verification_code

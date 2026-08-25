@@ -5,6 +5,7 @@ from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
     Image,
+    KeepTogether,
     NextPageTemplate,
     PageBreak,
     PageTemplate,
@@ -19,14 +20,15 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib import colors
 from reportlab.lib.units import cm
 from reportlab.lib.enums import TA_CENTER
+from reportlab.pdfgen import canvas
 from PySide6.QtCore import Qt, QByteArray, QBuffer, QIODevice, QSize
 from PySide6.QtGui import QImage
 from app import config
 import io
 from PIL import Image as PILImage, ExifTags
 
-# --- Costanti di Stile e Layout - Design Moderno ---
-COLOR_GRID = colors.HexColor('#e2e8f0')          # Bordi griglia eleganti
+# --- Costanti di Stile e Layout ---
+COLOR_GRID = colors.HexColor('#475569')          # Bordi griglia scuri ben visibili in stampa
 COLOR_HEADER_BG = colors.HexColor('#1e3a5f')     # Header blu scuro professionale
 COLOR_HEADER_TEXT = colors.HexColor('#ffffff')   # Testo header bianco
 COLOR_MAIN_BLUE = colors.HexColor('#1e3a5f')     # Blu principale
@@ -45,7 +47,7 @@ PAGE_MARGIN = 1.5*cm
 SPACER_LARGE = 0.3*cm
 SPACER_MEDIUM = 0.2*cm
 SPACER_EXTRA_LARGE = 0.8*cm
-IMAGE_DPI = 150
+IMAGE_DPI = 350
 LOGO_MAX_W_CM = 18
 LOGO_MAX_H_CM = 4
 SIGN_MAX_W_CM = 5
@@ -63,7 +65,7 @@ def _compress_qimage_to_bytes(image, max_w_cm, max_h_cm, prefer_jpeg=False):
     scaled = image.scaled(target_w, target_h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
     use_jpeg = prefer_jpeg and not scaled.hasAlphaChannel()
     fmt = "JPG" if use_jpeg else "PNG"
-    quality = 70 if use_jpeg else -1
+    quality = 100 if use_jpeg else -1
     byte_array = QByteArray()
     buffer = QBuffer(byte_array)
     buffer.open(QIODevice.WriteOnly)
@@ -93,18 +95,19 @@ def _create_styles():
     styles = getSampleStyleSheet()
     styles['Normal'].fontName = FONT_NORMAL
     styles['Normal'].fontSize = 9
-    styles['Normal'].leading = 12
+    styles['Normal'].leading = 13
     styles['Normal'].textColor = COLOR_TEXT_PRIMARY
-    styles.add(ParagraphStyle(name='Nometec', parent=styles['Normal'], fontName=FONT_NORMAL, fontSize=11))
-    styles.add(ParagraphStyle(name='NormalBold', parent=styles['Normal'], fontName=FONT_BOLD))
-    styles.add(ParagraphStyle(name='TableHeaderBold', parent=styles['Normal'], fontName=FONT_BOLD, textColor=colors.white))
-    styles.add(ParagraphStyle(name='ReportTitleocra', fontName=FONT_BOLD, fontSize=16, textColor=COLOR_MAIN_OCRA, alignment=TA_CENTER, spaceAfter=2))
-    styles.add(ParagraphStyle(name='ReportTitle', fontName=FONT_BOLD, fontSize=16, textColor=COLOR_MAIN_BLUE, alignment=TA_CENTER, spaceAfter=2))
-    styles.add(ParagraphStyle(name='ReportSubTitle', fontName=FONT_NORMAL, fontSize=9, textColor=COLOR_TEXT_SECONDARY, alignment=TA_CENTER, spaceAfter=8))
-    styles.add(ParagraphStyle(name='SectionHeader', fontName=FONT_BOLD, fontSize=10, textColor=COLOR_MAIN_BLUE, spaceAfter=4, spaceBefore=6))
-    styles.add(ParagraphStyle(name='Conforme', fontName=FONT_BOLD, textColor=COLOR_PASS_TEXT, fontSize=10))
-    styles.add(ParagraphStyle(name='NonConforme', fontName=FONT_BOLD, textColor=COLOR_FAIL_TEXT, fontSize=10))
-    styles.add(ParagraphStyle(name='FinaleBase', fontName=FONT_BOLD, fontSize=12, alignment=TA_CENTER, borderPadding=8, borderWidth=2))
+    styles.add(ParagraphStyle(name='Nometec', parent=styles['Normal'], fontName=FONT_NORMAL, fontSize=11, leading=15))
+    styles.add(ParagraphStyle(name='NormalBold', parent=styles['Normal'], fontName=FONT_BOLD, fontSize=9, leading=13))
+    styles.add(ParagraphStyle(name='TableHeaderBold', parent=styles['Normal'], fontName=FONT_BOLD, fontSize=9, leading=13, textColor=colors.white, alignment=TA_CENTER))
+    styles.add(ParagraphStyle(name='TableHeader', parent=styles['Normal'], fontName=FONT_BOLD, fontSize=9, leading=13, alignment=TA_CENTER))
+    styles.add(ParagraphStyle(name='ReportTitleocra', fontName=FONT_BOLD, fontSize=16, leading=20, textColor=COLOR_MAIN_OCRA, alignment=TA_CENTER, spaceAfter=2))
+    styles.add(ParagraphStyle(name='ReportTitle', fontName=FONT_BOLD, fontSize=16, leading=20, textColor=COLOR_MAIN_BLUE, alignment=TA_CENTER, spaceAfter=2))
+    styles.add(ParagraphStyle(name='ReportSubTitle', fontName=FONT_NORMAL, fontSize=9, leading=13, textColor=COLOR_TEXT_SECONDARY, alignment=TA_CENTER, spaceAfter=8))
+    styles.add(ParagraphStyle(name='SectionHeader', fontName=FONT_BOLD, fontSize=11, leading=15, textColor=COLOR_MAIN_BLUE, spaceAfter=6, spaceBefore=8))
+    styles.add(ParagraphStyle(name='Conforme', fontName=FONT_BOLD, textColor=COLOR_PASS_TEXT, fontSize=10, leading=14))
+    styles.add(ParagraphStyle(name='NonConforme', fontName=FONT_BOLD, textColor=COLOR_FAIL_TEXT, fontSize=10, leading=14))
+    styles.add(ParagraphStyle(name='FinaleBase', fontName=FONT_BOLD, fontSize=12, leading=16, alignment=TA_CENTER, borderPadding=8, borderWidth=2))
     return styles
 
 def _create_styled_paragraph(text, style):
@@ -113,17 +116,14 @@ def _create_styled_paragraph(text, style):
     return Paragraph(text_str.replace('\n', '<br/>'), style)
 
 def _get_modern_table_style(has_header=True, zebra_stripe=True):
-    """Restituisce uno stile moderno per le tabelle."""
+    """Restituisce uno stile moderno per le tabelle con padding e griglia ben definiti."""
     style_commands = [
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, -1), 6),
         ('RIGHTPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('LINEBELOW', (0, -1), (-1, -1), 1, COLOR_GRID),
-        ('LINEABOVE', (0, 0), (-1, 0), 1, COLOR_GRID),
-        ('LINEBEFORE', (0, 0), (0, -1), 1, COLOR_GRID),
-        ('LINEAFTER', (-1, 0), (-1, -1), 1, COLOR_GRID),
+        ('TOPPADDING', (0, 0), (-1, -1), 5),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GRID),
     ]
     
     if has_header:
@@ -131,7 +131,7 @@ def _get_modern_table_style(has_header=True, zebra_stripe=True):
             ('BACKGROUND', (0, 0), (-1, 0), COLOR_HEADER_BG),
             ('TEXTCOLOR', (0, 0), (-1, 0), COLOR_HEADER_TEXT),
             ('FONTNAME', (0, 0), (-1, 0), FONT_BOLD),
-            ('LINEBELOW', (0, 0), (-1, 0), 2, COLOR_ACCENT_BLUE),
+            ('LINEBELOW', (0, 0), (-1, 0), 1.5, COLOR_MAIN_BLUE),
         ])
     
     return style_commands
@@ -139,8 +139,26 @@ def _get_modern_table_style(has_header=True, zebra_stripe=True):
 # --- Funzioni per la Creazione delle Sezioni del Report ---
 
 def _add_logo(story, report_settings):
-    """Aggiunge il logo al report se presente."""
-    logo_path = report_settings.get('logo_path')
+    """Aggiunge il logo aziendale al report (scelto dall'utente in 'Imposta Logo Azienda')."""
+    logo_path = None
+    if isinstance(report_settings, dict):
+        logo_path = report_settings.get('logo_path')
+
+    if not logo_path or not os.path.exists(logo_path):
+        try:
+            from PySide6.QtCore import QSettings
+            settings = QSettings("ELSON META", "SafetyTester")
+            saved_logo = settings.value("logo_path", "")
+            if saved_logo and os.path.exists(str(saved_logo)):
+                logo_path = str(saved_logo)
+            else:
+                settings_alt = QSettings("ELSON META", "Safety Test Manager")
+                saved_logo_alt = settings_alt.value("logo_path", "")
+                if saved_logo_alt and os.path.exists(str(saved_logo_alt)):
+                    logo_path = str(saved_logo_alt)
+        except Exception as e:
+            logging.debug(f"Impossibile accedere a QSettings per il logo aziendale: {e}")
+
     if logo_path and os.path.exists(logo_path):
         try:
             logo_image = QImage(logo_path)
@@ -158,14 +176,19 @@ def _add_logo(story, report_settings):
             story.append(img)
             story.append(Spacer(1, 0.8*cm))
         except Exception as e:
-            logging.error(f"Impossibile caricare il file del logo: {e}")
+            logging.error(f"Impossibile caricare il file del logo aziendale: {e}")
 
 def _add_header(story, styles, verification_data):
     """Aggiunge l'intestazione del report."""
-    # Distingue tra verifica elettrica e funzionale
+    is_ecografo = bool(verification_data.get('is_ecografo_quality'))
     is_functional = bool(verification_data.get('functional_results'))
-    if is_functional:
+
+    if is_ecografo:
+        story.append(_create_styled_paragraph("Report di Controllo Qualità Sonde Ecografo", styles['ReportTitle']))
+        story.append(Spacer(1, 0.8*cm))
+    elif is_functional:
         story.append(_create_styled_paragraph("Report di Verifica Funzionale", styles['ReportTitle']))
+        story.append(Spacer(1, 0.8*cm))
     else:
         story.append(_create_styled_paragraph("Report di Verifica di Sicurezza Elettrica", styles['ReportTitle']))
         # Recupera la norma dal profilo associato alla verifica
@@ -695,7 +718,7 @@ def _add_functional_sections(story, styles, verification_data):
 
 
 
-def _preprocess_image_for_pdf(abs_path, max_pixels=2400):
+def _preprocess_image_for_pdf(abs_path, max_pixels=3500):
     """Pre-processa un'immagine con PIL per garantire compatibilità con ReportLab.
     
     - Applica la rotazione EXIF (foto da smartphone)
@@ -750,7 +773,7 @@ def _preprocess_image_for_pdf(abs_path, max_pixels=2400):
         # Converti in RGB e salva come JPEG per tutte le altre
         if pil_img.mode != 'RGB':
             pil_img = pil_img.convert('RGB')
-        pil_img.save(buf, format='JPEG', quality=85)
+        pil_img.save(buf, format='JPEG', quality=100)
     
     buf.seek(0)
     return buf
@@ -840,30 +863,58 @@ def _add_attachments_to_report(story, styles, verification_data):
 
     first_attachment = True
 
-    def _start_attachment_page(use_landscape, title, description_text=None, include_section_header=False):
+    def _start_attachment_page(use_landscape, title=None, description_text=None, include_section_header=False):
         template_name = "Landscape" if use_landscape else "Portrait"
         story.append(NextPageTemplate(template_name))
         story.append(PageBreak())
         if include_section_header:
             story.append(_create_styled_paragraph("Allegati", styles['SectionHeader']))
             story.append(Spacer(1, SPACER_MEDIUM))
-        story.append(_create_styled_paragraph(title, styles['NormalBold']))
+        if title:
+            story.append(_create_styled_paragraph(title, styles['NormalBold']))
         if description_text:
             story.append(_create_styled_paragraph(description_text, styles['Normal']))
-        story.append(Spacer(1, SPACER_MEDIUM))
+        if title or description_text:
+            story.append(Spacer(1, SPACER_MEDIUM))
 
     for att in attachments:
         file_path = att.get('file_path')
+        filename = att.get('filename', 'Allegato')
+        description = att.get('description') or filename
+
         if not file_path:
+            logging.warning(f"Allegato {filename} saltato: percorso file vuoto.")
+            _start_attachment_page(
+                use_landscape=False,
+                title=filename,
+                description_text=f"Allegato non disponibile: {filename} (file non presente in cache locale)",
+                include_section_header=first_attachment,
+            )
+            story.append(_create_styled_paragraph(
+                "⚠ Il file allegato non è disponibile localmente e non è stato possibile recuperarlo.",
+                styles['Normal']
+            ))
+            story.append(Spacer(1, SPACER_MEDIUM))
+            first_attachment = False
             continue
 
         abs_path = os.path.join(config.ATTACHMENTS_DIR, file_path)
         if not os.path.exists(abs_path):
             logging.warning(f"File allegato non trovato per il report: {abs_path}")
+            _start_attachment_page(
+                use_landscape=False,
+                title=filename,
+                description_text=f"File non trovato: {filename}",
+                include_section_header=first_attachment,
+            )
+            story.append(_create_styled_paragraph(
+                f"⚠ File allegato non trovato: {file_path}",
+                styles['Normal']
+            ))
+            story.append(Spacer(1, SPACER_MEDIUM))
+            first_attachment = False
             continue
 
-        filename = att.get('filename', 'Allegato')
-        description = att.get('description') or filename
         mime = (att.get('mime_type') or '').lower()
 
         if mime == 'application/pdf' or filename.lower().endswith('.pdf'):
@@ -873,12 +924,11 @@ def _add_attachments_to_report(story, styles, verification_data):
                 for page_index, page_info in enumerate(pdf_pages):
                     use_landscape = bool(page_info.get("use_landscape"))
                     metrics = _get_attachment_page_metrics(use_landscape=use_landscape)
-                    title = f"{filename} - Pagina {page_index + 1}/{total_pages}"
-                    page_description = description if page_index == 0 and description != filename else None
+                    title = f"Pagina {page_index + 1}/{total_pages}" if total_pages > 1 else None
                     _start_attachment_page(
                         use_landscape=use_landscape,
                         title=title,
-                        description_text=page_description,
+                        description_text=None,
                         include_section_header=first_attachment and page_index == 0,
                     )
 
@@ -894,7 +944,6 @@ def _add_attachments_to_report(story, styles, verification_data):
                         pdf_img.drawHeight = ih * ratio
                     pdf_img.hAlign = 'CENTER'
                     story.append(pdf_img)
-                    story.append(Spacer(1, SPACER_LARGE))
                 first_attachment = False
             except Exception as e:
                 logging.warning(f"Impossibile inserire PDF allegato nel report: {e}")
@@ -928,8 +977,8 @@ def _add_attachments_to_report(story, styles, verification_data):
             metrics = _get_attachment_page_metrics(use_landscape=use_landscape)
             _start_attachment_page(
                 use_landscape=use_landscape,
-                title=filename,
-                description_text=description if description != filename else None,
+                title=None,
+                description_text=None,
                 include_section_header=first_attachment,
             )
             if iw > 0 and ih > 0:
@@ -938,7 +987,6 @@ def _add_attachments_to_report(story, styles, verification_data):
                 img.drawHeight = ih * ratio
             img.hAlign = 'CENTER'
             story.append(img)
-            story.append(Spacer(1, SPACER_LARGE))
             first_attachment = False
         except Exception as e:
             logging.warning(f"Impossibile inserire immagine allegata nel report: {e}")
@@ -1167,10 +1215,916 @@ def _add_system_footer(canvas, doc, devices_info, verification_data):
     code = verification_data.get('verification_code', '')
     device_count = len(devices_info)
     footer_text = f"Verifica di Sistema: {system_name} | Codice: {code} | {device_count} dispositivi | Pagina {doc.page}"
-    p = Paragraph(footer_text, footer_style)
-    w, h = p.wrap(doc.width, cm)
-    p.drawOn(canvas, doc.leftMargin, 0.5*cm)
     canvas.restoreState()
+
+
+def _make_signature_image(signature_data: bytes | None, width_cm: float = 3.5, height_cm: float = 1.2):
+    """Crea un oggetto Image ReportLab a partire dai dati binari della firma."""
+    if not signature_data:
+        return None
+    try:
+        sig_qimg = QImage.fromData(signature_data)
+        if sig_qimg.isNull():
+            return None
+        sig_bytes = _compress_qimage_to_bytes(sig_qimg, width_cm, height_cm, prefer_jpeg=False)
+        buf = io.BytesIO(sig_bytes) if sig_bytes else io.BytesIO(signature_data)
+        img = Image(buf, width=width_cm * cm, height=height_cm * cm, kind='proportional')
+        img.hAlign = 'CENTER'
+        return img
+    except Exception as e:
+        logging.warning(f"Impossibile creare la firma visiva per il report: {e}")
+        return None
+
+
+def _add_ecografo_quality_cover_page(story, styles, device_info, customer_info, destination_info, check):
+    """Pagina 1: Copertina 'Manuale di qualità per apparecchio ecografico' con grafica curata."""
+    story.append(Spacer(1, 1.2 * cm))
+    story.append(_create_styled_paragraph("Manuale di qualità", ParagraphStyle(
+        name='CoverTitle1', fontName=FONT_BOLD, fontSize=26, leading=30, alignment=TA_CENTER, textColor=COLOR_MAIN_BLUE
+    )))
+    story.append(Spacer(1, 0.4 * cm))
+    story.append(_create_styled_paragraph("per", ParagraphStyle(
+        name='CoverTitle2', fontName=FONT_NORMAL, fontSize=20, leading=24, alignment=TA_CENTER, textColor=COLOR_TEXT_SECONDARY
+    )))
+    story.append(Spacer(1, 0.4 * cm))
+    story.append(_create_styled_paragraph("apparecchio ecografico", ParagraphStyle(
+        name='CoverTitle3', fontName=FONT_BOLD, fontSize=26, leading=30, alignment=TA_CENTER, textColor=COLOR_MAIN_BLUE
+    )))
+    story.append(Spacer(1, 2.0 * cm))
+
+    year = check.verification_date.split("-")[0] if (check and check.verification_date) else "2025"
+    story.append(_create_styled_paragraph(f"<u><b>Anno creazione:</b></u> &nbsp;&nbsp;<font color='#2563eb'><b>{year}</b></font>", ParagraphStyle(
+        name='CoverYear', fontName=FONT_NORMAL, fontSize=13, alignment=TA_CENTER
+    )))
+    story.append(Spacer(1, 2.5 * cm))
+
+    marca = device_info.get("manufacturer") or ""
+    modello = device_info.get("model") or ""
+    inv = device_info.get("customer_inventory") or device_info.get("ams_inventory") or ""
+    sn = device_info.get("serial_number") or ""
+    struttura = customer_info.get("name") or destination_info.get("name") or ""
+    reparto = device_info.get("department") or ""
+
+    grid_data = [
+        [
+            _create_styled_paragraph("<b>Marca:</b> " + marca, styles['Normal']),
+            _create_styled_paragraph("<b>Modello:</b> " + modello, styles['Normal']),
+        ],
+        [
+            _create_styled_paragraph("<b>Nr. inv.:</b> " + inv, styles['Normal']),
+            _create_styled_paragraph("<b>s/n:</b> " + sn, styles['Normal']),
+        ],
+        [
+            _create_styled_paragraph("<b>Struttura:</b> " + struttura, styles['Normal']),
+            _create_styled_paragraph("<b>Reparto:</b> " + reparto, styles['Normal']),
+        ],
+    ]
+    grid_table = Table(grid_data, colWidths=[9 * cm, 9 * cm])
+    grid_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), COLOR_ROW_EVEN),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GRID),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+        ('LEFTPADDING', (0, 0), (-1, -1), 12),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+    ]))
+    story.append(grid_table)
+
+
+def _add_ecografo_quality_connected_probes_page(story, styles, device_info, check):
+    """Pagina 2: DATI APPARECCHIO & DATI SONDE COLLEGATE con stile colorato e moderno."""
+    section_title_style = ParagraphStyle(
+        name='ColorCenterHeader', fontName=FONT_BOLD, fontSize=12, leading=15, alignment=TA_CENTER, textColor=colors.white
+    )
+    
+    # Barra di intestazione DATI APPARECCHIO
+    sec1_table = Table([[_create_styled_paragraph("DATI APPARECCHIO", section_title_style)]], colWidths=[18 * cm])
+    sec1_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), COLOR_HEADER_BG),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(sec1_table)
+    story.append(Spacer(1, 0.2 * cm))
+
+    inv = device_info.get("customer_inventory") or device_info.get("ams_inventory") or ""
+    sn = device_info.get("serial_number") or ""
+    reparto = device_info.get("department") or ""
+    costruttore = device_info.get("manufacturer") or ""
+    modello = device_info.get("model") or ""
+    struttura = device_info.get("customer_name") or device_info.get("destination_name") or ""
+
+    notes_str = (check.notes if check else "") or ""
+
+    label_style = ParagraphStyle(name='DevLabelStyle', parent=styles['NormalBold'], textColor=COLOR_MAIN_BLUE)
+
+    dev_data = [
+        [
+            _create_styled_paragraph("Inventario:", label_style), _create_styled_paragraph(inv, styles['Normal']),
+            _create_styled_paragraph("Reparto:", label_style), _create_styled_paragraph(reparto, styles['Normal']),
+            _create_styled_paragraph("Costruttore:", label_style), _create_styled_paragraph(costruttore, styles['Normal']),
+        ],
+        [
+            _create_styled_paragraph("S/N:", label_style), _create_styled_paragraph(sn, styles['Normal']),
+            _create_styled_paragraph("Struttura:", label_style), _create_styled_paragraph(struttura, styles['Normal']),
+            _create_styled_paragraph("Modello:", label_style), _create_styled_paragraph(modello, styles['Normal']),
+        ],
+        [
+            _create_styled_paragraph("Note Ecografo:", label_style),
+            _create_styled_paragraph(notes_str, styles['Normal']),
+            "", "", "", ""
+        ]
+    ]
+    dev_table = Table(dev_data, colWidths=[2.5 * cm, 3.5 * cm, 2.5 * cm, 3.5 * cm, 2.5 * cm, 3.5 * cm])
+    dev_table.setStyle(TableStyle([
+        ('SPAN', (1, 2), (5, 2)),
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#f1f5f9')),
+        ('BACKGROUND', (2, 0), (2, 1), colors.HexColor('#f1f5f9')),
+        ('BACKGROUND', (4, 0), (4, 1), colors.HexColor('#f1f5f9')),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GRID),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(dev_table)
+    story.append(Spacer(1, 0.8 * cm))
+
+    # Barra di intestazione DATI SONDE COLLEGATE
+    sec2_table = Table([[_create_styled_paragraph("DATI SONDE COLLEGATE", section_title_style)]], colWidths=[18 * cm])
+    sec2_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), COLOR_HEADER_BG),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+    ]))
+    story.append(sec2_table)
+    story.append(Spacer(1, 0.3 * cm))
+
+    probes_list = check.probes if check else []
+    for i, probe in enumerate(probes_list):
+        probe_data = [
+            [
+                _create_styled_paragraph(f"<b>Sonda {i + 1}</b>", ParagraphStyle(
+                    name='ProbeHeaderLabel', fontName=FONT_BOLD, fontSize=11, leading=14, alignment=TA_CENTER, textColor=colors.white
+                )),
+                _create_styled_paragraph("Inventario:", label_style),
+                _create_styled_paragraph(probe.inventory or "", styles['Normal']),
+                _create_styled_paragraph("Costruttore:", label_style),
+                _create_styled_paragraph(probe.manufacturer or "", styles['Normal']),
+            ],
+            [
+                "",
+                _create_styled_paragraph("Tipo:", label_style),
+                _create_styled_paragraph(probe.probe_type or "", styles['Normal']),
+                _create_styled_paragraph("S/N / Modello:", label_style),
+                _create_styled_paragraph(f"{probe.serial_number or ''} / {probe.model or ''}".strip(" /"), styles['Normal']),
+            ]
+        ]
+        p_table = Table(probe_data, colWidths=[3.2 * cm, 2.5 * cm, 3.5 * cm, 2.5 * cm, 6.3 * cm])
+        p_table.setStyle(TableStyle([
+            ('SPAN', (0, 0), (0, 1)),
+            ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GRID),
+            ('BACKGROUND', (0, 0), (0, 1), COLOR_HEADER_BG),
+            ('BACKGROUND', (1, 0), (1, 1), colors.HexColor('#f1f5f9')),
+            ('BACKGROUND', (3, 0), (3, 1), colors.HexColor('#f1f5f9')),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 6),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ]))
+        story.append(p_table)
+def _get_max_vertical_scarto(val_str: str) -> str:
+    """Estrae solo lo scarto massimo (più alto) dalle misure verticali per la tabella riassuntiva."""
+    if not val_str:
+        return ""
+    if ";" not in val_str:
+        return val_str
+    vals = val_str.split(";")
+    effs = [20, 40, 60, 80, 100, 120, 140, 160]
+    max_scarto = -1.0
+    for idx, eff in enumerate(effs):
+        if idx < len(vals) and vals[idx].strip():
+            try:
+                m_val = float(vals[idx].strip().replace(",", "."))
+                scarto = abs(m_val - eff)
+                if scarto > max_scarto:
+                    max_scarto = scarto
+            except ValueError:
+                pass
+    return f"{max_scarto:.1f}" if max_scarto >= 0 else ""
+
+
+def _get_max_horizontal_scarto(val_str: str) -> str:
+    """Estrae solo lo scarto massimo (più alto) dalle misure orizzontali per la tabella riassuntiva."""
+    if not val_str:
+        return ""
+    if val_str == "N/A":
+        return "N/A"
+    if ";" not in val_str:
+        return val_str
+    vals = val_str.split(";")
+    targets = [(-20, 0), (-40, 1), (-60, 2), (-80, 3), (40, 4), (20, 5)]
+    max_scarto = -1.0
+    for eff, idx in targets:
+        if idx < len(vals) and vals[idx].strip() and vals[idx].strip() != "N/A":
+            try:
+                m_val = float(vals[idx].strip().replace(",", "."))
+                scarto = abs(abs(m_val) - abs(eff))
+                if scarto > max_scarto:
+                    max_scarto = scarto
+            except ValueError:
+                pass
+    return f"{max_scarto:.1f}" if max_scarto >= 0 else ""
+
+
+def _get_mass_area(val_str: str) -> str:
+    """Estrae solo il valore dell'area dalle misurazioni di massa anecoica/iperecogena."""
+    if not val_str:
+        return ""
+    if val_str == "N/A":
+        return "N/A"
+    if "=" in val_str:
+        parts = dict(p.split("=") for p in val_str.split(";") if "=" in p)
+        return parts.get("area", "")
+    return val_str
+
+
+def _get_dead_zone_value(val_str: str) -> str:
+    """Estrae solo il valore numerico della zona morta per la tabella riassuntiva."""
+    if not val_str:
+        return ""
+    if val_str == "N/A":
+        return "N/A"
+    if "=" in val_str:
+        parts = dict(p.split("=") for p in val_str.split(";") if "=" in p)
+        return parts.get("zona_morta", "")
+    return val_str
+
+
+def _add_ecografo_quality_probe_summary_table(story, styles, probe, probe_history_list, check, signature_data: bytes | None = None):
+    """Tabella riassuntiva per la sonda con valori sintetici (scarto max, area massa, zona morta), giudizio e firma."""
+    title_style = ParagraphStyle(
+        name='SummaryTitle', fontName=FONT_BOLD, fontSize=12, leading=15, alignment=TA_CENTER, textColor=COLOR_MAIN_BLUE
+    )
+    story.append(_create_styled_paragraph("<u>Tabella riassuntiva Controlli di Qualità:</u>", title_style))
+    story.append(Spacer(1, 0.3 * cm))
+
+    sn = probe.serial_number or ""
+    sonda_desc = probe.model or probe.probe_type or ""
+    header_info = [
+        [_create_styled_paragraph(f"<b>Sonda:</b> {sonda_desc}", styles['Normal']), _create_styled_paragraph(f"<b>s/n:</b> {sn}", styles['Normal'])],
+        [_create_styled_paragraph(f"<b>Mod. usata per test:</b> {probe.test_model or ''}", styles['Normal']), ""],
+        [_create_styled_paragraph(f"<b>Preset impostato:</b> {probe.preset or ''}", styles['Normal']), ""],
+        [_create_styled_paragraph(f"<b>Gain:</b> {probe.gain or ''}", styles['Normal']), ""],
+        [_create_styled_paragraph(f"<b>Power:</b> {probe.power or ''}", styles['Normal']), ""],
+    ]
+    h_table = Table(header_info, colWidths=[12 * cm, 6 * cm])
+    h_table.setStyle(TableStyle([
+        ('SPAN', (0, 1), (1, 1)),
+        ('SPAN', (0, 2), (1, 2)),
+        ('SPAN', (0, 3), (1, 3)),
+        ('SPAN', (0, 4), (1, 4)),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING', (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+    ]))
+    story.append(h_table)
+    story.append(Spacer(1, 0.4 * cm))
+
+    # Raccogli tutti gli stadi presenti nello storico di questa sonda
+    found_stages = set()
+    for p in probe_history_list:
+        if p.control_stage:
+            found_stages.add(p.control_stage)
+    if probe.control_stage:
+        found_stages.add(probe.control_stage)
+
+    def stage_key(st):
+        if not st:
+            return (3, "")
+        st_lower = st.lower()
+        if st_lower == "baseline":
+            return (0, 0)
+        if st_lower.startswith("controllo"):
+            try:
+                num = int(st.split()[-1])
+                return (1, num)
+            except Exception:
+                pass
+        return (2, st)
+
+    stages_sorted = sorted(list(found_stages), key=stage_key)
+    standard_stages = ["Baseline", "Controllo 1", "Controllo 2", "Controllo 3"]
+    for s_st in standard_stages:
+        if s_st not in stages_sorted and len(stages_sorted) < 4:
+            stages_sorted.append(s_st)
+    stages = sorted(list(set(stages_sorted)), key=stage_key)
+    if not stages:
+        stages = ["Baseline"]
+    
+    stage_probe_map = {}
+    for p in probe_history_list:
+        st = p.control_stage or "Baseline"
+        stage_probe_map[st] = p
+    curr_stage = probe.control_stage or "Baseline"
+    stage_probe_map[curr_stage] = probe
+
+    param_keys = [
+        ("date", "Data"),
+        ("ispezione_visiva", "Ispezione visiva"),
+        ("uniformita", "Uniformità"),
+        ("profondita_max", "Profondità max (cm)"),
+        ("misure_verticali", "Misure verticali\n(scarto max mm)"),
+        ("misure_orizzontali", "Misure orizzontali\n(scarto max mm)"),
+        ("zona_morta", "Zona Morta (mm)"),
+        ("risoluzione_3cm_assiale", "Risoluzione assiale\n3 cm (mm)"),
+        ("risoluzione_3cm_laterale", "Risoluzione laterale\n3 cm (mm)"),
+        ("risoluzione_11cm_assiale", "Risoluzione assiale\n11 cm (mm)"),
+        ("risoluzione_11cm_laterale", "Risoluzione laterale\n11 cm (mm)"),
+        ("massa_anecoica", "Massa anecoica\narea (mm²)"),
+        ("massa_iperecogena", "Massa iperecogena\narea (mm²)"),
+    ]
+
+    MAX_STAGES_PER_TABLE = 4
+    stage_chunks = [stages[i:i + MAX_STAGES_PER_TABLE] for i in range(0, len(stages), MAX_STAGES_PER_TABLE)]
+
+    summary_tables = []
+    param_label_style = ParagraphStyle(name='ParamLabelStyle', parent=styles['NormalBold'], textColor=COLOR_MAIN_BLUE, fontSize=8, leading=11)
+    sig_cache = {}
+
+    for chunk_idx, sub_stages in enumerate(stage_chunks):
+        # Intestazione della tabella con fondo blu e testo bianco (VISIBILITÀ GARANTITA)
+        header_row = [_create_styled_paragraph("<b>Parametro</b>", styles['TableHeaderBold'])] + [
+            _create_styled_paragraph(f"<b>{st}</b>", styles['TableHeaderBold']) for st in sub_stages
+        ]
+        table_rows = [header_row]
+
+        for p_key, p_label in param_keys:
+            row = [_create_styled_paragraph(p_label, param_label_style)]
+            for st in sub_stages:
+                p_obj = stage_probe_map.get(st)
+                if not p_obj:
+                    row.append(_create_styled_paragraph("", styles['Normal']))
+                    continue
+                if p_key == "date":
+                    val_str = getattr(p_obj, 'verification_date', None) or (check.verification_date if (check and p_obj == probe) else "") or ""
+                    row.append(_create_styled_paragraph(val_str, styles['Normal']))
+                elif p_key == "misure_verticali":
+                    ctrl = next((c for c in p_obj.controls if c.control_key == p_key), None)
+                    raw_val = ctrl.value if (ctrl and ctrl.value) else ""
+                    row.append(_create_styled_paragraph(_get_max_vertical_scarto(raw_val), styles['Normal']))
+                elif p_key == "misure_orizzontali":
+                    ctrl = next((c for c in p_obj.controls if c.control_key == p_key), None)
+                    raw_val = ctrl.value if (ctrl and ctrl.value) else ""
+                    row.append(_create_styled_paragraph(_get_max_horizontal_scarto(raw_val), styles['Normal']))
+                elif p_key == "zona_morta":
+                    ctrl = next((c for c in p_obj.controls if c.control_key == p_key), None)
+                    raw_val = ctrl.value if (ctrl and ctrl.value) else ""
+                    row.append(_create_styled_paragraph(_get_dead_zone_value(raw_val), styles['Normal']))
+                elif p_key in ("massa_anecoica", "massa_iperecogena"):
+                    ctrl = next((c for c in p_obj.controls if c.control_key == p_key), None)
+                    raw_val = ctrl.value if (ctrl and ctrl.value) else ""
+                    row.append(_create_styled_paragraph(_get_mass_area(raw_val), styles['Normal']))
+                else:
+                    ctrl = next((c for c in p_obj.controls if c.control_key == p_key), None)
+                    val_str = ctrl.value if (ctrl and ctrl.value) else ""
+                    row.append(_create_styled_paragraph(val_str, styles['Normal']))
+            table_rows.append(row)
+
+        # Riga Giudizio complessivo (CON BADGE COLORATO)
+        giudizio_row = [_create_styled_paragraph("<b>Giudizio complessivo</b>", param_label_style)]
+        for st in sub_stages:
+            p_obj = stage_probe_map.get(st)
+            if p_obj:
+                raw_j = getattr(p_obj, 'overall_judgment', None) or (check.overall_status if (check and p_obj == probe) else "") or "BUONO"
+                j_upper = raw_j.upper()
+                if j_upper in ("CONFORME", "PASSATO", "BUONO"):
+                    j_p = _create_styled_paragraph(f"<b>{raw_j}</b>", styles['Conforme'])
+                elif j_upper in ("SUFFICIENTE", "CONFORME CON ANNOTAZIONE"):
+                    j_p = _create_styled_paragraph(f"<b>{raw_j}</b>", ParagraphStyle(name='SuffStyle', fontName=FONT_BOLD, textColor=COLOR_MAIN_OCRA, fontSize=10, leading=14))
+                elif j_upper in ("NON CONFORME", "NON SUFFICIENTE", "FALLITO", "INSUFFICIENTE"):
+                    j_p = _create_styled_paragraph(f"<b>{raw_j}</b>", styles['NonConforme'])
+                else:
+                    j_p = _create_styled_paragraph(f"<b>{raw_j}</b>", styles['NormalBold'])
+            else:
+                j_p = _create_styled_paragraph("", styles['Normal'])
+            giudizio_row.append(j_p)
+        table_rows.append(giudizio_row)
+
+        # Riga Nome e firma del tecnico
+        tech_row = [_create_styled_paragraph("<b>Nome e firma del\ntecnico</b>", param_label_style)]
+        for st in sub_stages:
+            p_obj = stage_probe_map.get(st)
+            if p_obj:
+                t_name = getattr(p_obj, 'technician_name', None) or (check.technician_name if (check and p_obj == probe) else "") or ""
+                t_username = getattr(p_obj, 'technician_username', None) or (check.technician_username if (check and p_obj == probe) else "") or ""
+                
+                cell_flowables = []
+                if t_name:
+                    cell_flowables.append(_create_styled_paragraph(t_name, styles['Normal']))
+                
+                sig_bytes = None
+                if check and p_obj == probe and signature_data:
+                    sig_bytes = signature_data
+                elif t_username:
+                    if t_username not in sig_cache:
+                        import database
+                        sig_cache[t_username] = database.get_signature_by_username(t_username)
+                    sig_bytes = sig_cache[t_username]
+                
+                if sig_bytes:
+                    sig_img = _make_signature_image(sig_bytes, width_cm=2.6, height_cm=0.9)
+                    if sig_img:
+                        cell_flowables.append(Spacer(1, 0.1 * cm))
+                        cell_flowables.append(sig_img)
+                tech_row.append(cell_flowables if cell_flowables else _create_styled_paragraph("", styles['Normal']))
+            else:
+                tech_row.append(_create_styled_paragraph("", styles['Normal']))
+        table_rows.append(tech_row)
+
+        w_stage = 3.0
+        col_widths = [6 * cm] + [w_stage * cm] * len(sub_stages)
+
+        summary_table = Table(table_rows, colWidths=col_widths)
+        style_cmds = [
+            ('BACKGROUND', (0, 0), (-1, 0), COLOR_HEADER_BG),       # Intestazione blu scuro
+            ('BACKGROUND', (0, 1), (0, -1), colors.HexColor('#f1f5f9')), # Colonna parametri grigio slate
+            ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GRID),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('ALIGN', (1, 0), (-1, -1), 'CENTER'),
+            ('TOPPADDING', (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ]
+
+        # Righe alternate a colori per la leggibilità
+        for r_i in range(1, len(table_rows) - 2):
+            if r_i % 2 == 0:
+                style_cmds.append(('BACKGROUND', (1, r_i), (-1, r_i), COLOR_ROW_EVEN))
+
+        # Evidenziazione della riga Giudizio complessivo
+        g_row_idx = len(table_rows) - 2
+        style_cmds.append(('BACKGROUND', (0, g_row_idx), (-1, g_row_idx), colors.HexColor('#f8fafc')))
+
+        summary_table.setStyle(TableStyle(style_cmds))
+        summary_tables.append(summary_table)
+
+    for st_tbl in summary_tables:
+        story.append(st_tbl)
+        story.append(Spacer(1, 0.4 * cm))
+
+
+def _add_ecografo_quality_probe_detail(story, styles, probe, index, check, signature_data: bytes | None = None):
+    """Dettaglio Controlli di Qualità a 10 punti con tabelle colorate e firma del tecnico in calce."""
+    title_style = ParagraphStyle(
+        name='DetailHeaderTitle', fontName=FONT_BOLD, fontSize=12, leading=15, alignment=TA_CENTER, textColor=COLOR_MAIN_BLUE
+    )
+    story.append(_create_styled_paragraph("<u>Dettaglio Controlli di Qualità</u>", title_style))
+    story.append(Spacer(1, 0.3 * cm))
+
+    year = check.verification_date.split("-")[0] if (check and check.verification_date) else "2025"
+    sn = probe.serial_number or "____"
+    sonda_desc = probe.model or probe.probe_type or "____"
+
+    header_info = [
+        [
+            _create_styled_paragraph(f"<b>Anno:</b> {year}", styles['Normal']),
+            _create_styled_paragraph(f"<b>Sonda:</b> {sonda_desc}", styles['Normal']),
+            _create_styled_paragraph(f"<b>s/n:</b> {sn}", styles['Normal']),
+        ]
+    ]
+    h_table = Table(header_info, colWidths=[6 * cm, 6 * cm, 6 * cm])
+    h_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f1f5f9')),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GRID),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    story.append(h_table)
+    story.append(Spacer(1, 0.3 * cm))
+
+    c_map = {c.control_key: c for c in probe.controls}
+    sec_title_style = ParagraphStyle(name='SecTitleStyle', fontName=FONT_BOLD, fontSize=10, leading=13, textColor=COLOR_MAIN_BLUE)
+
+    def _fmt_check(target_val, cur_val):
+        if cur_val == target_val:
+            if target_val == 'BUONO':
+                return "<font color='#059669'><b>[X] BUONO</b></font>"
+            elif target_val == 'SUFFICIENTE':
+                return "<font color='#d97706'><b>[X] SUFFICIENTE</b></font>"
+            elif target_val == 'INSUFFICIENTE':
+                return "<font color='#dc2626'><b>[X] INSUFFICIENTE</b></font>"
+            return f"<b>[X] {target_val}</b>"
+        return f"[  ] {target_val}"
+
+    # 1. ISPEZIONE VISIVA
+    c1_val = (c_map.get("ispezione_visiva").value or "BUONO").upper() if c_map.get("ispezione_visiva") else "BUONO"
+    c1_block = [
+        _create_styled_paragraph("1. ISPEZIONE VISIVA:", sec_title_style),
+        Spacer(1, 0.1 * cm),
+        _create_styled_paragraph(f"{_fmt_check('BUONO', c1_val)} &nbsp;&nbsp;&nbsp;&nbsp;(non vi sono crepe/tagli/altre non conformità né sulla sonda né sulla guaina)", styles['Normal']),
+        _create_styled_paragraph(f"{_fmt_check('SUFFICIENTE', c1_val)} &nbsp;&nbsp;&nbsp;&nbsp;(vi sono delle non conformità di lieve entità)", styles['Normal']),
+        _create_styled_paragraph(f"{_fmt_check('INSUFFICIENTE', c1_val)} &nbsp;&nbsp;&nbsp;&nbsp;(vi sono delle non conformità di entità non lieve)", styles['Normal']),
+        Spacer(1, 0.3 * cm)
+    ]
+    story.append(KeepTogether(c1_block))
+
+    # 2. UNIFORMITÀ
+    c2_val = (c_map.get("uniformita").value or "BUONO").upper() if c_map.get("uniformita") else "BUONO"
+    c2_block = [
+        _create_styled_paragraph("2. UNIFORMITÀ:", sec_title_style),
+        Spacer(1, 0.1 * cm),
+        _create_styled_paragraph(f"{_fmt_check('BUONO', c2_val)} &nbsp;&nbsp;&nbsp;&nbsp;(immagine uniforme in tutte le zone lungo tutta la profondità di penetrazione)", styles['Normal']),
+        _create_styled_paragraph(f"{_fmt_check('SUFFICIENTE', c2_val)} &nbsp;&nbsp;&nbsp;&nbsp;(vi sono delle zone non uniformi che però non pregiudicano la visione dei pin)", styles['Normal']),
+        _create_styled_paragraph(f"{_fmt_check('INSUFFICIENTE', c2_val)} &nbsp;&nbsp;&nbsp;&nbsp;(vi sono delle zone non uniformi che pregiudicano la visione dei pin)", styles['Normal']),
+        Spacer(1, 0.3 * cm)
+    ]
+    story.append(KeepTogether(c2_block))
+
+    # 3. MASSIMA PROFONDITA' DI PENETRAZIONE
+    c3_val = c_map.get("profondita_max").value if c_map.get("profondita_max") else ""
+    c3_block = [
+        _create_styled_paragraph("3. MASSIMA PROFONDITA’ DI PENETRAZIONE:", sec_title_style),
+        Spacer(1, 0.1 * cm),
+        _create_styled_paragraph("E’ determinata dalla frequenza del trasduttore, dal sistema di attenuazione utilizzato e dall’impostazione dei parametri di sistema.", styles['Normal']),
+        Spacer(1, 0.15 * cm),
+        _create_styled_paragraph(f"DISTANZA DELL’ULTIMO BERSAGLIO VISIBILE (cm): &nbsp;<font color='#1e3a5f'><b>{c3_val or '___'}</b></font>", styles['Normal']),
+        Spacer(1, 0.15 * cm),
+        _create_styled_paragraph("<font color='#475569'>Valori di riferimento: &nbsp;&nbsp;frequenze minori di 2.5 MHz &rarr; > 16 cm &nbsp;&nbsp;&nbsp;&nbsp; frequenze fra 2,5 e 5 MHz &rarr; > 13 cm<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;frequenze fra 5 e 8 MHz &rarr; > 6 cm &nbsp;&nbsp;&nbsp;&nbsp; frequenze fra 8 e 12 Mhz &rarr; > 4 cm</font>", styles['Normal']),
+        Spacer(1, 0.3 * cm)
+    ]
+    story.append(KeepTogether(c3_block))
+
+    # 4. MISURE VERTICALI
+    c4_raw = c_map.get("misure_verticali").value if c_map.get("misure_verticali") else ""
+    c4_vals = c4_raw.split(";") if (c4_raw and ";" in c4_raw) else []
+    v_rows = [[_create_styled_paragraph("<b>Effettivo (mm)</b>", styles['TableHeaderBold']), _create_styled_paragraph("<b>Misurato (mm)</b>", styles['TableHeaderBold']), _create_styled_paragraph("<b>Scarto (mm)</b>", styles['TableHeaderBold'])]]
+    effs_v = [20, 40, 60, 80, 100, 120, 140, 160]
+    for idx, eff in enumerate(effs_v):
+        meas_str = c4_vals[idx] if idx < len(c4_vals) else ""
+        try:
+            m_val = float(meas_str.replace(",", "."))
+            scarto_str = f"{abs(m_val - eff):.1f}"
+        except ValueError:
+            scarto_str = ""
+        v_rows.append([
+            _create_styled_paragraph(str(eff), styles['NormalBold']),
+            _create_styled_paragraph(meas_str, styles['Normal']),
+            _create_styled_paragraph(scarto_str, styles['Normal']),
+        ])
+    v_table = Table(v_rows, colWidths=[5.5 * cm, 5.5 * cm, 5.5 * cm])
+    v_style_cmds = [
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_HEADER_BG),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GRID),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]
+    for r_i in range(1, len(v_rows)):
+        if r_i % 2 == 0:
+            v_style_cmds.append(('BACKGROUND', (0, r_i), (-1, r_i), COLOR_ROW_EVEN))
+    v_table.setStyle(TableStyle(v_style_cmds))
+
+    c4_block = [
+        _create_styled_paragraph("4. MISURE VERTICALI:", sec_title_style),
+        Spacer(1, 0.1 * cm),
+        v_table,
+        Spacer(1, 0.15 * cm),
+        _create_styled_paragraph("<font color='#475569'>Valori di riferimento: scarto < 1,5 mm fra due misure contigue</font>", styles['Normal']),
+        Spacer(1, 0.3 * cm)
+    ]
+    story.append(KeepTogether(c4_block))
+
+    # 5. MISURE ORIZZONTALI
+    c5_raw = c_map.get("misure_orizzontali").value if c_map.get("misure_orizzontali") else ""
+    is_c5_na = (c5_raw == "N/A")
+    c5_vals = c5_raw.split(";") if (c5_raw and ";" in c5_raw) else []
+
+    def _calc_scarto_h(eff_num, val_str):
+        if not val_str or val_str in ("N/A", ""):
+            return ""
+        try:
+            m_val = float(val_str.replace(",", "."))
+            return f"{abs(abs(m_val) - abs(eff_num)):.1f}"
+        except ValueError:
+            return ""
+
+    def _get_m_h(idx):
+        if is_c5_na:
+            return "N/A"
+        return c5_vals[idx] if idx < len(c5_vals) and c5_vals[idx] else ""
+
+    h_rows = [
+        [
+            _create_styled_paragraph("<b>Effettivo (mm)</b>", styles['TableHeaderBold']),
+            _create_styled_paragraph("<b>Misurato (mm)</b>", styles['TableHeaderBold']),
+            _create_styled_paragraph("<b>Scarto (mm)</b>", styles['TableHeaderBold']),
+            _create_styled_paragraph("<b>Effettivo (mm)</b>", styles['TableHeaderBold']),
+            _create_styled_paragraph("<b>Misurato (mm)</b>", styles['TableHeaderBold']),
+            _create_styled_paragraph("<b>Scarto (mm)</b>", styles['TableHeaderBold']),
+        ]
+    ]
+
+    left_effs = [-20, -40, -60, -80]
+    left_indices = [0, 1, 2, 3]
+
+    right_effs = [40, 20, None, None]
+    right_indices = [4, 5, None, None]
+
+    for r in range(4):
+        l_eff = left_effs[r]
+        l_idx = left_indices[r]
+        l_meas = _get_m_h(l_idx)
+        l_scarto = _calc_scarto_h(l_eff, l_meas)
+
+        r_eff = right_effs[r]
+        if r_eff is not None:
+            r_idx = right_indices[r]
+            r_meas = _get_m_h(r_idx)
+            r_scarto = _calc_scarto_h(r_eff, r_meas)
+            r_eff_str = str(r_eff)
+        else:
+            r_meas = ""
+            r_scarto = ""
+            r_eff_str = ""
+
+        row_cells = [
+            _create_styled_paragraph(str(l_eff), styles['NormalBold']),
+            _create_styled_paragraph(l_meas, styles['Normal']),
+            _create_styled_paragraph(l_scarto, styles['Normal']),
+            _create_styled_paragraph(r_eff_str, styles['NormalBold']) if r_eff_str else _create_styled_paragraph("", styles['Normal']),
+            _create_styled_paragraph(r_meas, styles['Normal']),
+            _create_styled_paragraph(r_scarto, styles['Normal']),
+        ]
+        h_rows.append(row_cells)
+
+    h_table = Table(h_rows, colWidths=[2.8 * cm, 2.8 * cm, 2.8 * cm, 2.8 * cm, 2.8 * cm, 2.8 * cm])
+    h_style_cmds = [
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_HEADER_BG),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GRID),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]
+    for r_i in range(1, len(h_rows)):
+        if r_i % 2 == 0:
+            h_style_cmds.append(('BACKGROUND', (0, r_i), (-1, r_i), COLOR_ROW_EVEN))
+    h_table.setStyle(TableStyle(h_style_cmds))
+    
+    c5_block = [
+        _create_styled_paragraph("5. MISURE ORIZZONTALI:", sec_title_style),
+        Spacer(1, 0.1 * cm),
+        h_table,
+        Spacer(1, 0.15 * cm),
+        _create_styled_paragraph("<font color='#475569'>Valori di riferimento: scarto < 2 mm fra due misure contigue</font>", styles['Normal']),
+        Spacer(1, 0.1 * cm),
+        _create_styled_paragraph(f"[{'X' if is_c5_na else '  '}] <b>TEST NON APPLICABILE A QUESTA SONDA</b>", styles['Normal']),
+        Spacer(1, 0.3 * cm)
+    ]
+    story.append(KeepTogether(c5_block))
+
+    # 6. ZONA MORTA
+    c6_raw = c_map.get("zona_morta").value if c_map.get("zona_morta") else ""
+    is_c6_na = (c6_raw == "N/A")
+    c6_parts = dict(p.split("=") for p in c6_raw.split(";") if "=" in p) if (c6_raw and ";" in c6_raw) else {}
+    c6_block = [
+        _create_styled_paragraph("6. ZONA MORTA:", sec_title_style),
+        Spacer(1, 0.1 * cm),
+        _create_styled_paragraph(f"NUMERO TOTALE BERSAGLI: &nbsp;<font color='#1e3a5f'><b>{c6_parts.get('targets', '___')}</b></font> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ZONA MORTA (mm): &nbsp;<font color='#1e3a5f'><b>{c6_parts.get('zona_morta', '___')}</b></font>", styles['Normal']),
+        Spacer(1, 0.15 * cm),
+        _create_styled_paragraph("<font color='#475569'>Valori di riferimento: &nbsp;&nbsp;< 7 mm per frequenze < 3 MHz<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;< 5 mm per frequenze comprese tra 3 e 7 MHz<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;< 3 mm per frequenze > 7 MHz</font>", styles['Normal']),
+        Spacer(1, 0.1 * cm),
+        _create_styled_paragraph(f"[{'X' if is_c6_na else '  '}] <b>TEST NON APPLICABILE A QUESTA SONDA</b>", styles['Normal']),
+        Spacer(1, 0.3 * cm)
+    ]
+    story.append(KeepTogether(c6_block))
+
+    # 7. RISOLUZIONE 3 CM
+    c7_ax = c_map.get("risoluzione_3cm_assiale").value if c_map.get("risoluzione_3cm_assiale") else ""
+    c7_lat = c_map.get("risoluzione_3cm_laterale").value if c_map.get("risoluzione_3cm_laterale") else ""
+    r3_headers = ["Ultima coppia\nbersagli distinguibili", "1ª\n(4 mm)", "2ª\n(3 mm)", "3ª\n(2 mm)", "4ª\n(1 mm)", "5ª\n(.5 mm)", "6ª\n(.25 mm)", "N/A"]
+    r3_rows = [[_create_styled_paragraph(f"<b>{h}</b>", styles['TableHeaderBold']) for h in r3_headers]]
+    opts_3 = ["1a (4 mm)", "2a (3 mm)", "3a (2 mm)", "4a (1 mm)", "5a (.5 mm)", "6a (.25 mm)", "N/A"]
+    ax_row = [_create_styled_paragraph("Assiale", styles['NormalBold'])] + [_create_styled_paragraph("[X]" if c7_ax == o else "[  ]", styles['Normal']) for o in opts_3]
+    lat_row = [_create_styled_paragraph("Laterale", styles['NormalBold'])] + [_create_styled_paragraph("[X]" if c7_lat == o else "[  ]", styles['Normal']) for o in opts_3]
+    r3_rows.append(ax_row)
+    r3_rows.append(lat_row)
+    r3_table = Table(r3_rows, colWidths=[4.6 * cm] + [1.9 * cm] * 7)
+    r3_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_HEADER_BG),
+        ('BACKGROUND', (0, 1), (0, -1), colors.HexColor('#f1f5f9')),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GRID),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
+    c7_block = [
+        _create_styled_paragraph("7. RISOLUZIONE 3 CM:", sec_title_style),
+        Spacer(1, 0.1 * cm),
+        r3_table,
+        Spacer(1, 0.15 * cm),
+        _create_styled_paragraph("<font color='#475569'>Valori di riferimento: non deve superare di 1 mm i valori indicati dal costruttore</font>", styles['Normal']),
+        Spacer(1, 0.3 * cm)
+    ]
+    story.append(KeepTogether(c7_block))
+
+    # 8. RISOLUZIONE 11 CM
+    c8_ax = c_map.get("risoluzione_11cm_assiale").value if c_map.get("risoluzione_11cm_assiale") else ""
+    c8_lat = c_map.get("risoluzione_11cm_laterale").value if c_map.get("risoluzione_11cm_laterale") else ""
+    r11_headers = ["Ultima coppia\nbersagli distinguibili", "1ª\n(5 mm)", "2ª\n(4 mm)", "3ª\n(3 mm)", "4ª\n(2 mm)", "5ª\n(1 mm)", "Non\nApplicabile"]
+    r11_rows = [[_create_styled_paragraph(f"<b>{h}</b>", styles['TableHeaderBold']) for h in r11_headers]]
+    opts_11 = ["1a (5 mm)", "2a (4 mm)", "3a (3 mm)", "4a (2 mm)", "5a (1 mm)", "Non Applicabile"]
+    ax11_row = [_create_styled_paragraph("Assiale", styles['NormalBold'])] + [_create_styled_paragraph("[X]" if c8_ax == o else "[  ]", styles['Normal']) for o in opts_11]
+    lat11_row = [_create_styled_paragraph("Laterale", styles['NormalBold'])] + [_create_styled_paragraph("[X]" if c8_lat == o else "[  ]", styles['Normal']) for o in opts_11]
+    r11_rows.append(ax11_row)
+    r11_rows.append(lat11_row)
+    r11_table = Table(r11_rows, colWidths=[4.5 * cm] + [2.25 * cm] * 6)
+    r11_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_HEADER_BG),
+        ('BACKGROUND', (0, 1), (0, -1), colors.HexColor('#f1f5f9')),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GRID),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
+    c8_block = [
+        _create_styled_paragraph("8. RISOLUZIONE 11 CM:", sec_title_style),
+        Spacer(1, 0.1 * cm),
+        r11_table,
+        Spacer(1, 0.15 * cm),
+        _create_styled_paragraph("<font color='#475569'>Valori di riferimento: non deve superare di 1 mm i valori indicati dal costruttore</font>", styles['Normal']),
+        Spacer(1, 0.3 * cm)
+    ]
+    story.append(KeepTogether(c8_block))
+
+    # 9. ANALISI DELLE MASSE ANECOICHE
+    c9_raw = c_map.get("massa_anecoica").value if c_map.get("massa_anecoica") else ""
+    is_c9_na = (c9_raw == "N/A")
+    c9_parts = dict(p.split("=") for p in c9_raw.split(";") if "=" in p) if (c9_raw and ";" in c9_raw) else {}
+    m9_data = [
+        [_create_styled_paragraph("<b>Diametro orizzontale (mm)</b>", styles['TableHeaderBold']), _create_styled_paragraph("<b>Diametro verticale (mm)</b>", styles['TableHeaderBold']), _create_styled_paragraph("<b>Rapporto diametri</b>", styles['TableHeaderBold']), _create_styled_paragraph("<b>Area (mm²)</b>", styles['TableHeaderBold'])],
+        [_create_styled_paragraph(c9_parts.get('oriz', ''), styles['Normal']), _create_styled_paragraph(c9_parts.get('vert', ''), styles['Normal']), _create_styled_paragraph(c9_parts.get('rapporto', ''), styles['Normal']), _create_styled_paragraph(c9_parts.get('area', ''), styles['Normal'])]
+    ]
+    m9_table = Table(m9_data, colWidths=[4.4 * cm, 4.4 * cm, 4.4 * cm, 4.4 * cm])
+    m9_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_HEADER_BG),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GRID),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
+    c9_block = [
+        _create_styled_paragraph("9. ANALISI DELLE MASSE ANECOICHE:", sec_title_style),
+        Spacer(1, 0.1 * cm),
+        m9_table,
+        Spacer(1, 0.15 * cm),
+        _create_styled_paragraph(f"[{'X' if is_c9_na else '  '}] <b>TEST NON APPLICABILE A QUESTA SONDA</b>", styles['Normal']),
+        Spacer(1, 0.1 * cm),
+        _create_styled_paragraph("<font color='#475569'>Valori di riferimento: non esiste una standardizzazione tale da indicare dei limiti di tolleranza su scala quantitativa</font>", styles['Normal']),
+        Spacer(1, 0.3 * cm)
+    ]
+    story.append(KeepTogether(c9_block))
+
+    # 10. ANALISI DELLE MASSE IPERECOGENE
+    c10_raw = c_map.get("massa_iperecogena").value if c_map.get("massa_iperecogena") else ""
+    is_c10_na = (c10_raw == "N/A")
+    c10_parts = dict(p.split("=") for p in c10_raw.split(";") if "=" in p) if (c10_raw and ";" in c10_raw) else {}
+    m10_data = [
+        [_create_styled_paragraph("<b>Diametro orizzontale (mm)</b>", styles['TableHeaderBold']), _create_styled_paragraph("<b>Diametro verticale (mm)</b>", styles['TableHeaderBold']), _create_styled_paragraph("<b>Rapporto diametri</b>", styles['TableHeaderBold']), _create_styled_paragraph("<b>Area (mm²)</b>", styles['TableHeaderBold'])],
+        [_create_styled_paragraph(c10_parts.get('oriz', ''), styles['Normal']), _create_styled_paragraph(c10_parts.get('vert', ''), styles['Normal']), _create_styled_paragraph(c10_parts.get('rapporto', ''), styles['Normal']), _create_styled_paragraph(c10_parts.get('area', ''), styles['Normal'])]
+    ]
+    m10_table = Table(m10_data, colWidths=[4.4 * cm, 4.4 * cm, 4.4 * cm, 4.4 * cm])
+    m10_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_HEADER_BG),
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GRID),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]))
+    c10_block = [
+        _create_styled_paragraph("10. ANALISI DELLE MASSE IPERECOGENE:", sec_title_style),
+        Spacer(1, 0.1 * cm),
+        m10_table,
+        Spacer(1, 0.15 * cm),
+        _create_styled_paragraph(f"[{'X' if is_c10_na else '  '}] <b>TEST NON APPLICABILE A QUESTA SONDA</b>", styles['Normal']),
+        Spacer(1, 0.1 * cm),
+        _create_styled_paragraph("<font color='#475569'>Valori di riferimento: non esiste una standardizzazione tale da indicare dei limiti di tolleranza su scala quantitativa</font>", styles['Normal']),
+        Spacer(1, 0.5 * cm)
+    ]
+    story.append(KeepTogether(c10_block))
+
+    # CONCLUSIONI, DATA, IL TECNICO + FIRMA
+    note_text = check.notes or ""
+    conc_box_table = Table([[ _create_styled_paragraph(note_text, styles['Normal']) ]], colWidths=[17.8 * cm])
+    conc_box_table.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f8fafc')),
+        ('BOX', (0, 0), (-1, -1), 0.5, COLOR_MAIN_BLUE),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('LEFTPADDING', (0, 0), (-1, -1), 8),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 8),
+    ]))
+
+    tech_label_p = _create_styled_paragraph(f"<b>IL TECNICO:</b> &nbsp;&nbsp;<font color='#1e3a5f'><b>{(check.technician_name or '').upper()}</b></font>", styles['Normal'])
+    if signature_data:
+        sig_img = _make_signature_image(signature_data, width_cm=4.5, height_cm=1.3)
+        if sig_img:
+            tech_table = Table([[tech_label_p, sig_img]], colWidths=[9 * cm, 8.8 * cm])
+            tech_table.setStyle(TableStyle([
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('LEFTPADDING', (0, 0), (-1, -1), 0),
+                ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+            ]))
+            tech_footer = tech_table
+        else:
+            tech_footer = tech_label_p
+    else:
+        tech_footer = tech_label_p
+
+    conc_block = [
+        _create_styled_paragraph("CONCLUSIONI:", sec_title_style),
+        Spacer(1, 0.2 * cm),
+        conc_box_table,
+        Spacer(1, 0.6 * cm),
+        _create_styled_paragraph(f"<b>DATA:</b> &nbsp;&nbsp;<font color='#1e3a5f'><b>{check.verification_date or ''}</b></font>", styles['Normal']),
+        Spacer(1, 0.6 * cm),
+        tech_footer,
+        Spacer(1, 0.5 * cm)
+    ]
+    story.append(KeepTogether(conc_block))
+
+
+def create_ecografo_quality_report(
+    filename: str = None,
+    device_info: dict = None,
+    customer_info: dict = None,
+    destination_info: dict = None,
+    check = None,
+    technician_name: str = "",
+    signature_data: bytes | None = None,
+    report_settings: dict | None = None,
+    output_path: str = None,
+    **kwargs,
+):
+    """Genera il report PDF per il Controllo Qualità Sonde Ecografo con lo stesso header/footer delle altre verifiche."""
+    target_filename = output_path or filename
+    if not target_filename:
+        raise ValueError("Percorso di output mancante per la generazione del report.")
+
+    device_info = device_info or {}
+    customer_info = customer_info or {}
+    destination_info = destination_info or {}
+
+    styles = _create_styles()
+    story = []
+
+    verification_data = {
+        "date": check.verification_date if check else "",
+        "verification_code": (check.verification_code if check else "N/A") or "N/A",
+        "overall_status": check.overall_status if check else "",
+        "is_ecografo_quality": True,
+    }
+
+    # Stesso piè di pagina e documento di verifica elettrica / funzionale
+    footer_callback = lambda canvas, doc: _add_footer(canvas, doc, device_info, verification_data)
+    doc = _build_report_doc(target_filename, "Report Controllo Qualità Ecografo", footer_callback)
+
+    # 1. Logo e Intestazione identici a verifica elettrica / funzionale
+    _add_logo(story, report_settings or {})
+    _add_header(story, styles, verification_data)
+
+    # 2. Copertina (Pagina 1)
+    _add_ecografo_quality_cover_page(story, styles, device_info, customer_info, destination_info, check)
+
+    # 3. Dati Apparecchio e Sonde collegate (Pagina 2)
+    story.append(PageBreak())
+    _add_ecografo_quality_connected_probes_page(story, styles, device_info, check)
+
+    # Recupera lo storico pluriennale dal database
+    import database
+    history = database.get_probe_history_for_device(check.device_id) if (check and check.device_id) else {}
+
+    # 4. Pagine per ciascuna sonda: Tabella Riassuntiva + Dettaglio su foglio dedicato
+    probes_list = check.probes if check else []
+    for i, probe in enumerate(probes_list):
+        story.append(PageBreak())
+        key = (probe.serial_number or probe.inventory or f"probe_order_{probe.probe_order}").strip()
+        probe_history_list = history.get(key, [])
+        
+        # Tabella riassuntiva per la sonda (su una pagina dedicata)
+        _add_ecografo_quality_probe_summary_table(story, styles, probe, probe_history_list, check, signature_data=signature_data)
+        
+        # Dettaglio Controlli di Qualità parte SEMPRE su un NUOVO foglio
+        story.append(PageBreak())
+        _add_ecografo_quality_probe_detail(story, styles, probe, i, check, signature_data=signature_data)
+
+    doc.build(story)
+    logging.info(f"Report controllo qualità sonde ecografo generato con successo: {target_filename}")
 
 
 def create_system_report(filename, devices_info, customer_info, destination_info,

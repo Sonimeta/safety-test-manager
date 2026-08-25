@@ -102,6 +102,14 @@ ENTITY_TABS = [
         'fields': ['id', 'uuid', 'instrument_name', 'serial_number', 'fw_version', 'calibration_date', 'instrument_type', 'last_modified', '_source'],
         'loader': 'get_deleted_instruments',
     },
+    {
+        'key': 'ecografo_quality_checks',
+        'label': '🩺 CQ Sonde Ecografo',
+        'icon': 'fa5s.notes-medical',
+        'columns': ['ID', 'UUID', 'Data', 'Esito', 'Tecnico', 'Codice', 'Matricola Disp.', 'Descrizione Disp.', 'Ultima Modifica', 'Sorgente'],
+        'fields': ['id', 'uuid', 'verification_date', 'overall_status', 'technician_name', 'verification_code', 'device_serial', 'device_description', 'last_modified', '_source'],
+        'loader': 'get_deleted_ecografo_quality_checks',
+    },
 ]
 
 

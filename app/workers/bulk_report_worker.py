@@ -87,6 +87,8 @@ class BulkReportWorker(QObject):
                 type_label = "Sistema"
             elif verification_type == 'FUNZIONALE':
                 type_label = "Funzionale"
+            elif verification_type == 'ECOGRAFO_CQ':
+                type_label = "CQ Sonde"
             else:
                 type_label = "Elettrica"
             
@@ -95,7 +97,75 @@ class BulkReportWorker(QObject):
             self.progress_updated.emit(progress_percent, progress_message)
 
             try:
-                if verification_type == 'SISTEMA':
+                if verification_type == 'ECOGRAFO_CQ':
+                    # --- LOGICA SPECIFICA PER CONTROLLO QUALITA SONDE ---
+                    if not verif_id:
+                        raise ValueError("ID controllo qualità sonde mancante.")
+
+                    ams_inv = (verif.get('ams_inventory') or '').strip()
+                    serial_num = (verif.get('serial_number') or '').strip()
+                    customer_inv = (verif.get('customer_inventory') or '').strip()
+                    file_suffix = "CQ"
+
+                    if self.naming_format == 'ams_inventory':
+                        base_name = ams_inv if ams_inv else serial_num
+                    elif self.naming_format == 'serial_number':
+                        base_name = serial_num if serial_num else ams_inv
+                    elif self.naming_format == 'customer_inventory':
+                        base_name = customer_inv if customer_inv else (ams_inv if ams_inv else serial_num)
+                    else:
+                        base_name = ams_inv if ams_inv else serial_num
+
+                    if not base_name:
+                        base_name = f"CQ_{verif_id}"
+
+                    safe_base_name = re.sub(r'[\\/*?:"<>|]', '_', base_name)
+                    full_key = f"{safe_base_name} {file_suffix}"
+                    original_safe_name = safe_base_name
+                    counter = 1
+                    while full_key in used_base_names:
+                        safe_base_name = f"{original_safe_name}_{counter}"
+                        full_key = f"{safe_base_name} {file_suffix}"
+                        counter += 1
+
+                    os.makedirs(self.output_folder, exist_ok=True)
+                    full_base_name = f"{safe_base_name} {file_suffix}"
+                    filename = os.path.join(self.output_folder, f"{full_base_name}.pdf")
+                    file_counter = 1
+                    while os.path.exists(filename):
+                        filename = os.path.join(self.output_folder, f"{safe_base_name}_{file_counter} {file_suffix}.pdf")
+                        file_counter += 1
+                    used_base_names.add(full_key)
+
+                    from report_generator import create_ecografo_quality_report
+                    import database
+                    check = database.get_ecografo_quality_check(verif_id)
+                    if not check:
+                        raise ValueError(f"Controllo qualità {verif_id} non trovato.")
+                    check_info = database.get_ecografo_quality_check_with_device_info(verif_id) or {}
+                    device_info = {
+                        "description": check_info.get("description", "N/D"),
+                        "serial_number": check_info.get("serial_number", "N/D"),
+                        "manufacturer": check_info.get("manufacturer", "N/D"),
+                        "model": check_info.get("model", "N/D"),
+                        "department": check_info.get("department", "N/D"),
+                        "customer_inventory": check_info.get("customer_inventory", "N/D"),
+                        "ams_inventory": check_info.get("ams_inventory", "N/D"),
+                    }
+                    destination_info = {"name": check_info.get("destination_name", "N/D")}
+                    customer_info = {"name": check_info.get("customer_name", "N/D")}
+                    signature_data = database.get_signature_by_username(check.technician_username or "")
+                    create_ecografo_quality_report(
+                        filename=filename,
+                        device_info=device_info,
+                        customer_info=customer_info,
+                        destination_info=destination_info,
+                        check=check,
+                        technician_name=check.technician_name or "N/D",
+                        signature_data=signature_data,
+                        report_settings=self.report_settings,
+                    )
+                elif verification_type == 'SISTEMA':
                     # --- LOGICA SPECIFICA PER VERIFICHE DI SISTEMA ---
                     if not verif_id:
                         raise ValueError("ID verifica di sistema mancante.")
@@ -690,6 +760,16 @@ class BulkReportWorker(QObject):
                 _bullet("#f87171",  detail_y, f"{info.get('fun_nc_count', 0)} NON CONFORMI",           indent=1)
                 detail_y -= 0.5*cm
 
+            # ── CQ SONDE ECOGRAFO ─────────────────────────────────────
+            cq_count = info.get('ecografo_cq_count', 0)
+            if cq_count > 0:
+                _section_sep(detail_y + 0.2*cm, "#38bdf8")
+                detail_y -= 0.1*cm
+                _section_hdr(detail_y, "CQ SONDE ECOGRAFO", "#38bdf8")
+                detail_y -= 0.65*cm
+                _bullet("#38bdf8", detail_y, f"{cq_count} CONTROLLI QUALITÀ TOTALI", indent=0)
+                detail_y -= 0.5*cm
+
             # ── NON MESSI A DISPOSIZIONE ──────────────────────────────
             non_disp = info.get('non_disponibili_count', 0)
             if non_disp:
@@ -733,7 +813,7 @@ class BulkReportWorker(QObject):
         COLOR_FAIL_BG = HexColor("#fee2e2")      # Sfondo rosso chiaro
         COLOR_UNAVAIL = HexColor("#7c3aed")      # Viola per NON MESSO A DISPOSIZIONE
         COLOR_UNAVAIL_BG = HexColor("#ede9fe")   # Sfondo viola chiaro
-        COLOR_BORDER = HexColor("#cbd5e1")       # Bordo grigio
+        COLOR_BORDER = HexColor("#475569")       # Bordo grigio scuro per la stampa
         COLOR_TEXT = HexColor("#1e293b")         # Testo principale
         
         # Stile per il testo nelle celle - leggibile ma compatto
@@ -791,9 +871,8 @@ class BulkReportWorker(QObject):
         for verif in self.verifications:
             verification_type = verif.get('verification_type', 'ELETTRICA')
 
-            # Le verifiche di sistema NON rappresentano un singolo dispositivo:
-            # non devono comparire nella tabella apparecchi del fascicolo.
-            if verification_type == "SISTEMA":
+            # Le verifiche di sistema e CQ sonde non compaiono nella tabella apparecchi del fascicolo.
+            if verification_type in ("SISTEMA", "ECOGRAFO_CQ"):
                 continue
 
             device_id = verif.get('device_id')

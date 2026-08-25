@@ -1,7 +1,7 @@
 import shutil
 import re
 import qtawesome as qta
-from datetime import date, timedelta, datetime
+from datetime import date, datetime, timedelta, timezone
 from app.utils.iconify_helper import get_icon, get_pixmap
 import logging
 import json
@@ -54,6 +54,7 @@ from app.ui.dialogs.functional_profile_manager_dialog import FunctionalProfileMa
 from app.ui.dialogs.qr_device_scanner_dialog import QRDeviceScannerDialog
 from app.ui.dialogs.system_verification_dialogs import SystemDeviceSelectionDialog
 from app.ui.dialogs.assignments_dialog import BulkAssignDialog, AssignmentsManagerDialog
+from app.ui.dialogs.ecografo_quality_dialog import EcografoQualityDialog
 from app.config import LOG_DIR
 import database
 from app.workers.table_export_worker import InventoryExportWorker
@@ -322,6 +323,13 @@ class MainWindow(QMainWindow):
         self.data_quality_action = QAction(get_icon("quality", theme=self.current_theme), "Controllo Qualità Dati Dispositivi...", self)
         self.data_quality_action.triggered.connect(self.open_device_data_quality_dialog)
         report_menu.addAction(self.data_quality_action)
+
+        # ===================== MENU FATTURAZIONE =====================
+        billing_menu = menubar.addMenu("🧾 &Fatturazione")
+
+        self.billing_report_action = QAction(get_icon("report", theme=self.current_theme), "Report Fatturazione...", self)
+        self.billing_report_action.triggered.connect(self.open_billing_report)
+        billing_menu.addAction(self.billing_report_action)
 
         # ===================== MENU SINCRONIZZAZIONE =====================
         sync_menu = menubar.addMenu("🔄 &Sincronizzazione")
@@ -638,6 +646,12 @@ class MainWindow(QMainWindow):
         """Apre la finestra di dialogo con le statistiche."""
         dialog = StatsDashboardDialog(self)
         self._show_embedded_dialog(dialog, "DASHBOARD STATISTICHE")
+
+    def open_billing_report(self):
+        """Apre la finestra di dialogo per il report di fatturazione."""
+        from app.ui.dialogs.billing_dialog import BillingReportDialog
+        dialog = BillingReportDialog(self)
+        self._show_embedded_dialog(dialog, "REPORT FATTURAZIONE")
     
     def open_audit_log(self):
         """Apre la finestra di dialogo con il log delle attività."""
@@ -1299,6 +1313,36 @@ class MainWindow(QMainWindow):
                 verif["verification_type"] = "SISTEMA"
                 all_verifications.append(verif)
 
+        if options.get("include_ecografo_cq"):
+            if scope == "all":
+                cq_rows = database.get_ecografo_quality_checks_by_date_range(start_date, end_date)
+            elif scope == "customer" and customer_id:
+                cq_rows = database.get_ecografo_quality_checks_by_date_range(
+                    start_date, end_date, customer_id=customer_id)
+                if destination_ids:
+                    cq_rows = [r for r in cq_rows if r.get('destination_id') in destination_ids]
+            else:
+                cq_rows = database.get_ecografo_quality_checks_by_date_range(
+                    start_date, end_date, destination_id=destination_id)
+            for r in cq_rows:
+                r_dict = dict(r)
+                all_verifications.append({
+                    "verification_type": "ECOGRAFO_CQ",
+                    "id": r_dict.get("id"),
+                    "device_id": r_dict.get("device_id"),
+                    "verification_date": r_dict.get("verification_date"),
+                    "overall_status": r_dict.get("overall_judgment", ""),
+                    "description": r_dict.get("description"),
+                    "manufacturer": r_dict.get("manufacturer"),
+                    "model": r_dict.get("model"),
+                    "serial_number": r_dict.get("serial_number"),
+                    "ams_inventory": r_dict.get("ams_inventory"),
+                    "customer_inventory": r_dict.get("customer_inventory"),
+                    "department": r_dict.get("department"),
+                    "destination_name": r_dict.get("destination_name"),
+                    "technician_name": r_dict.get("technician_name"),
+                })
+
         # Aggiungi segnalazioni "non messo a disposizione" come righe sintetiche
         try:
             if scope == "all":
@@ -1429,6 +1473,7 @@ class MainWindow(QMainWindow):
         electrical_count = sum(1 for v in verifications if v.get("verification_type") == "ELETTRICA")
         functional_count = sum(1 for v in verifications if v.get("verification_type") == "FUNZIONALE")
         system_count = sum(1 for v in verifications if v.get("verification_type") == "SISTEMA")
+        ecografo_cq_count = sum(1 for v in verifications if v.get("verification_type") == "ECOGRAFO_CQ")
 
         def _normalize_status(value: str) -> str:
             return str(value or "").strip().upper()
@@ -1450,7 +1495,7 @@ class MainWindow(QMainWindow):
         # Conteggio verifiche conformi e non conformi (totale)
         conformi_count = sum(
             1 for v in verifications
-            if _normalize_status(v.get("overall_status")) in ("PASSATO", "CONFORME")
+            if _normalize_status(v.get("overall_status")) in ("PASSATO", "CONFORME", "IDONEO")
         )
         conformi_con_annotazione_count = sum(
             1 for v in verifications
@@ -1458,7 +1503,7 @@ class MainWindow(QMainWindow):
         )
         non_conformi_count = sum(
             1 for v in verifications
-            if _normalize_status(v.get("overall_status")) in ("FALLITO", "NON CONFORME")
+            if _normalize_status(v.get("overall_status")) in ("FALLITO", "NON CONFORME", "NON IDONEO")
         )
 
         # Conteggi separati per tipo di verifica (frontespizio)
@@ -1486,6 +1531,7 @@ class MainWindow(QMainWindow):
             "electrical_count": electrical_count,
             "functional_count": functional_count,
             "system_count": system_count,
+            "ecografo_cq_count": ecografo_cq_count,
             "conformi_count": conformi_count,
             "conformi_con_annotazione_count": conformi_con_annotazione_count,
             "non_conformi_count": non_conformi_count,
@@ -3076,11 +3122,14 @@ class MainWindow(QMainWindow):
         
         scroll_area.setWidget(self.device_details_widget)
         box_layout.addWidget(scroll_area)
-        
+
+        btn_layout = QHBoxLayout()
         self.btn_edit_device = QPushButton("Modifica Dispositivo Selezionato")
         self.btn_edit_device.setObjectName("editButton")
         self.btn_edit_device.clicked.connect(self.on_edit_selected_device_new)
-        box_layout.addWidget(self.btn_edit_device)
+        btn_layout.addWidget(self.btn_edit_device)
+
+        box_layout.addLayout(btn_layout)
         
         self.on_device_selection_changed(self.device_selector.currentIndex())
 
@@ -3126,6 +3175,24 @@ class MainWindow(QMainWindow):
             self._clear_device_details()
             return
         self.update_device_details_view(dev_id)
+
+    def _is_device_ecografo(self, dev: dict | None) -> bool:
+        """Verifica se la tipologia/descrizione del dispositivo corrisponde ad un ecografo."""
+        if not dev:
+            return False
+        fields = [
+            dev.get('description'),
+            dev.get('model'),
+            dev.get('manufacturer'),
+            dev.get('department'),
+            dev.get('default_profile_key'),
+            dev.get('default_functional_profile_key'),
+            dev.get('device_type'),
+            dev.get('category'),
+        ]
+        full_text = " ".join(str(f) for f in fields if f).strip().upper()
+        keywords = ["ECOGRAFO", "ECOGRAFI", "ECOGRAFICO", "ULTRASOUND", "ULTRASUONO"]
+        return any(kw in full_text for kw in keywords)
 
     def _clear_device_details(self):
         """Pulisce il layout dei dettagli dispositivo."""
@@ -3481,7 +3548,7 @@ class MainWindow(QMainWindow):
         self.btn_edit_device.setEnabled(False)
         self.start_electrical_button.setEnabled(False)
         self.start_functional_button.setEnabled(False)
-    
+
     def on_edit_selected_device_new(self):
         """Gestisce la modifica del dispositivo selezionato (nuova versione)."""
         if not self.selected_device_id:
@@ -3886,6 +3953,30 @@ class MainWindow(QMainWindow):
             unavail_btn.clicked.connect(lambda _checked=False, did=device_id: self.mark_device_unavailable(did))
         unavail_btn.setFixedSize(26, 26)
         row1.addWidget(unavail_btn)
+
+        # Pulsanti "CQ Sonde" e "Storico CQ" visibili SOLO per ecografi affianco a unavail_btn
+        if self._is_device_ecografo(dev):
+            btn_cq = QPushButton("📉 CQ Sonde")
+            btn_cq.setToolTip("Avvia il controllo qualità delle sonde ecografiche per questo apparecchio")
+            btn_cq.setMinimumHeight(26)
+            btn_cq.setStyleSheet(
+                "QPushButton { background: #dcfce7; color: #15803d; border: 1px solid #86efac;"
+                " border-radius: 5px; font-size: 11px; padding: 2px 8px; font-weight: bold; }"
+                " QPushButton:hover { background: #bbf7d0; }"
+            )
+            btn_cq.clicked.connect(lambda _checked=False, did=device_id: self._on_device_item_cq_clicked(did))
+            row1.addWidget(btn_cq)
+
+            btn_cq_hist = QPushButton("📊 Storico CQ")
+            btn_cq_hist.setToolTip("Visualizza lo storico dei controlli qualità sonde dell'ecografo")
+            btn_cq_hist.setMinimumHeight(26)
+            btn_cq_hist.setStyleSheet(
+                "QPushButton { background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc;"
+                " border-radius: 5px; font-size: 11px; padding: 2px 8px; font-weight: bold; }"
+                " QPushButton:hover { background: #bae6fd; }"
+            )
+            btn_cq_hist.clicked.connect(lambda _checked=False, did=device_id: self._on_device_item_cq_history_clicked(did))
+            row1.addWidget(btn_cq_hist)
 
         lay.addLayout(row1)
 
@@ -4355,8 +4446,8 @@ class MainWindow(QMainWindow):
             except (TypeError, ValueError):
                 continue
 
-        # Mappa strumenti esistenti per validazione/filtri
-        all_instruments_rows = services.database.get_all_instruments() or []
+        # Mappa strumenti esistenti per validazione/filtri (filtrati per sede utente)
+        all_instruments_rows = services.get_all_instruments() or []
         all_instruments_map = {dict(inst).get("id"): dict(inst) for inst in all_instruments_rows}
 
         # Applica filtro tipi consentiti, se impostato
@@ -4373,12 +4464,12 @@ class MainWindow(QMainWindow):
         available_instrument_ids = sorted(available_instrument_ids_set)
 
         if not available_instrument_ids:
-            # Se il profilo non ha strumenti associati, mostra tutti gli strumenti funzionali
-            all_functional = services.database.get_all_instruments('functional')
+            # Se il profilo non ha strumenti associati, mostra tutti gli strumenti funzionali della sede
+            all_functional = services.get_all_instruments('functional')
             # Fallback legacy: se non ci sono strumenti marcati come functional,
             # mostra comunque tutti gli strumenti disponibili.
             if not all_functional:
-                all_functional = services.database.get_all_instruments()
+                all_functional = services.get_all_instruments()
             available_instrument_ids = [dict(inst)['id'] for inst in all_functional]
 
         # Storico ultimi strumenti usati per questo profilo (solo se il profilo ha strumenti assegnati)
@@ -4537,6 +4628,182 @@ class MainWindow(QMainWindow):
         )
         self.test_runner_layout.addWidget(self.test_runner_widget)
         self.set_selection_enabled(False)
+
+    def _on_device_item_cq_clicked(self, device_id: int):
+        self._select_device_by_id(device_id)
+        self.start_ecografo_quality_check()
+
+    def _on_device_item_cq_history_clicked(self, device_id: int):
+        self._select_device_by_id(device_id)
+        self.show_ecografo_quality_history_dialog()
+
+    def _select_device_by_id(self, device_id: int):
+        self.selected_device_id = device_id
+        if hasattr(self, "device_list"):
+            for i in range(self.device_list.count()):
+                item = self.device_list.item(i)
+                if item and item.data(Qt.UserRole) == device_id:
+                    self.device_list.setCurrentItem(item)
+                    self.on_device_selected_new(item)
+                    break
+
+    # ========== CONTROLLO QUALITÀ SONDE ECOGRAFO ==========
+
+    def start_ecografo_quality_check(self):
+        """Avvia il dialog per il controllo qualità delle sonde ecografiche."""
+        if not self.current_technician_name:
+            QMessageBox.warning(
+                self,
+                "Sessione non impostata",
+                "Impostare il tecnico prima di avviare un controllo qualità.",
+            )
+            return
+
+        if not self.selected_device_id:
+            QMessageBox.warning(self, "Attenzione", "Selezionare un dispositivo valido.")
+            return
+
+        device_info_row = services.database.get_device_by_id(self.selected_device_id)
+        if not device_info_row:
+            QMessageBox.critical(self, "Errore", "Impossibile recuperare i dati del dispositivo.")
+            return
+        device_info = dict(device_info_row)
+
+        current_user = auth_manager.get_current_user_info()
+
+        dialog = EcografoQualityDialog(
+            device_info=device_info,
+            technician_name=self.current_technician_name,
+            technician_username=current_user.get("username"),
+            parent=self,
+        )
+        dialog.setWindowState(Qt.WindowMaximized)
+        dialog.showMaximized()
+        if dialog.exec() != QDialog.Accepted:
+            return
+
+        check = dialog.get_check()
+        timestamp = datetime.now(timezone.utc).isoformat()
+
+        try:
+            verification_code, new_id = database.save_ecografo_quality_check(
+                check,
+                timestamp=timestamp,
+            )
+            services.log_action(
+                "CREATE",
+                "ecografo_quality_check",
+                entity_id=new_id,
+                entity_description=f"Controllo qualità sonde ecografo {verification_code}",
+                details={
+                    "device_id": self.selected_device_id,
+                    "verification_code": verification_code,
+                    "overall_status": check.overall_status,
+                    "probes_count": len(check.probes),
+                },
+            )
+            QMessageBox.information(
+                self,
+                "Salvataggio completato",
+                f"Controllo qualità sonde salvato.\nCodice: {verification_code}",
+            )
+            self._ask_generate_ecografo_quality_pdf(new_id)
+        except Exception as e:
+            logging.error(f"Errore salvataggio controllo qualità sonde: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Errore",
+                f"Impossibile salvare il controllo qualità sonde:\n{e}",
+            )
+
+    def show_ecografo_quality_history_dialog(self):
+        """Apre il dialog con lo storico dei controlli qualità per l'ecografo selezionato."""
+        if not self.selected_device_id:
+            QMessageBox.warning(self, "Attenzione", "Selezionare prima un ecografo.")
+            return
+
+        device_info_row = services.database.get_device_by_id(self.selected_device_id)
+        if not device_info_row:
+            QMessageBox.critical(self, "Errore", "Impossibile recuperare i dati del dispositivo.")
+            return
+
+        from app.ui.dialogs.ecografo_quality_dialog import EcografoQualityHistoryDialog
+        dialog = EcografoQualityHistoryDialog(device_info=dict(device_info_row), parent=self)
+        dialog.exec()
+
+    def _ask_generate_ecografo_quality_pdf(self, check_id: int):
+        """Chiede all'utente se generare il PDF del controllo qualità sonde."""
+        reply = QMessageBox.question(
+            self,
+            "Genera report",
+            "Vuoi generare il report PDF del controllo qualità sonde?",
+            QMessageBox.Yes | QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        device_info_row = services.database.get_device_by_id(self.selected_device_id) if self.selected_device_id else None
+        dev_info = dict(device_info_row) if device_info_row else {}
+
+        ams_inv = (dev_info.get('ams_inventory') or '').strip()
+        serial_num = (dev_info.get('serial_number') or '').strip()
+        base_name = ams_inv if ams_inv else serial_num
+        if not base_name:
+            base_name = f"CQ_{check_id}"
+
+        safe_base_name = re.sub(r'[\\/*?:"<>|]', '_', base_name)
+        default_filename = os.path.join(os.getcwd(), f"{safe_base_name} CQ.pdf")
+        filename, _ = QFileDialog.getSaveFileName(
+            self,
+            "Salva Report Controllo Qualità Sonde Ecografo",
+            default_filename,
+            "PDF Files (*.pdf)",
+        )
+        if not filename:
+            return
+
+        try:
+            self._generate_ecografo_quality_pdf(check_id, filename)
+            QMessageBox.information(self, "Successo", f"Report generato con successo:\n{filename}")
+        except Exception as e:
+            logging.error(f"Errore generazione report CQ sonde: {e}", exc_info=True)
+            QMessageBox.critical(self, "Errore", f"Impossibile generare il report:\n{e}")
+
+    def _generate_ecografo_quality_pdf(self, check_id: int, filename: str):
+        """Genera il PDF per un controllo qualità sonde ecografo."""
+        from report_generator import create_ecografo_quality_report
+
+        check = database.get_ecografo_quality_check(check_id)
+        if not check:
+            raise ValueError("Controllo qualità non trovato.")
+
+        check_info = database.get_ecografo_quality_check_with_device_info(check_id)
+        device_info = {
+            "description": check_info.get("description", "N/D"),
+            "serial_number": check_info.get("serial_number", "N/D"),
+            "manufacturer": check_info.get("manufacturer", "N/D"),
+            "model": check_info.get("model", "N/D"),
+            "department": check_info.get("department", "N/D"),
+            "customer_inventory": check_info.get("customer_inventory", "N/D"),
+            "ams_inventory": check_info.get("ams_inventory", "N/D"),
+        }
+
+        destination_info = {"name": check_info.get("destination_name", "N/D")}
+        customer_info = {"name": check_info.get("customer_name", "N/D")}
+
+        signature_data = database.get_signature_by_username(check.technician_username or "")
+        report_settings = {"logo_path": self.logo_path}
+
+        create_ecografo_quality_report(
+            filename=filename,
+            device_info=device_info,
+            customer_info=customer_info,
+            destination_info=destination_info,
+            check=check,
+            technician_name=check.technician_name or "N/D",
+            signature_data=signature_data,
+            report_settings=report_settings,
+        )
 
     # ========== VERIFICHE DI SISTEMA (CEI 62353) ==========
 

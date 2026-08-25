@@ -1,0 +1,204 @@
+2026-08-07 08:44:44 | INFO     | logging_config       | Sistema di logging configurato.
+2026-08-07 08:44:44 | INFO     | logging_config       | ================================================================================
+2026-08-07 08:44:44 | INFO     | logging_config       |   SAFETY TEST MANAGER v10.0.18 - Avvio sessione 2026-08-07 08:44:44
+2026-08-07 08:44:44 | INFO     | logging_config       |   Python 3.14.6 | PID 23172
+2026-08-07 08:44:44 | INFO     | logging_config       | ================================================================================
+2026-08-07 08:44:44 | INFO     | main                 | BASE_DIR: c:\Users\Elson\Desktop\SAFETY TEST MANAGER\SVILUPPO
+2026-08-07 08:44:44 | INFO     | main                 | APP_DATA_DIR: C:\Users\Elson\AppData\Roaming\SafetyTestManager
+2026-08-07 08:44:44 | INFO     | main                 | DB_PATH: C:\Users\Elson\AppData\Roaming\SafetyTestManager\verifiche.db
+2026-08-07 08:44:44 | INFO     | main                 | BACKUP_DIR: C:\Users\Elson\AppData\Roaming\SafetyTestManager\backups
+2026-08-07 08:44:45 | INFO     | backup_manager       | [OK] Backup 'manual' creato con successo: C:\Users\Elson\AppData\Roaming\SafetyTestManager\backups\verifiche_manual_20260807_084444.db.bak
+2026-08-07 08:44:45 | INFO     | backup_manager       |   Checksum: b8b7dc090e05169a... Dimensione: 42020.00 KB
+2026-08-07 08:44:45 | INFO     | backup_manager       | Rotazione backup 'manual': 6 trovati, rimozione di 1 vecchi backup...
+2026-08-07 08:44:45 | INFO     | backup_manager       | Vecchio backup rimosso: verifiche_manual_20260806_095401.db.bak (41.0 MB)
+2026-08-07 08:44:45 | INFO     | database             | Caricati 9 profili dal database locale.
+2026-08-07 08:44:45 | INFO     | database             | Caricati 25 profili funzionali dal database locale.
+2026-08-07 08:44:45 | INFO     | services             | Verification stats: {'totale': 5934, 'verifiche_elettriche': 4172, 'verifiche_funzionali': 1762}
+2026-08-07 08:44:46 | INFO     | main_window          | Timer sincronizzazione periodica avviato: ogni 20 minuti
+2026-08-07 08:44:46 | INFO     | main_window          | Timer controllo aggiornamenti avviato: ogni 120 minuti.
+2026-08-07 08:44:49 | INFO     | main_window          | Verifica connessione TCP verso stm.amsapp.it:443 per sync automatica...
+2026-08-07 08:44:49 | INFO     | main_window          | Connessione di rete al server di sincronizzazione riuscita.
+2026-08-07 08:44:49 | INFO     | main_window          | Rete disponibile all'avvio: avvio sincronizzazione automatica (incrementale).
+2026-08-07 08:44:49 | INFO     | sync_worker          | [SYNC] SyncWorker avviato (Full Sync: False)
+2026-08-07 08:44:49 | INFO     | sync_worker          | [NET] Tentativo 1/3...
+2026-08-07 08:44:49 | INFO     | sync_manager         | Sincronizzazione bloccata (lock acquisito).
+2026-08-07 08:44:49 | INFO     | sync_manager         | [SYNC] Inizio sincronizzazione...
+2026-08-07 08:44:49 | INFO     | sync_manager         | [SAVE] Creazione backup pre-sincronizzazione...
+2026-08-07 08:44:49 | INFO     | backup_manager       | [OK] Backup 'pre_sync' creato con successo: C:\Users\Elson\AppData\Roaming\SafetyTestManager\backups\verifiche_pre_sync_20260807_084449.db.bak
+2026-08-07 08:44:49 | INFO     | backup_manager       |   Checksum: b8b7dc090e05169a... Dimensione: 42020.00 KB
+2026-08-07 08:44:49 | INFO     | backup_manager       | Rotazione backup 'pre_sync': 6 trovati, rimozione di 1 vecchi backup...
+2026-08-07 08:44:49 | INFO     | backup_manager       | Vecchio backup rimosso: verifiche_pre_sync_20260806_165941.db.bak (41.0 MB)
+2026-08-07 08:44:49 | INFO     | sync_manager         | [OK] Backup creato: C:\Users\Elson\AppData\Roaming\SafetyTestManager\backups\verifiche_pre_sync_20260807_084449.db.bak
+2026-08-07 08:44:49 | INFO     | sync_manager         |  Preparazione dati per sincronizzazione (Full Sync: False)...
+2026-08-07 08:44:49 | INFO     | sync_manager         |  Record locali da sincronizzare: 1
+2026-08-07 08:44:49 | INFO     | sync_manager         |  Dimensione payload: 1.56 KB (Checksum: 799cdc1d...)
+2026-08-07 08:44:49 | INFO     | sync_manager         | [NET] Connessione al server: https://stm.amsapp.it/sync
+2026-08-07 08:44:49 | INFO     | sync_manager         | [NET] Tentativo sincronizzazione 1/6
+2026-08-07 08:44:50 | INFO     | sync_manager         | [OK] Risposta ricevuta dal server (status: success)
+2026-08-07 08:44:50 | WARNING  | sync_manager         | [!] Nessun checksum ricevuto dal server
+2026-08-07 08:44:50 | INFO     | sync_manager         | [OK] Validazione dati di sincronizzazione completata con successo
+2026-08-07 08:44:50 | INFO     | sync_manager         | [IN] Inizio applicazione di 9 record dal server...
+2026-08-07 08:44:50 | INFO     | sync_manager         | Modifiche batch dal server applicate: {"customers": 0, "mti_instruments": 0, "signatures": 8, "profiles": 0, "profile_tests": 0, "functional_profiles": 0, "destinations": 0, "devices": 0, "verifications": 0, "functional_verifications": 0, "verification_attachments": 0, "system_verifications": 0, "system_verification_devices": 0, "verification_assignments": 0, "device_unavailability_reports": 0, "ecografo_quality_checks": 0, "ecografo_quality_probes": 0, "ecografo_quality_controls": 0, "audit_log": 1}
+2026-08-07 08:44:50 | INFO     | sync_manager         | Tutti i record locali inviati sono stati marcati come sincronizzati.
+2026-08-07 08:44:50 | INFO     | sync_manager         | [OK] Transazione completata con successo
+2026-08-07 08:44:50 | INFO     | sync_manager         | [OK] Timestamp aggiornato: 2026-08-07T06:44:49.320082+00:00
+2026-08-07 08:44:50 | INFO     | sync_manager         | [OK] Sincronizzazione completata: 8 firme, 1 log delle operazioni
+2026-08-07 08:44:50 | INFO     | sync_manager         | Sincronizzazione sbloccata (lock rilasciato).
+2026-08-07 08:44:50 | INFO     | sync_manager         |  Lock di sincronizzazione rilasciato
+2026-08-07 08:44:50 | INFO     | sync_worker          | [OK] Sincronizzazione completata al tentativo 1
+2026-08-07 08:44:50 | INFO     | database             | Caricati 9 profili dal database locale.
+2026-08-07 08:44:50 | INFO     | database             | Caricati 25 profili funzionali dal database locale.
+2026-08-07 08:44:50 | INFO     | main_window          | Dati ricaricati dal database dopo la sincronizzazione.
+2026-08-07 08:44:50 | INFO     | main_window          | Sync automatica completata.
+2026-08-07 08:44:50 | INFO     | database             | Strumento 56 (FLUKE INDEX-2XLFE) aggiunto alla lista scadenze: scade il 2026-07-15
+2026-08-07 08:44:50 | INFO     | database             | Strumento 57 (FLUKE QED 6) aggiunto alla lista scadenze: scade il 2026-07-17
+2026-08-07 08:44:50 | INFO     | database             | Strumento 56 (FLUKE INDEX-2XLFE) aggiunto alla lista scadenze: scade il 2026-07-15
+2026-08-07 08:44:50 | INFO     | database             | Strumento 57 (FLUKE QED 6) aggiunto alla lista scadenze: scade il 2026-07-17
+2026-08-07 08:44:51 | INFO     | main_window          | [OK] Pulizia backup completata all'avvio.
+2026-08-07 08:45:01 | INFO     | updater              | Controllo aggiornamenti da: https://gist.githubusercontent.com/Sonimeta/c4f5fc1164439e2b737a6c3c31bfa5d5/raw/version.json
+2026-08-07 08:45:01 | INFO     | updater              | Versione corrente: 10.0.18, Ultima versione: 10.0.18
+2026-08-07 08:45:21 | INFO     | detail_dialogs       | [PhoneScan] Ascolto disattivato
+2026-08-07 08:45:39 | INFO     | detail_dialogs       | [PhoneScan] Ascolto disattivato
+2026-08-07 08:46:19 | WARNING  | fluke_esa612         | Nessuna porta COM disponibile trovata.
+2026-08-07 08:46:19 | INFO     | main_window          | Sessione impostata per tecnico 'ELSON META' con strumento S/N VRR19060300 su porta COM1.
+2026-08-07 08:47:02 | INFO     | services             | Servizio di generazione report per verifica ID 16705
+2026-08-07 08:47:02 | INFO     | report_generator     | Report PDF generato con successo: C:\Users\Elson\AppData\Local\Temp\tmpycxzau_c.pdf
+2026-08-07 08:47:05 | INFO     | services             | Apertura anteprima di stampa report PDF...
+2026-08-07 08:47:19 | INFO     | services             | Report per verifica ID 16705 pronto per la stampa.
+2026-08-07 08:49:59 | INFO     | services             | Servizio di generazione report funzionale per verifica ID 7065
+2026-08-07 08:49:59 | INFO     | report_generator     | Report PDF generato con successo: C:\Users\Elson\AppData\Local\Temp\tmpi8q4t7id.pdf
+2026-08-07 08:50:00 | INFO     | services             | Apertura anteprima di stampa report PDF...
+2026-08-07 08:50:21 | INFO     | services             | Report funzionale per verifica ID 7065 pronto per la stampa.
+2026-08-07 08:53:39 | INFO     | detail_dialogs       | [PhoneScan] Ascolto disattivato
+2026-08-07 08:56:37 | INFO     | services             | Servizio di generazione report funzionale per verifica ID 7066
+2026-08-07 08:56:37 | INFO     | report_generator     | Report PDF generato con successo: C:\Users\Elson\AppData\Local\Temp\tmp0ai1zj2m.pdf
+2026-08-07 08:56:38 | INFO     | services             | Apertura anteprima di stampa report PDF...
+2026-08-07 08:56:50 | INFO     | services             | Report funzionale per verifica ID 7066 pronto per la stampa.
+2026-08-07 09:04:46 | INFO     | main_window          | Verifica connessione TCP verso stm.amsapp.it:443 per sync automatica...
+2026-08-07 09:04:46 | INFO     | main_window          | Connessione di rete al server di sincronizzazione riuscita.
+2026-08-07 09:04:46 | INFO     | main_window          | Avvio sincronizzazione periodica in background...
+2026-08-07 09:04:46 | INFO     | sync_worker          | [SYNC] SyncWorker avviato (Full Sync: False)
+2026-08-07 09:04:46 | INFO     | sync_worker          | [NET] Tentativo 1/3...
+2026-08-07 09:04:46 | INFO     | sync_manager         | Sincronizzazione bloccata (lock acquisito).
+2026-08-07 09:04:46 | INFO     | sync_manager         | [SYNC] Inizio sincronizzazione...
+2026-08-07 09:04:46 | INFO     | sync_manager         | [SAVE] Creazione backup pre-sincronizzazione...
+2026-08-07 09:04:47 | INFO     | backup_manager       | [OK] Backup 'pre_sync' creato con successo: C:\Users\Elson\AppData\Roaming\SafetyTestManager\backups\verifiche_pre_sync_20260807_090447.db.bak
+2026-08-07 09:04:47 | INFO     | backup_manager       |   Checksum: 7a0bbf988a8c1a73... Dimensione: 42020.00 KB
+2026-08-07 09:04:47 | INFO     | backup_manager       | Rotazione backup 'pre_sync': 6 trovati, rimozione di 1 vecchi backup...
+2026-08-07 09:04:47 | INFO     | backup_manager       | Vecchio backup rimosso: verifiche_pre_sync_20260806_165951.db.bak (41.0 MB)
+2026-08-07 09:04:47 | INFO     | sync_manager         | [OK] Backup creato: C:\Users\Elson\AppData\Roaming\SafetyTestManager\backups\verifiche_pre_sync_20260807_090447.db.bak
+2026-08-07 09:04:47 | INFO     | sync_manager         |  Preparazione dati per sincronizzazione (Full Sync: False)...
+2026-08-07 09:04:47 | INFO     | sync_manager         |  Record locali da sincronizzare: 15
+2026-08-07 09:04:47 | INFO     | sync_manager         |  Dimensione payload: 20.68 KB (Checksum: f8102194...)
+2026-08-07 09:04:47 | INFO     | sync_manager         | [NET] Connessione al server: https://stm.amsapp.it/sync
+2026-08-07 09:04:47 | INFO     | sync_manager         | [NET] Tentativo sincronizzazione 1/6
+2026-08-07 09:04:47 | INFO     | sync_manager         | [OK] Risposta ricevuta dal server (status: success)
+2026-08-07 09:04:47 | WARNING  | sync_manager         | [!] Nessun checksum ricevuto dal server
+2026-08-07 09:04:47 | INFO     | sync_manager         | [OK] Validazione dati di sincronizzazione completata con successo
+2026-08-07 09:04:47 | INFO     | sync_manager         | [IN] Inizio applicazione di 23 record dal server...
+2026-08-07 09:04:48 | INFO     | sync_manager         | Modifiche batch dal server applicate: {"customers": 0, "mti_instruments": 0, "signatures": 8, "profiles": 0, "profile_tests": 0, "functional_profiles": 0, "destinations": 0, "devices": 2, "verifications": 2, "functional_verifications": 2, "verification_attachments": 0, "system_verifications": 0, "system_verification_devices": 0, "verification_assignments": 0, "device_unavailability_reports": 0, "ecografo_quality_checks": 0, "ecografo_quality_probes": 0, "ecografo_quality_controls": 0, "audit_log": 9}
+2026-08-07 09:04:48 | INFO     | sync_manager         | Tutti i record locali inviati sono stati marcati come sincronizzati.
+2026-08-07 09:04:48 | INFO     | sync_manager         | [OK] Transazione completata con successo
+2026-08-07 09:04:48 | INFO     | sync_manager         | [OK] Timestamp aggiornato: 2026-08-07T07:04:46.698911+00:00
+2026-08-07 09:04:48 | INFO     | sync_manager         | [OK] Sincronizzazione completata: 8 firme, 2 dispositivi, 2 verifiche elettriche, 2 verifiche funzionali, 9 log delle operazioni
+2026-08-07 09:04:48 | INFO     | sync_manager         | Sincronizzazione sbloccata (lock rilasciato).
+2026-08-07 09:04:48 | INFO     | sync_manager         |  Lock di sincronizzazione rilasciato
+2026-08-07 09:04:48 | INFO     | sync_worker          | [OK] Sincronizzazione completata al tentativo 1
+2026-08-07 09:04:48 | INFO     | database             | Caricati 9 profili dal database locale.
+2026-08-07 09:04:48 | INFO     | database             | Caricati 25 profili funzionali dal database locale.
+2026-08-07 09:04:48 | INFO     | main_window          | Dati ricaricati dal database dopo la sincronizzazione.
+2026-08-07 09:04:48 | INFO     | main_window          | Sync automatica completata.
+2026-08-07 09:22:40 | INFO     | sync_worker          | [SYNC] SyncWorker avviato (Full Sync: False)
+2026-08-07 09:22:40 | INFO     | sync_worker          | [NET] Tentativo 1/3...
+2026-08-07 09:22:40 | INFO     | sync_manager         | Sincronizzazione bloccata (lock acquisito).
+2026-08-07 09:22:40 | INFO     | sync_manager         | [SYNC] Inizio sincronizzazione...
+2026-08-07 09:22:40 | INFO     | sync_manager         | [SAVE] Creazione backup pre-sincronizzazione...
+2026-08-07 09:22:40 | INFO     | backup_manager       | [OK] Backup 'pre_sync' creato con successo: C:\Users\Elson\AppData\Roaming\SafetyTestManager\backups\verifiche_pre_sync_20260807_092240.db.bak
+2026-08-07 09:22:40 | INFO     | backup_manager       |   Checksum: 452e9bc3ae8afe06... Dimensione: 42020.00 KB
+2026-08-07 09:22:40 | INFO     | backup_manager       | Rotazione backup 'pre_sync': 6 trovati, rimozione di 1 vecchi backup...
+2026-08-07 09:22:40 | INFO     | backup_manager       | Vecchio backup rimosso: verifiche_pre_sync_20260806_165952.db.bak (41.0 MB)
+2026-08-07 09:22:40 | INFO     | sync_manager         | [OK] Backup creato: C:\Users\Elson\AppData\Roaming\SafetyTestManager\backups\verifiche_pre_sync_20260807_092240.db.bak
+2026-08-07 09:22:40 | INFO     | sync_manager         |  Preparazione dati per sincronizzazione (Full Sync: False)...
+2026-08-07 09:22:40 | INFO     | sync_manager         |  Record locali da sincronizzare: 1
+2026-08-07 09:22:40 | INFO     | sync_manager         |  Dimensione payload: 1.56 KB (Checksum: a362cdaa...)
+2026-08-07 09:22:40 | INFO     | sync_manager         | [NET] Connessione al server: https://stm.amsapp.it/sync
+2026-08-07 09:22:40 | INFO     | sync_manager         | [NET] Tentativo sincronizzazione 1/6
+2026-08-07 09:22:41 | INFO     | sync_manager         | [OK] Risposta ricevuta dal server (status: success)
+2026-08-07 09:22:41 | WARNING  | sync_manager         | [!] Nessun checksum ricevuto dal server
+2026-08-07 09:22:41 | INFO     | sync_manager         | [OK] Validazione dati di sincronizzazione completata con successo
+2026-08-07 09:22:41 | INFO     | sync_manager         | [IN] Inizio applicazione di 9 record dal server...
+2026-08-07 09:22:41 | INFO     | sync_manager         | Modifiche batch dal server applicate: {"customers": 0, "mti_instruments": 0, "signatures": 8, "profiles": 0, "profile_tests": 0, "functional_profiles": 0, "destinations": 0, "devices": 0, "verifications": 0, "functional_verifications": 0, "verification_attachments": 0, "system_verifications": 0, "system_verification_devices": 0, "verification_assignments": 0, "device_unavailability_reports": 0, "ecografo_quality_checks": 0, "ecografo_quality_probes": 0, "ecografo_quality_controls": 0, "audit_log": 1}
+2026-08-07 09:22:41 | INFO     | sync_manager         | Tutti i record locali inviati sono stati marcati come sincronizzati.
+2026-08-07 09:22:41 | INFO     | sync_manager         | [OK] Transazione completata con successo
+2026-08-07 09:22:41 | INFO     | sync_manager         | [OK] Timestamp aggiornato: 2026-08-07T07:22:40.214997+00:00
+2026-08-07 09:22:41 | INFO     | sync_manager         | [OK] Sincronizzazione completata: 8 firme, 1 log delle operazioni
+2026-08-07 09:22:41 | INFO     | sync_manager         | Sincronizzazione sbloccata (lock rilasciato).
+2026-08-07 09:22:41 | INFO     | sync_manager         |  Lock di sincronizzazione rilasciato
+2026-08-07 09:22:41 | INFO     | sync_worker          | [OK] Sincronizzazione completata al tentativo 1
+2026-08-07 09:22:41 | INFO     | database             | Caricati 9 profili dal database locale.
+2026-08-07 09:22:41 | INFO     | database             | Caricati 25 profili funzionali dal database locale.
+2026-08-07 09:22:41 | INFO     | main_window          | Dati ricaricati dal database dopo la sincronizzazione.
+2026-08-07 09:22:42 | INFO     | sync_worker          | [SYNC] SyncWorker avviato (Full Sync: False)
+2026-08-07 09:22:42 | INFO     | sync_worker          | [NET] Tentativo 1/3...
+2026-08-07 09:22:42 | INFO     | sync_manager         | Sincronizzazione bloccata (lock acquisito).
+2026-08-07 09:22:42 | INFO     | sync_manager         | [SYNC] Inizio sincronizzazione...
+2026-08-07 09:22:42 | INFO     | sync_manager         | [SAVE] Creazione backup pre-sincronizzazione...
+2026-08-07 09:22:42 | INFO     | backup_manager       | [OK] Backup 'pre_sync' creato con successo: C:\Users\Elson\AppData\Roaming\SafetyTestManager\backups\verifiche_pre_sync_20260807_092242.db.bak
+2026-08-07 09:22:42 | INFO     | backup_manager       |   Checksum: 2d4b0f43c5a3b5bd... Dimensione: 42020.00 KB
+2026-08-07 09:22:42 | INFO     | backup_manager       | Rotazione backup 'pre_sync': 6 trovati, rimozione di 1 vecchi backup...
+2026-08-07 09:22:42 | INFO     | backup_manager       | Vecchio backup rimosso: verifiche_pre_sync_20260806_165957.db.bak (41.0 MB)
+2026-08-07 09:22:42 | INFO     | sync_manager         | [OK] Backup creato: C:\Users\Elson\AppData\Roaming\SafetyTestManager\backups\verifiche_pre_sync_20260807_092242.db.bak
+2026-08-07 09:22:42 | INFO     | sync_manager         |  Preparazione dati per sincronizzazione (Full Sync: False)...
+2026-08-07 09:22:42 | INFO     | sync_manager         |  Record locali da sincronizzare: 1
+2026-08-07 09:22:42 | INFO     | sync_manager         |  Dimensione payload: 1.56 KB (Checksum: df25965a...)
+2026-08-07 09:22:42 | INFO     | sync_manager         | [NET] Connessione al server: https://stm.amsapp.it/sync
+2026-08-07 09:22:42 | INFO     | sync_manager         | [NET] Tentativo sincronizzazione 1/6
+2026-08-07 09:22:43 | INFO     | sync_manager         | [OK] Risposta ricevuta dal server (status: success)
+2026-08-07 09:22:43 | WARNING  | sync_manager         | [!] Nessun checksum ricevuto dal server
+2026-08-07 09:22:43 | INFO     | sync_manager         | [OK] Validazione dati di sincronizzazione completata con successo
+2026-08-07 09:22:43 | INFO     | sync_manager         | [IN] Inizio applicazione di 9 record dal server...
+2026-08-07 09:22:43 | INFO     | sync_manager         | Modifiche batch dal server applicate: {"customers": 0, "mti_instruments": 0, "signatures": 8, "profiles": 0, "profile_tests": 0, "functional_profiles": 0, "destinations": 0, "devices": 0, "verifications": 0, "functional_verifications": 0, "verification_attachments": 0, "system_verifications": 0, "system_verification_devices": 0, "verification_assignments": 0, "device_unavailability_reports": 0, "ecografo_quality_checks": 0, "ecografo_quality_probes": 0, "ecografo_quality_controls": 0, "audit_log": 1}
+2026-08-07 09:22:43 | INFO     | sync_manager         | Tutti i record locali inviati sono stati marcati come sincronizzati.
+2026-08-07 09:22:43 | INFO     | sync_manager         | [OK] Transazione completata con successo
+2026-08-07 09:22:43 | INFO     | sync_manager         | [OK] Timestamp aggiornato: 2026-08-07T07:22:42.070260+00:00
+2026-08-07 09:22:43 | INFO     | sync_manager         | [OK] Sincronizzazione completata: 8 firme, 1 log delle operazioni
+2026-08-07 09:22:43 | INFO     | sync_manager         | Sincronizzazione sbloccata (lock rilasciato).
+2026-08-07 09:22:43 | INFO     | sync_manager         |  Lock di sincronizzazione rilasciato
+2026-08-07 09:22:43 | INFO     | sync_worker          | [OK] Sincronizzazione completata al tentativo 1
+2026-08-07 09:22:43 | INFO     | database             | Caricati 9 profili dal database locale.
+2026-08-07 09:22:43 | INFO     | database             | Caricati 25 profili funzionali dal database locale.
+2026-08-07 09:22:43 | INFO     | main_window          | Dati ricaricati dal database dopo la sincronizzazione.
+2026-08-07 09:24:46 | INFO     | main_window          | Verifica connessione TCP verso stm.amsapp.it:443 per sync automatica...
+2026-08-07 09:24:46 | INFO     | main_window          | Connessione di rete al server di sincronizzazione riuscita.
+2026-08-07 09:24:46 | INFO     | main_window          | Avvio sincronizzazione periodica in background...
+2026-08-07 09:24:46 | INFO     | sync_worker          | [SYNC] SyncWorker avviato (Full Sync: False)
+2026-08-07 09:24:46 | INFO     | sync_worker          | [NET] Tentativo 1/3...
+2026-08-07 09:24:46 | INFO     | sync_manager         | Sincronizzazione bloccata (lock acquisito).
+2026-08-07 09:24:46 | INFO     | sync_manager         | [SYNC] Inizio sincronizzazione...
+2026-08-07 09:24:46 | INFO     | sync_manager         | [SAVE] Creazione backup pre-sincronizzazione...
+2026-08-07 09:24:46 | INFO     | backup_manager       | [OK] Backup 'pre_sync' creato con successo: C:\Users\Elson\AppData\Roaming\SafetyTestManager\backups\verifiche_pre_sync_20260807_092446.db.bak
+2026-08-07 09:24:46 | INFO     | backup_manager       |   Checksum: 0db793bd7c14a9de... Dimensione: 42020.00 KB
+2026-08-07 09:24:46 | INFO     | backup_manager       | Rotazione backup 'pre_sync': 6 trovati, rimozione di 1 vecchi backup...
+2026-08-07 09:24:46 | INFO     | backup_manager       | Vecchio backup rimosso: verifiche_pre_sync_20260806_170038.db.bak (41.0 MB)
+2026-08-07 09:24:46 | INFO     | sync_manager         | [OK] Backup creato: C:\Users\Elson\AppData\Roaming\SafetyTestManager\backups\verifiche_pre_sync_20260807_092446.db.bak
+2026-08-07 09:24:46 | INFO     | sync_manager         |  Preparazione dati per sincronizzazione (Full Sync: False)...
+2026-08-07 09:24:46 | INFO     | sync_manager         |  Record locali da sincronizzare: 1
+2026-08-07 09:24:46 | INFO     | sync_manager         |  Dimensione payload: 1.56 KB (Checksum: e91fd0d9...)
+2026-08-07 09:24:46 | INFO     | sync_manager         | [NET] Connessione al server: https://stm.amsapp.it/sync
+2026-08-07 09:24:46 | INFO     | sync_manager         | [NET] Tentativo sincronizzazione 1/6
+2026-08-07 09:24:47 | INFO     | sync_manager         | [OK] Risposta ricevuta dal server (status: success)
+2026-08-07 09:24:47 | WARNING  | sync_manager         | [!] Nessun checksum ricevuto dal server
+2026-08-07 09:24:47 | INFO     | sync_manager         | [OK] Validazione dati di sincronizzazione completata con successo
+2026-08-07 09:24:47 | INFO     | sync_manager         | [IN] Inizio applicazione di 9 record dal server...
+2026-08-07 09:24:47 | INFO     | sync_manager         | Modifiche batch dal server applicate: {"customers": 0, "mti_instruments": 0, "signatures": 8, "profiles": 0, "profile_tests": 0, "functional_profiles": 0, "destinations": 0, "devices": 0, "verifications": 0, "functional_verifications": 0, "verification_attachments": 0, "system_verifications": 0, "system_verification_devices": 0, "verification_assignments": 0, "device_unavailability_reports": 0, "ecografo_quality_checks": 0, "ecografo_quality_probes": 0, "ecografo_quality_controls": 0, "audit_log": 1}
+2026-08-07 09:24:47 | INFO     | sync_manager         | Tutti i record locali inviati sono stati marcati come sincronizzati.
+2026-08-07 09:24:47 | INFO     | sync_manager         | [OK] Transazione completata con successo
+2026-08-07 09:24:47 | INFO     | sync_manager         | [OK] Timestamp aggiornato: 2026-08-07T07:24:45.950951+00:00
+2026-08-07 09:24:47 | INFO     | sync_manager         | [OK] Sincronizzazione completata: 8 firme, 1 log delle operazioni
+2026-08-07 09:24:47 | INFO     | sync_manager         | Sincronizzazione sbloccata (lock rilasciato).
+2026-08-07 09:24:47 | INFO     | sync_manager         |  Lock di sincronizzazione rilasciato
+2026-08-07 09:24:47 | INFO     | sync_worker          | [OK] Sincronizzazione completata al tentativo 1
+2026-08-07 09:24:47 | INFO     | database             | Caricati 9 profili dal database locale.
+2026-08-07 09:24:47 | INFO     | database             | Caricati 25 profili funzionali dal database locale.
+2026-08-07 09:24:47 | INFO     | main_window          | Dati ricaricati dal database dopo la sincronizzazione.
+2026-08-07 09:24:47 | INFO     | main_window          | Sync automatica completata.

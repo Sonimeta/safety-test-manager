@@ -171,6 +171,26 @@ def get_all_customers(search_query=None):
 def get_customer_by_id(customer_id):
     return database.get_customer_by_id(customer_id)
 
+def get_destinations_for_customer(customer_id: int, search_query: str = None):
+    return database.get_destinations_for_customer(customer_id, search_query)
+
+def get_billing_summary(customer_id: int, destination_id: int | None, start_date: str, end_date: str) -> dict:
+    """Statistiche per il report di fatturazione (apparecchi verificati, esiti, tempo impiegato)."""
+    return database.get_billing_summary(customer_id, destination_id, start_date, end_date)
+
+def get_verifications_for_customer_by_date_range(customer_id: int, start_date: str, end_date: str) -> list:
+    return database.get_verifications_for_customer_by_date_range(customer_id, start_date, end_date)
+
+def get_functional_verifications_for_customer_by_date_range(customer_id: int, start_date: str, end_date: str) -> list:
+    return database.get_functional_verifications_for_customer_by_date_range(customer_id, start_date, end_date)
+
+def get_verifications_for_destination_by_date_range(destination_id: int, start_date: str, end_date: str) -> list:
+    return database.get_verifications_for_destination_by_date_range(destination_id, start_date, end_date)
+
+def get_functional_verifications_for_destination_by_date_range(destination_id: int, start_date: str, end_date: str) -> list:
+    return database.get_functional_verifications_for_destination_by_date_range(destination_id, start_date, end_date)
+
+
 def get_device_count_for_customer(customer_id):
     return database.get_device_count_for_customer(customer_id)
 
@@ -740,7 +760,7 @@ def get_destination_devices_for_export_by_date_range(
 def finalizza_e_salva_verifica(device_id, profile_name, results,
                                visual_inspection_data, mti_info,
                                technician_name, technician_username,
-                               device_info=None) -> tuple[str, int]:
+                               device_info=None, duration_seconds: int | None = None) -> tuple[str, int]:
     if isinstance(results, list):
         passed_flags = [bool(r.get('passed')) for r in results if isinstance(r, dict) and 'passed' in r]
         overall_status = 'CONFORME' if all(passed_flags) else 'NON CONFORME'
@@ -794,6 +814,7 @@ def finalizza_e_salva_verifica(device_id, profile_name, results,
         technician_name,
         technician_username,
         timestamp,
+        duration_seconds=duration_seconds,
     )
 
     device_info = device_info or {}
@@ -904,6 +925,93 @@ def update_verification(verification_id: int, verification_date: str, overall_st
     return updated
 
 
+def _ensure_attachment_local(att: dict) -> bool:
+    """
+    Verifica che il file di un allegato esista in cache locale.
+    Se il file è mancante (es. dopo purge_synced_attachments) ma l'allegato ha
+    un uuid, prova a scaricarlo dal server e aggiorna il database.
+    Restituisce True se il file è disponibile localemente, False altrimenti.
+    """
+    file_path = att.get('file_path') or ''
+    if file_path:
+        abs_path = os.path.join(config.ATTACHMENTS_DIR, file_path)
+        if os.path.exists(abs_path):
+            return True
+
+    att_uuid = att.get('uuid')
+    if not att_uuid:
+        logging.warning(
+            f"Allegato {att.get('filename', 'N/D')} senza uuid, impossibile scaricare."
+        )
+        return False
+
+    file_data = download_attachment_bytes(att_uuid)
+    if not file_data:
+        logging.warning(f"Impossibile scaricare allegato {att_uuid} dal server.")
+        return False
+
+    filename = att.get('filename') or f"{att_uuid}.bin"
+    ext = os.path.splitext(filename)[1].lower()
+    if not ext:
+        mime = (att.get('mime_type') or '').lower()
+        if mime == 'application/pdf':
+            ext = '.pdf'
+        elif mime.startswith('image/'):
+            ext = '.' + mime.split('/')[-1]
+        else:
+            ext = '.bin'
+
+    verification_id = att.get('verification_id')
+    folder = (
+        os.path.join(config.ATTACHMENTS_DIR, str(verification_id))
+        if verification_id
+        else config.ATTACHMENTS_DIR
+    )
+    os.makedirs(folder, exist_ok=True)
+
+    safe_filename = f"{att_uuid}{ext}"
+    abs_path = os.path.join(folder, safe_filename)
+    try:
+        with open(abs_path, 'wb') as f:
+            f.write(file_data)
+    except Exception as e:
+        logging.error(f"Errore salvataggio allegato scaricato {att_uuid}: {e}")
+        return False
+
+    rel_path = os.path.relpath(abs_path, config.ATTACHMENTS_DIR)
+    att['file_path'] = rel_path
+    att['file_size'] = len(file_data)
+    try:
+        database.update_attachment_file_path(att.get('id'), rel_path, len(file_data))
+    except Exception as e:
+        logging.warning(
+            f"Impossibile aggiornare file_path nel DB per allegato {att_uuid}: {e}"
+        )
+
+    logging.info(
+        f"Allegato {att_uuid} scaricato e salvato localmente: {abs_path} "
+        f"({len(file_data)} bytes)"
+    )
+    return True
+
+
+def _prepare_attachments_for_report(attachments: list[dict]) -> list[dict]:
+    """
+    Filtra gli allegati garantendo che i file siano disponibili localmente.
+    Gli allegati non recuperabili vengono scartati con un warning.
+    """
+    prepared = []
+    for att in attachments:
+        if _ensure_attachment_local(att):
+            prepared.append(att)
+        else:
+            logging.warning(
+                f"Allegato {att.get('filename', 'N/D')} escluso dal report: "
+                f"file non disponibile localmente e download fallito."
+            )
+    return prepared
+
+
 def generate_pdf_report(filename, verification_id, device_id, report_settings):
     logging.info(f"Servizio di generazione report per verifica ID {verification_id}")
 
@@ -959,8 +1067,9 @@ def generate_pdf_report(filename, verification_id, device_id, report_settings):
     try:
         attachments = database.get_verification_attachments(verification_id, 'electrical')
         if attachments:
-            verification_data_for_report['attachments'] = attachments
-            logging.info(f"Trovati {len(attachments)} allegati per report VE ID {verification_id}")
+            verification_data_for_report['attachments'] = _prepare_attachments_for_report(attachments)
+            logging.info(f"Trovati {len(attachments)} allegati per report VE ID {verification_id}, "
+                         f"{len(verification_data_for_report['attachments'])} disponibili per il PDF")
     except Exception as e:
         logging.warning(f"Impossibile recuperare allegati per report VE: {e}")
 
@@ -1047,8 +1156,9 @@ def generate_functional_pdf_report(filename, verification_id, device_id, report_
     try:
         attachments = database.get_verification_attachments(verification_id, 'functional')
         if attachments:
-            verification_data_for_report['attachments'] = attachments
-            logging.info(f"Trovati {len(attachments)} allegati per report VFUN ID {verification_id}")
+            verification_data_for_report['attachments'] = _prepare_attachments_for_report(attachments)
+            logging.info(f"Trovati {len(attachments)} allegati per report VFUN ID {verification_id}, "
+                         f"{len(verification_data_for_report['attachments'])} disponibili per il PDF")
     except Exception as e:
         logging.warning(f"Impossibile recuperare allegati per report VFUN: {e}")
 
@@ -1489,17 +1599,29 @@ def get_device_data_quality_issues() -> list:
 # SERVIZI PER STRUMENTI E IMPOSTAZIONI
 # ==============================================================================
 
-def get_all_instruments(instrument_type: str = None):
+def get_all_instruments(instrument_type: str = None, apply_user_filter: bool = True, user_sede: str = None):
     """
-    Recupera tutti gli strumenti, opzionalmente filtrati per tipo.
+    Recupera tutti gli strumenti, opzionalmente filtrati per tipo e per sede dell'utente.
     
     Args:
         instrument_type: 'electrical' per strumenti elettrici, 'functional' per strumenti funzionali, None per tutti
+        apply_user_filter: Se True e l'utente corrente non è admin, applica automaticamente il filtro per sede dell'utente
+        user_sede: Forza una specifica sede (se None e apply_user_filter=True, usa la sede dell'utente loggato)
     """
-    return database.get_all_instruments(instrument_type)
+    effective_sede = user_sede
+    if apply_user_filter and effective_sede is None:
+        try:
+            role = auth_manager.get_current_role()
+            if role != 'admin':
+                effective_sede = auth_manager.get_current_sede()
+        except Exception:
+            effective_sede = None
+
+    return database.get_all_instruments(instrument_type=instrument_type, user_sede=effective_sede)
 
 def add_instrument(instrument_name: str, serial_number: str, 
-                   fw_version: str, calibration_date: str, instrument_type: str = 'electrical'):
+                   fw_version: str, calibration_date: str, instrument_type: str = 'electrical',
+                   sede: str = None):
     """Add a new instrument to the database."""
     new_uuid = str(uuid.uuid4())
     timestamp = datetime.now(timezone.utc).isoformat()
@@ -1510,15 +1632,17 @@ def add_instrument(instrument_name: str, serial_number: str,
         fw_version, 
         calibration_date, 
         timestamp=timestamp,
-        instrument_type=instrument_type
+        instrument_type=instrument_type,
+        sede=sede
     )
     
     # Log audit
     log_action('CREATE', 'instrument', entity_description=f"{instrument_name} (S/N: {serial_number})",
-               details={'fw_version': fw_version, 'calibration_date': calibration_date, 'instrument_type': instrument_type})
+               details={'fw_version': fw_version, 'calibration_date': calibration_date, 'instrument_type': instrument_type, 'sede': sede})
 
 def update_instrument(inst_id: int, instrument_name: str, serial_number: str, 
-                     fw_version: str, calibration_date: str, instrument_type: str = None):
+                      fw_version: str, calibration_date: str, instrument_type: str = None,
+                      sede: str = None):
     """Update an instrument in the database."""
     timestamp = datetime.now(timezone.utc).isoformat()
     database.update_instrument(
@@ -1528,13 +1652,14 @@ def update_instrument(inst_id: int, instrument_name: str, serial_number: str,
         fw_version, 
         calibration_date, 
         timestamp,
-        instrument_type=instrument_type
+        instrument_type=instrument_type,
+        sede=sede
     )
     
     # Log audit
     log_action('UPDATE', 'instrument', entity_id=inst_id, 
                entity_description=f"{instrument_name} (S/N: {serial_number})",
-               details={'fw_version': fw_version, 'calibration_date': calibration_date, 'instrument_type': instrument_type})
+               details={'fw_version': fw_version, 'calibration_date': calibration_date, 'instrument_type': instrument_type, 'sede': sede})
 
 def delete_instrument(inst_id: int):
     # Ottieni info prima di eliminare
@@ -1673,6 +1798,7 @@ def finalizza_e_salva_verifica_funzionale(
     technician_username: str,
     device_info: dict,
     used_instruments: list | None = None,
+    duration_seconds: int | None = None,
 ) -> tuple[str, int]:
     new_uuid = str(uuid.uuid4())
     timestamp = datetime.now(timezone.utc).isoformat()
@@ -1689,6 +1815,7 @@ def finalizza_e_salva_verifica_funzionale(
         technician_username=technician_username,
         timestamp=timestamp,
         used_instruments=used_instruments,
+        duration_seconds=duration_seconds,
     )
 
     device_info = device_info or {}
@@ -2051,6 +2178,22 @@ def delete_system_verification(sv_id: int):
             'system_verification',
             entity_id=sv_id,
             entity_description=f"Eliminata verifica di sistema {verification_code} - {system_name}",
+        )
+    return deleted
+
+
+def delete_ecografo_quality_check(check_id: int) -> bool:
+    """Elimina (soft delete) una verifica di controllo qualità sonde ecografo."""
+    check = database.get_ecografo_quality_check(check_id)
+    timestamp = datetime.now(timezone.utc).isoformat()
+    deleted = database.delete_ecografo_quality_check(check_id, timestamp)
+    if deleted and check:
+        v_code = check.verification_code or f"CQ-{check_id}"
+        log_action(
+            'DELETE',
+            'ecografo_quality_check',
+            entity_id=check_id,
+            entity_description=f"Eliminato controllo qualità sonde {v_code}",
         )
     return deleted
 

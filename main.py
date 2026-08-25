@@ -335,8 +335,9 @@ if __name__ == '__main__':
                     username = payload.get("sub")
                     role = payload.get("role")
                     full_name = payload.get("full_name", "N/D")
+                    sede = payload.get("sede")
                     
-                    auth_manager.set_current_user(username, role, token, full_name)
+                    auth_manager.set_current_user(username, role, token, full_name, sede=sede)
                     auth_manager.save_session_to_disk()
                     logged_in_successfully = True
                 except (JWTError, KeyError) as e:

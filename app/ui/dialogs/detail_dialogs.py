@@ -708,6 +708,7 @@ class InstrumentDetailDialog(QDialog):
         self.serial_edit = QLineEdit(data.get('serial_number', ''))
         self.version_edit = QLineEdit(data.get('fw_version', ''))
         self.cal_date_edit = QLineEdit(data.get('calibration_date', ''))
+        self.sede_edit = QLineEdit(data.get('sede', ''))
         
         # Tipo strumento
         self.type_combo = QComboBox()
@@ -723,6 +724,7 @@ class InstrumentDetailDialog(QDialog):
         layout.addRow("NUMERO DI SERIE:", self.serial_edit)
         layout.addRow("VERSIONE FIRMWARE:", self.version_edit)
         layout.addRow("DATA CALIBRAZIONE:", self.cal_date_edit)
+        layout.addRow("SEDE:", self.sede_edit)
         layout.addRow("TIPO STRUMENTO:", self.type_combo)
         
         # 4. Aggiunta dei pulsanti finali
@@ -738,5 +740,6 @@ class InstrumentDetailDialog(QDialog):
             "serial_number": self.serial_edit.text().strip().upper(),
             "fw_version": self.version_edit.text().strip().upper(),
             "calibration_date": self.cal_date_edit.text().strip().upper(),
+            "sede": self.sede_edit.text().strip().upper() or None,
             "instrument_type": instrument_type,
         }

@@ -1,6 +1,37 @@
 {
   "changelog": [
     {
+      "version": "10.0.19",
+      "date": "2026-08-20",
+      "title": "Versione 10.0.19",
+      "changes": [
+        "✨ AGGIUNTO al MENU FATTURAZIONE LA COLONNA PER MOSTRARE SU QUANTI ECOGRAFI E STATO ESEGUITO IL CQ \n IL NUMERO DI SONDE",
+        "✨ INEGRATA CQ ECOGRAFI NELLA GENERAZIONE DEL FASCICOLO",
+        "🐛 FIX BORDO TABELLE REPORT (QUANDO VENIVANO STAMPATI NON SI VEDEVANO)"
+      ]
+    }, 
+    {
+      "version": "10.0.18",
+      "date": "2026-07-18",
+      "title": "Versione 10.0.18",
+      "changes": [
+        "✨ AGGIUNTO al MENU FATTURAZIONE LA COLONNA PER MOSTRARE QUANTE VE E VF PER TIPO",
+        "✨ INEGRATA CQ ECOGRAFI (BETA)",
+        "🐛 FIX MODIFICA VERIFICA CHE CAMBIABA LA DATA IN AUTOMATICO DEI STRUMENTI"
+      ]
+    },
+     {
+      "version": "10.0.17",
+      "date": "2026-07-17",
+      "title": "Versione 10.0.17",
+      "changes": [
+        "✨ AGGIUNTO MENU FATTURAZIONE CHE MOSTRA TUTTI I DATI PER LA FATTURAZIONE",
+        "✨ MIGLIORATA INTERFACCIA SCHERMATA PRINCIPALE",
+        "🐛 FIX PULSANTE MOSTRA TUTTI DISPOSITIVI PER CLIENTE",
+        "🐛 FIX GENERAZINE PDF CON ALLEGATI "
+      ]
+    },
+    {
       "version": "10.0.16",
       "date": "2026-06-12",
       "title": "Versione 10.0.16",

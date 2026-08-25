@@ -172,6 +172,8 @@ QCalendarWidget {
     background-color: white;
     border: 1px solid #e0e7f1;
     border-radius: 12px;
+    min-width: 350px;
+    min-height: 280px;
 }
 
 QCalendarWidget QToolButton {

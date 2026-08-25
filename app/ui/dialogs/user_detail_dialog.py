@@ -14,6 +14,7 @@ class UserDetailDialog(QDialog):
         self.username_edit = QLineEdit(data.get('username', ''))
         self.first_name_edit = QLineEdit(data.get('first_name', ''))
         self.last_name_edit = QLineEdit(data.get('last_name', ''))
+        self.sede_edit = QLineEdit(data.get('sede', ''))
         self.password_edit = QLineEdit()
         self.role_combo = QComboBox()
         self.role_combo.addItems(['technician', 'moderator', 'admin'])
@@ -26,6 +27,7 @@ class UserDetailDialog(QDialog):
         layout.addRow("USERNAME:", self.username_edit)
         layout.addRow("NOME:", self.first_name_edit)
         layout.addRow("COGNOME:", self.last_name_edit)
+        layout.addRow("SEDE:", self.sede_edit)
         layout.addRow("PASSWORD:", self.password_edit)
         layout.addRow("RUOLO:", self.role_combo)
         
@@ -40,6 +42,7 @@ class UserDetailDialog(QDialog):
             "username": self.username_edit.text().strip().lower(),
             "first_name": self.first_name_edit.text().strip().upper(),
             "last_name": self.last_name_edit.text().strip().upper(),
+            "sede": self.sede_edit.text().strip().upper() or None,
             "role": self.role_combo.currentText(),
             "password": self.password_edit.text()
         }

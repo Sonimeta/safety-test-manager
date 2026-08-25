@@ -2428,12 +2428,12 @@ class InstrumentManagerDialog(QDialog):
         # Abilita il maiuscolo automatico per questa finestra
         self.setProperty("_stm_uppercase_window", True)
         self.setWindowTitle("GESTIONE ANAGRAFICA STRUMENTI")
-        self.setMinimumSize(800, 500)
+        self.setMinimumSize(850, 500)
         # Applica il tema corrente
         self.setStyleSheet(config.get_current_stylesheet())
         layout = QVBoxLayout(self)
-        self.table = QTableWidget(0, 5)
-        self.table.setHorizontalHeaderLabels(["ID", "NOME STRUMENTO", "SERIALE", "NR CERTIFICATO CAL.", "DATA CAL."])
+        self.table = QTableWidget(0, 6)
+        self.table.setHorizontalHeaderLabels(["ID", "NOME STRUMENTO", "SERIALE", "NR CERTIFICATO CAL.", "DATA CAL.", "SEDE"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSortingEnabled(True)
@@ -2457,13 +2457,13 @@ class InstrumentManagerDialog(QDialog):
     def load_instruments(self):
         self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
-        instruments_rows = services.get_all_instruments()
+        instruments_rows = services.get_all_instruments(apply_user_filter=False)
         for inst_row in instruments_rows:
             instrument = dict(inst_row); row = self.table.rowCount(); self.table.insertRow(row)
             id_item = QTableWidgetItem(str(instrument.get('id'))); id_item.setFlags(id_item.flags() & ~Qt.ItemIsEditable)
-            self.table.setItem(row, 0, id_item); self.table.setItem(row, 1, QTableWidgetItem(str(instrument.get('instrument_name', '')).upper())); self.table.setItem(row, 2, QTableWidgetItem(str(instrument.get('serial_number', '')).upper())); self.table.setItem(row, 3, QTableWidgetItem(str(instrument.get('fw_version', '')).upper())); self.table.setItem(row, 4, QTableWidgetItem(str(instrument.get('calibration_date', '')).upper()))
+            self.table.setItem(row, 0, id_item); self.table.setItem(row, 1, QTableWidgetItem(str(instrument.get('instrument_name', '')).upper())); self.table.setItem(row, 2, QTableWidgetItem(str(instrument.get('serial_number', '')).upper())); self.table.setItem(row, 3, QTableWidgetItem(str(instrument.get('fw_version', '')).upper())); self.table.setItem(row, 4, QTableWidgetItem(str(instrument.get('calibration_date', '')).upper())); self.table.setItem(row, 5, QTableWidgetItem(str(instrument.get('sede', '') or '').upper()))
             if instrument.get('is_default'):
-                for col in range(5): self.table.item(row, col).setBackground(QColor("#E0F7FA"))
+                for col in range(6): self.table.item(row, col).setBackground(QColor("#E0F7FA"))
         self.table.setSortingEnabled(True)
 
     def add_instrument(self):
@@ -2476,7 +2476,8 @@ class InstrumentManagerDialog(QDialog):
                     serial_number=data['serial_number'],
                     fw_version=data['fw_version'],
                     calibration_date=data['calibration_date'],
-                    instrument_type=data.get('instrument_type', 'electrical')
+                    instrument_type=data.get('instrument_type', 'electrical'),
+                    sede=data.get('sede')
                 )
                 self.load_instruments()
             except ValueError as e: 
@@ -2485,7 +2486,7 @@ class InstrumentManagerDialog(QDialog):
     def edit_instrument(self):
         inst_id = self.get_selected_id()
         if not inst_id: return
-        all_instruments = services.get_all_instruments()
+        all_instruments = services.get_all_instruments(apply_user_filter=False)
         inst_row = next((inst for inst in all_instruments if inst['id'] == inst_id), None)
         inst_data_dict = dict(inst_row) if inst_row else None
         dialog = InstrumentDetailDialog(inst_data_dict, self)
@@ -2498,7 +2499,8 @@ class InstrumentManagerDialog(QDialog):
                     serial_number=data['serial_number'],
                     fw_version=data['fw_version'],
                     calibration_date=data['calibration_date'],
-                    instrument_type=data.get('instrument_type')
+                    instrument_type=data.get('instrument_type'),
+                    sede=data.get('sede')
                 )
                 self.load_instruments()
             except ValueError as e: 
