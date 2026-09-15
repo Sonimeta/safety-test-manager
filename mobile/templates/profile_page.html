@@ -4,11 +4,11 @@
 {% block header_title %}Il mio profilo{% endblock %}
 
 {% block content %}
-<div class="px-4 py-4 space-y-4">
+<div class="px-4 py-4 space-y-4" x-data="signatureApp()">
 
     <!-- User info -->
     <div class="card p-5 flex flex-col items-center text-center">
-        <div class="bg-blue-900 w-16 h-16 rounded-full flex items-center justify-center mb-3">
+        <div class="bg-blue-900 w-16 h-16 rounded-full flex items-center justify-center mb-3 shadow-md">
             <span class="text-2xl font-bold text-white">
                 {{ (user.first_name or user.username)[0].upper() }}
             </span>
@@ -25,13 +25,121 @@
         </span>
     </div>
 
+    <!-- Notification alerts -->
+    {% if sig_error %}
+    <div style="background:#fef2f2;border:1.5px solid #fca5a5;color:#991b1b;border-radius:10px;padding:.625rem .875rem;font-size:.8rem;display:flex;align-items:center;gap:.5rem;">
+        <i class="ti ti-alert-circle text-base flex-shrink-0"></i> {{ sig_error }}
+    </div>
+    {% endif %}
+    {% if sig_success %}
+    <div style="background:#f0fdf4;border:1.5px solid #86efac;color:#166534;border-radius:10px;padding:.625rem .875rem;font-size:.8rem;display:flex;align-items:center;gap:.5rem;">
+        <i class="ti ti-circle-check text-base flex-shrink-0"></i> {{ sig_success }}
+    </div>
+    {% endif %}
+
+    <!-- ✍️ Sezione Firma Digitale -->
+    <div class="card p-4 space-y-3">
+        <div class="flex items-center justify-between border-b border-gray-100 pb-2.5">
+            <div class="flex items-center gap-2">
+                <i class="ti ti-signature text-blue-700" style="font-size:1.25rem;"></i>
+                <h3 class="font-bold text-gray-900 text-sm">Firma Digitale Tecnico</h3>
+            </div>
+            {% if has_signature %}
+            <span class="badge-pass"><i class="ti ti-check"></i> Presente</span>
+            {% else %}
+            <span class="badge-warn"><i class="ti ti-alert-triangle"></i> Mancante</span>
+            {% endif %}
+        </div>
+
+        {% if has_signature %}
+        <!-- Anteprima firma esistente -->
+        <div x-show="!isEditing" class="space-y-3 pt-1">
+            <div class="p-3 bg-gray-50 border border-gray-200 rounded-xl flex items-center justify-center min-h-[100px]">
+                <img src="/mobile/profile/signature?_t={{ timestamp }}" alt="Firma Digitale"
+                     style="max-height:90px;max-width:100%;object-fit:contain;display:block;">
+            </div>
+            <div class="flex items-center gap-2">
+                <button type="button" @click="startEditing()" class="btn-secondary flex-1 py-2 text-xs flex items-center justify-center gap-1.5 font-bold">
+                    <i class="ti ti-pencil"></i> Modifica Firma
+                </button>
+                <form method="POST" action="/mobile/profile/signature/delete" onsubmit="return confirm('Eliminare la firma digitale salvata?');" class="m-0">
+                    <button type="submit" class="btn-danger py-2 px-3 text-xs flex items-center justify-center gap-1 font-bold">
+                        <i class="ti ti-trash"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Canvas pad per disegnare / caricare firma -->
+        <div x-show="isEditing || {{ 'false' if has_signature else 'true' }}" x-cloak class="space-y-3 pt-1">
+            <p class="text-xs text-gray-500">
+                Firma con il dito nel riquadro sottostante oppure carica un'immagine (PNG/JPG):
+            </p>
+
+            <!-- Drawing Canvas Box -->
+            <div class="relative border-2 border-dashed border-blue-300 rounded-2xl bg-white overflow-hidden shadow-inner touch-none"
+                 style="height:170px; background-color: #ffffff;">
+                <canvas x-ref="canvas"
+                        @mousedown="startDrawing($event)"
+                        @mousemove="draw($event)"
+                        @mouseup="stopDrawing()"
+                        @mouseleave="stopDrawing()"
+                        @touchstart.passive="startTouch($event)"
+                        @touchmove.prevent="drawTouch($event)"
+                        @touchend="stopDrawing()"
+                        class="w-full h-full block cursor-crosshair"></canvas>
+                
+                <div x-show="isEmpty" class="absolute inset-0 flex items-center justify-center pointer-events-none text-gray-300 select-none">
+                    <span class="text-xs font-semibold flex items-center gap-1.5">
+                        <i class="ti ti-pencil" style="font-size:1.1rem;"></i> Disegna qui la tua firma
+                    </span>
+                </div>
+            </div>
+
+            <!-- Canvas controls -->
+            <div class="flex items-center justify-between gap-2">
+                <button type="button" @click="clearCanvas()" class="btn-secondary py-1.5 px-3 text-xs font-semibold flex items-center gap-1">
+                    <i class="ti ti-eraser"></i> Pulisci
+                </button>
+                <label class="btn-secondary py-1.5 px-3 text-xs font-semibold flex items-center gap-1 cursor-pointer m-0">
+                    <i class="ti ti-photo-up"></i> Sfoglia file...
+                    <input type="file" accept="image/png,image/jpeg,image/webp" @change="handleFileUpload($event)" class="hidden">
+                </label>
+            </div>
+
+            <!-- Form di invio -->
+            <form method="POST" action="/mobile/profile/signature" enctype="multipart/form-data" @submit="submitSignature($event)" class="space-y-2 pt-2">
+                <input type="hidden" name="signature_b64" x-model="signatureB64">
+                <input type="file" name="signature_file" x-ref="fileInput" class="hidden">
+
+                <button type="submit" class="btn-primary flex items-center justify-center gap-2">
+                    <i class="ti ti-device-floppy"></i> Salva Firma Digitale
+                </button>
+                {% if has_signature %}
+                <button type="button" @click="cancelEditing()" class="btn-secondary py-2 text-xs font-semibold">
+                    Annulla
+                </button>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+
     <!-- App info -->
     <div class="card overflow-hidden">
+        <a href="/mobile/profiles" class="list-item">
+            <i class="ti ti-adjustments-alt" style="font-size:1.125rem;color:#2563eb;margin-right:.75rem;flex-shrink:0;"></i>
+            <div class="flex-1">
+                <p class="text-sm font-medium text-gray-800">Profili di Verifica</p>
+                <p class="text-xs text-gray-400">Configurazione schede elettriche e funzionali</p>
+            </div>
+            <i class="ti ti-chevron-right text-gray-300"></i>
+        </a>
         <div class="list-item">
             <i class="ti ti-info-circle" style="font-size:1.125rem;color:#94a3b8;margin-right:.75rem;flex-shrink:0;"></i>
             <div class="flex-1">
                 <p class="text-sm font-medium text-gray-800">STM Mobile</p>
-                <p class="text-xs text-gray-400">Versione 1.0.0</p>
+                <p class="text-xs text-gray-400">Versione 2.0.0</p>
             </div>
         </div>
         <div class="list-item">
@@ -43,11 +151,6 @@
             <div style="width:8px;height:8px;border-radius:50%;background:#10b981;"></div>
         </div>
     </div>
-
-    <!-- Logout -->
-    <a href="/mobile/auth/logout" class="btn-danger block text-center">
-        Esci
-    </a>
 
     <!-- Change password -->
     <div class="card p-4 space-y-3">
@@ -75,5 +178,150 @@
         </form>
     </div>
 
+    <!-- Logout -->
+    <a href="/mobile/auth/logout" class="btn-danger block text-center">
+        Esci dall'account
+    </a>
+
 </div>
+
+<script>
+function signatureApp() {
+    return {
+        isEditing: false,
+        isDrawing: false,
+        isEmpty: true,
+        signatureB64: '',
+        ctx: null,
+
+        init() {
+            this.$nextTick(() => {
+                this.setupCanvas();
+            });
+        },
+
+        startEditing() {
+            this.isEditing = true;
+            this.$nextTick(() => {
+                this.setupCanvas();
+                this.clearCanvas();
+            });
+        },
+
+        cancelEditing() {
+            this.isEditing = false;
+        },
+
+        setupCanvas() {
+            const canvas = this.$refs.canvas;
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            const dpr = window.devicePixelRatio || 1;
+            
+            // Set dimensions
+            canvas.width = (rect.width || 320) * dpr;
+            canvas.height = (rect.height || 170) * dpr;
+            
+            this.ctx = canvas.getContext('2d');
+            this.ctx.scale(dpr, dpr);
+            this.ctx.strokeStyle = '#1e293b';
+            this.ctx.lineWidth = 2.5;
+            this.ctx.lineCap = 'round';
+            this.ctx.lineJoin = 'round';
+        },
+
+        getPos(e) {
+            const canvas = this.$refs.canvas;
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        },
+
+        startDrawing(e) {
+            this.isDrawing = true;
+            this.isEmpty = false;
+            const pos = this.getPos(e);
+            this.ctx.beginPath();
+            this.ctx.moveTo(pos.x, pos.y);
+        },
+
+        draw(e) {
+            if (!this.isDrawing) return;
+            const pos = this.getPos(e);
+            this.ctx.lineTo(pos.x, pos.y);
+            this.ctx.stroke();
+        },
+
+        startTouch(e) {
+            if (e.touches.length === 1) {
+                this.isDrawing = true;
+                this.isEmpty = false;
+                const pos = this.getPos(e.touches[0]);
+                this.ctx.beginPath();
+                this.ctx.moveTo(pos.x, pos.y);
+            }
+        },
+
+        drawTouch(e) {
+            if (!this.isDrawing || e.touches.length !== 1) return;
+            const pos = this.getPos(e.touches[0]);
+            this.ctx.lineTo(pos.x, pos.y);
+            this.ctx.stroke();
+        },
+
+        stopDrawing() {
+            if (this.isDrawing) {
+                this.isDrawing = false;
+            }
+        },
+
+        clearCanvas() {
+            const canvas = this.$refs.canvas;
+            if (!canvas || !this.ctx) return;
+            const rect = canvas.getBoundingClientRect();
+            this.ctx.clearRect(0, 0, rect.width, rect.height);
+            this.isEmpty = true;
+            this.signatureB64 = '';
+        },
+
+        handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    this.clearCanvas();
+                    const canvas = this.$refs.canvas;
+                    const rect = canvas.getBoundingClientRect();
+                    
+                    // Maintain aspect ratio
+                    const scale = Math.min(rect.width / img.width, rect.height / img.height) * 0.85;
+                    const w = img.width * scale;
+                    const h = img.height * scale;
+                    const x = (rect.width - w) / 2;
+                    const y = (rect.height - h) / 2;
+                    
+                    this.ctx.drawImage(img, x, y, w, h);
+                    this.isEmpty = false;
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+        },
+
+        submitSignature(e) {
+            if (this.isEmpty) {
+                e.preventDefault();
+                alert('Traccia una firma sul riquadro o seleziona un file immagine prima di salvare.');
+                return;
+            }
+            const canvas = this.$refs.canvas;
+            this.signatureB64 = canvas.toDataURL('image/png');
+        }
+    };
+}
+</script>
 {% endblock %}

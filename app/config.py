@@ -3,6 +3,38 @@ import logging
 import os
 import sys
 import configparser
+import re
+from datetime import date, datetime
+from typing import Any
+
+def format_date_it(val: Any) -> str:
+    """Formatta qualsiasi data o stringa data nel formato italiano DD/MM/YYYY."""
+    if not val:
+        return ""
+    if isinstance(val, (datetime, date)):
+        return val.strftime("%d/%m/%Y")
+    s = str(val).strip()
+    if not s:
+        return ""
+    # Già DD/MM/YYYY
+    if re.match(r"^\d{2}/\d{2}/\d{4}", s):
+        return s[:10]
+    # YYYY-MM-DD (ISO)
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})", s)
+    if m:
+        y, mth, d = m.groups()
+        return f"{int(d):02d}/{int(mth):02d}/{y}"
+    # DD-MM-YYYY
+    m = re.match(r"^(\d{1,2})-(\d{1,2})-(\d{4})", s)
+    if m:
+        d, mth, y = m.groups()
+        return f"{int(d):02d}/{int(mth):02d}/{y}"
+    # DD.MM.YYYY
+    m = re.match(r"^(\d{1,2})\.(\d{1,2})\.(\d{4})", s)
+    if m:
+        d, mth, y = m.groups()
+        return f"{int(d):02d}/{int(mth):02d}/{y}"
+    return s
 
 def get_base_dir():
     """Restituisce il percorso della cartella dell'eseguibile."""
@@ -28,7 +60,7 @@ def get_app_data_dir():
     # Crea la cartella se non esiste
     os.makedirs(app_data_path, exist_ok=True)
     return app_data_path
-VERSIONE = "10.0.19"
+VERSIONE = "10.0.21"
 BASE_DIR = get_base_dir() # La cartella del programma
 APP_DATA_DIR = get_app_data_dir() # La cartella dei dati utente
 
@@ -103,7 +135,7 @@ CF_CLIENT_ID, CF_CLIENT_SECRET = load_cf_service_token()
 if CF_CLIENT_ID:
     logging.info(f"☁️  CF Service Token caricato: id={CF_CLIENT_ID[:12]}...")
 else:
-    logging.warning("⚠️  CF Service Token NON caricato - cf_client_id/cf_client_secret mancanti o placeholder in config.ini")
+    logging.debug("CF Service Token non configurato in config.ini (connessione diretta o server)")
 PROFILES = {}
 FUNCTIONAL_PROFILES = {}
 
@@ -179,7 +211,7 @@ def load_qss_file(filename: str) -> str:
             with open(qss_path, 'r', encoding='utf-8') as f:
                 return f.read()
         else:
-            logging.warning(f"File QSS non trovato: {qss_path}")
+            logging.debug(f"File QSS non presente (headless/server): {qss_path}")
             return ""
     except Exception as e:
         logging.error(f"Errore nel caricamento del file QSS {filename}: {e}")

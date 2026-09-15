@@ -18,7 +18,7 @@
                 <div class="flex-1 min-w-0">
                     <p class="text-sm font-semibold text-gray-900 truncate">{{ dev.description or dev.model or 'Dispositivo' }}</p>
                     <p class="text-xs text-gray-400 truncate">{{ dev.customer_name }} / {{ dev.destination_name }}</p>
-                    <p class="text-xs text-red-600 font-semibold"><i class="ti ti-calendar-event"></i> Scaduta: {{ dev.next_verification_date }}</p>
+                    <p class="text-xs text-red-600 font-semibold"><i class="ti ti-calendar-event"></i> Scaduta: {{ dev.next_verification_date | date_it }}</p>
                 </div>
                 <i class="ti ti-chevron-right" style="color:#d1d5db;flex-shrink:0;"></i>
             </a>
@@ -39,7 +39,7 @@
                 <div class="flex-1 min-w-0">
                     <p class="text-sm font-semibold text-gray-900 truncate">{{ dev.description or dev.model or 'Dispositivo' }}</p>
                     <p class="text-xs text-gray-400 truncate">{{ dev.customer_name }} / {{ dev.destination_name }}</p>
-                    <p class="text-xs text-amber-600 font-semibold"><i class="ti ti-calendar-event"></i> Scadenza: {{ dev.next_verification_date }}</p>
+                    <p class="text-xs text-amber-600 font-semibold"><i class="ti ti-calendar-event"></i> Scadenza: {{ dev.next_verification_date | date_it }}</p>
                 </div>
                 <i class="ti ti-chevron-right" style="color:#d1d5db;flex-shrink:0;"></i>
             </a>

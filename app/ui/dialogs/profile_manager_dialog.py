@@ -88,6 +88,8 @@ class ProfileDetailDialog(QDialog):
         else:
             self._set_mode(simple=False)
 
+        self.showMaximized()
+
     # ─── Pagina GUIDATA ──────────────────────────────────────────────────
 
     def _build_simple_page(self) -> QWidget:

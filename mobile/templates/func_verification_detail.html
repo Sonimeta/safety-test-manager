@@ -38,7 +38,7 @@
         <div class="grid grid-cols-2 gap-2 border-t border-gray-100 pt-3">
             <div>
                 <p class="text-[10px] uppercase text-gray-400 font-semibold">Data</p>
-                <p class="text-sm font-medium">{{ fv.verification_date }}</p>
+                <p class="text-sm font-medium">{{ fv.verification_date | date_it }}</p>
             </div>
             {% if fv.technician_name %}
             <div>

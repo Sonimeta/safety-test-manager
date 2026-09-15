@@ -30,6 +30,7 @@ class BulkReportWorker(QObject):
         export_table_single=False,
         keep_individual_reports=True,
         cover_info=None,
+        include_calibration_certs=True,
     ):
         super().__init__()
         self.verifications = [dict(v) for v in verifications_to_process]
@@ -43,6 +44,7 @@ class BulkReportWorker(QObject):
         self.export_table_single = export_table_single
         self.keep_individual_reports = keep_individual_reports
         self.cover_info = cover_info or {}
+        self.include_calibration_certs = include_calibration_certs
         self._temp_output_dir = None
         self._is_cancelled = False
 
@@ -308,6 +310,8 @@ class BulkReportWorker(QObject):
                 failed_reports.append(error_message)
 
         if self.merge_into_one and not self._is_cancelled and generated_files:
+            cover_path = None
+            temp_cert_files = []
             try:
                 if self.cover_info:
                     temp_dir = self.output_folder or tempfile.gettempdir()
@@ -324,6 +328,17 @@ class BulkReportWorker(QObject):
                 self.progress_updated.emit(99, "Fascicolazione in un unico PDF...")
                 sorted_reports = sorted(generated_files, key=self._natural_sort_key_for_path)
                 merge_list = [p for p in ([cover_path] + sorted_reports) if p]
+
+                # Se richiesto, aggiungi in fondo al fascicolo i certificati di calibrazione degli strumenti usati
+                if self.include_calibration_certs:
+                    try:
+                        cert_items, temp_cert_files = self._collect_used_instruments_certificates()
+                        if cert_items:
+                            merge_list.extend(cert_items)
+                            logging.info(f"Aggiunti {len(cert_items)} certificati di calibrazione al fascicolo.")
+                    except Exception as e:
+                        logging.warning(f"Errore nel recupero certificati di calibrazione: {e}")
+
                 self._merge_pdfs(merge_list, merged_path)
                 self.progress_updated.emit(100, f"PDF unico creato: {os.path.basename(merged_path)}")
                 merge_success = True
@@ -338,6 +353,12 @@ class BulkReportWorker(QObject):
                             os.remove(cover_path)
                     except Exception as e:
                         logging.warning(f"Impossibile rimuovere il frontespizio '{cover_path}': {e}")
+                for tcf in temp_cert_files:
+                    try:
+                        if os.path.exists(tcf):
+                            os.remove(tcf)
+                    except Exception as e:
+                        logging.warning(f"Impossibile rimuovere certificato temporaneo '{tcf}': {e}")
 
         if self.merge_into_one and merge_success and not self.keep_individual_reports:
             removed_count = 0
@@ -358,6 +379,127 @@ class BulkReportWorker(QObject):
                 logging.warning(f"Impossibile rimuovere la cartella temporanea report: {e}")
 
         self.finished.emit(success_count, failed_reports)
+
+    def _collect_used_instruments_certificates(self):
+        """
+        Raccoglie i percorsi dei file PDF dei certificati di calibrazione per gli strumenti
+        effettivamente utilizzati nelle verifiche del fascicolo.
+        Restituisce (cert_items, temp_files) dove cert_items è una lista di tuple (pdf_path, bookmark_title).
+        """
+        import database
+        from app import services as svc
+
+        all_instruments = [dict(r) for r in database.get_all_instruments()]
+        by_serial = {}
+        by_name = {}
+        for inst in all_instruments:
+            sn = (inst.get('serial_number') or '').strip().upper()
+            nm = (inst.get('instrument_name') or '').strip().upper()
+            if sn:
+                by_serial[sn] = inst
+            if nm:
+                by_name.setdefault(nm, []).append(inst)
+
+        matched_inst_ids = set()
+        matched_instruments = []
+
+        for v in self.verifications:
+            sn = (v.get('mti_serial') or v.get('serial_number_mti') or '').strip().upper()
+            nm = (v.get('mti_instrument') or v.get('mti_name') or '').strip().upper()
+
+            target_inst = None
+            if sn and sn in by_serial:
+                target_inst = by_serial[sn]
+            elif nm and nm in by_name:
+                candidates = by_name[nm]
+                if len(candidates) == 1:
+                    target_inst = candidates[0]
+                elif sn:
+                    for c in candidates:
+                        if (c.get('serial_number') or '').strip().upper() == sn:
+                            target_inst = c
+                            break
+                    if not target_inst and candidates:
+                        target_inst = candidates[0]
+                elif candidates:
+                    target_inst = candidates[0]
+
+            if target_inst and target_inst['id'] not in matched_inst_ids:
+                matched_inst_ids.add(target_inst['id'])
+                matched_instruments.append(target_inst)
+
+        cert_items = []
+        temp_files = []
+
+        for inst in matched_instruments:
+            inst_id = inst['id']
+            inst_name = inst.get('instrument_name') or 'Strumento'
+            inst_serial = inst.get('serial_number') or ''
+            title = f"Certificato Calibrazione - {inst_name}"
+            if inst_serial:
+                title += f" (S/N: {inst_serial})"
+
+            atts = database.get_instrument_attachments(inst_id)
+            for att in atts:
+                att_id = att['id']
+                att_uuid = att['uuid']
+                file_path = database.get_attachment_file_path(att_id)
+                if file_path and os.path.exists(file_path):
+                    cert_items.append((file_path, title))
+                else:
+                    # Scarica dal server
+                    try:
+                        file_bytes = svc.download_attachment_bytes(att_uuid)
+                        if file_bytes:
+                            temp_dir = self.output_folder or tempfile.gettempdir()
+                            temp_cert = self._unique_output_path(temp_dir, f"_temp_cert_{att_uuid}.pdf")
+                            with open(temp_cert, 'wb') as f:
+                                f.write(file_bytes)
+                            temp_files.append(temp_cert)
+                            cert_items.append((temp_cert, title))
+                    except Exception as e:
+                        logging.warning(f"Impossibile scaricare certificato {att_uuid}: {e}")
+
+        return cert_items, temp_files
+
+    def _merge_pdfs(self, pdf_paths, output_path):
+        merger_cls = None
+        try:
+            from PyPDF2 import PdfMerger as _PdfMerger
+            from PyPDF2 import PdfReader as _PdfReader
+            merger_cls = _PdfMerger
+            reader_cls = _PdfReader
+        except Exception:
+            from pypdf import PdfMerger as _PdfMerger
+            from pypdf import PdfReader as _PdfReader
+            merger_cls = _PdfMerger
+            reader_cls = _PdfReader
+
+        merger = merger_cls()
+        try:
+            current_page = 0
+            for item in pdf_paths:
+                if isinstance(item, (tuple, list)):
+                    path = item[0]
+                    title = item[1] if len(item) > 1 else os.path.splitext(os.path.basename(path))[0]
+                else:
+                    path = item
+                    title = os.path.splitext(os.path.basename(path))[0]
+
+                if path and os.path.exists(path):
+                    reader = reader_cls(path)
+                    num_pages = len(reader.pages)
+                    merger.append(reader)
+                    self._add_bookmark(merger, title, current_page)
+                    current_page += num_pages
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            with open(output_path, "wb") as f:
+                merger.write(f)
+        finally:
+            try:
+                merger.close()
+            except Exception:
+                pass
 
     def _get_merged_output_path(self):
         # Se è stato specificato un percorso, usalo (a meno che sia il default Report_Unico)
@@ -429,39 +571,6 @@ class BulkReportWorker(QObject):
                 counter += 1
                 new_path = f"{root}_{counter}{ext}"
             return new_path
-
-    def _merge_pdfs(self, pdf_paths, output_path):
-        merger_cls = None
-        try:
-            from PyPDF2 import PdfMerger as _PdfMerger
-            from PyPDF2 import PdfReader as _PdfReader
-            merger_cls = _PdfMerger
-            reader_cls = _PdfReader
-        except Exception:
-            from pypdf import PdfMerger as _PdfMerger
-            from pypdf import PdfReader as _PdfReader
-            merger_cls = _PdfMerger
-            reader_cls = _PdfReader
-
-        merger = merger_cls()
-        try:
-            current_page = 0
-            for path in pdf_paths:
-                if os.path.exists(path):
-                    reader = reader_cls(path)
-                    num_pages = len(reader.pages)
-                    merger.append(reader)
-                    title = os.path.splitext(os.path.basename(path))[0]
-                    self._add_bookmark(merger, title, current_page)
-                    current_page += num_pages
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            with open(output_path, "wb") as f:
-                merger.write(f)
-        finally:
-            try:
-                merger.close()
-            except Exception:
-                pass
 
     def _add_bookmark(self, merger, title: str, page_index: int):
         try:

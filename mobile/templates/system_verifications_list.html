@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Verifiche di Sistema — STM Mobile{% endblock %}
+{% block header_title %}Verifiche di Sistema{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">{{ verifications|length }} verifica/e aggregate</p>{% endblock %}
+
+{% block content %}
+<div class="px-4 py-4 space-y-4">
+
+    {% if verifications %}
+    <div class="card overflow-hidden">
+        {% for sv in verifications %}
+        <a href="/mobile/system-verifications/{{ sv.uuid }}" class="list-item">
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-semibold text-gray-800 truncate">{{ sv.system_name or 'Sistema' }}</p>
+                <p class="text-xs text-gray-400 truncate">{{ sv.customer_name }} · {{ sv.destination_name }}</p>
+                <p class="text-xs text-gray-400 mt-0.5">{{ sv.verification_date | date_it }} · {{ sv.device_count }} dispositivi
+                    {% if sv.verification_code %} · <span class="font-mono">{{ sv.verification_code }}</span>{% endif %}
+                </p>
+            </div>
+            <div class="ml-3 flex-shrink-0">
+                {% if sv.overall_status == 'CONFORME CON ANNOTAZIONE' %}
+                <span class="badge-warn">C.C.A.</span>
+                {% elif sv.overall_status in ('CONFORME', 'PASSATO', 'PASS', 'OK') %}
+                <span class="badge-pass">CONF.</span>
+                {% else %}
+                <span class="badge-fail">N.CONF.</span>
+                {% endif %}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div style="display:flex;flex-direction:column;align-items:center;padding:4rem 1rem;color:#94a3b8;">
+        <i class="ti ti-link" style="font-size:3.5rem;margin-bottom:.75rem;color:#6366f1;"></i>
+        <p class="text-sm font-semibold">Nessuna verifica di sistema registrata</p>
+        <p class="text-xs mt-1">Puoi avviarne una dalla pagina della sede di destinazione.</p>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

@@ -15,7 +15,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
     QPushButton, QLabel, QComboBox, QGroupBox, QMessageBox, QFileDialog,
     QStatusBar, QGridLayout, QListWidget, QListWidgetItem, QLineEdit, QDialog, QMenu, QInputDialog,
     QScrollArea, QFrame, QProgressDialog, QDialogButtonBox,
-    QStackedWidget, QStackedLayout, QSizePolicy)
+    QStackedWidget, QStackedLayout, QSizePolicy, QLayout, QButtonGroup)
 from PySide6.QtGui import QAction, QIcon, QShortcut, QKeySequence
 from PySide6.QtCore import Qt, QSettings, QThread, Signal, QTimer, QSize
 from app.data_models import AppliedPart
@@ -55,9 +55,24 @@ from app.ui.dialogs.qr_device_scanner_dialog import QRDeviceScannerDialog
 from app.ui.dialogs.system_verification_dialogs import SystemDeviceSelectionDialog
 from app.ui.dialogs.assignments_dialog import BulkAssignDialog, AssignmentsManagerDialog
 from app.ui.dialogs.ecografo_quality_dialog import EcografoQualityDialog
+from app.ui.dialogs.device_verifications_dialog import DeviceVerificationsDialog
 from app.config import LOG_DIR
 import database
 from app.workers.table_export_worker import InventoryExportWorker
+
+
+class ClickableStatsLabel(QLabel):
+    """QLabel cliccabile con emissione di segnale e cursore a puntatore."""
+    clicked = Signal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setCursor(Qt.PointingHandCursor)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
+        super().mousePressEvent(event)
 
 
 class MainWindow(QMainWindow):
@@ -90,9 +105,9 @@ class MainWindow(QMainWindow):
         self.current_technician_name = ""
         self.test_runner_widget = None
 
-        # Intervallo selezionabile per i filtri verifiche dispositivi (default: ultimi 60 giorni)
+        # Intervallo selezionabile per i filtri verifiche dispositivi (default: data corrente)
         self.device_filter_end_date = date.today()
-        self.device_filter_start_date = self.device_filter_end_date - timedelta(days=60)
+        self.device_filter_start_date = date.today()
         
         # Scanner QR in background
         self.qr_scanner_server = None
@@ -491,7 +506,7 @@ class MainWindow(QMainWindow):
             level="info")
 
     def _show_device_context_menu(self, pos):
-        """Menu contestuale sulla lista dispositivi con 'Assegna Verifica'."""
+        """Menu contestuale sulla lista dispositivi con 'Visualizza Verifiche' e 'Assegna Verifica'."""
         item = self.device_list.itemAt(pos)
         if not item:
             return
@@ -499,11 +514,15 @@ class MainWindow(QMainWindow):
         if not device_id:
             return
         menu = QMenu(self)
-        assign_action = menu.addAction("📋  Assegna Verifica...")
+        history_action = menu.addAction(get_icon("report", theme=self.current_theme), "📊  Visualizza Storico Verifiche...")
+        menu.addSeparator()
+        assign_action = menu.addAction(get_icon("clipboard", theme=self.current_theme), "📋  Assegna Verifica...")
         role = auth_manager.get_current_role()
         assign_action.setEnabled(role in ("admin", "moderator"))
         action = menu.exec(self.device_list.viewport().mapToGlobal(pos))
-        if action == assign_action:
+        if action == history_action:
+            self.show_device_verifications(device_id)
+        elif action == assign_action:
             self._assign_verification_from_device(device_id)
 
     def _open_bulk_assign_dialog(self):
@@ -642,9 +661,12 @@ class MainWindow(QMainWindow):
         dialog = DeviceDataQualityDialog(self)
         self._show_embedded_dialog(dialog, "CONTROLLO QUALITÀ DATI")
     
-    def open_stats_dashboard(self):
-        """Apre la finestra di dialogo con le statistiche."""
+    def open_stats_dashboard(self, initial_tab=0):
+        """Apre la finestra di dialogo con le statistiche, opzionalmente selezionando una tab specifica."""
         dialog = StatsDashboardDialog(self)
+        if hasattr(dialog, "tabs") and isinstance(initial_tab, int):
+            if 0 <= initial_tab < dialog.tabs.count():
+                dialog.tabs.setCurrentIndex(initial_tab)
         self._show_embedded_dialog(dialog, "DASHBOARD STATISTICHE")
 
     def open_billing_report(self):
@@ -1405,6 +1427,7 @@ class MainWindow(QMainWindow):
             export_table_single=options.get("export_table_single", False),
             keep_individual_reports=options.get("keep_individual_reports", True),
             cover_info=cover_info,
+            include_calibration_certs=options.get("include_calibration_certs", True),
         )
         self.advanced_report_worker.moveToThread(self.advanced_report_thread)
         self.advanced_report_progress.canceled.connect(self.advanced_report_worker.cancel)
@@ -1702,10 +1725,10 @@ class MainWindow(QMainWindow):
         self.left_panel_widget = QWidget()
         self.left_panel_widget.setObjectName("homeSidebar")
         self.left_panel_widget.setMaximumWidth(300)
-        self.left_panel_widget.setMinimumWidth(220)
+        self.left_panel_widget.setMinimumWidth(250)
         left_layout = QVBoxLayout(self.left_panel_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
-        left_layout.setSpacing(14)
+        left_layout.setSpacing(10)
         
         # Ricerca globale rapida in alto
         search_group = self._create_global_search_group()
@@ -1726,16 +1749,17 @@ class MainWindow(QMainWindow):
         actions_group = QGroupBox("Azioni Principali")
         actions_group.setObjectName("homeActionsGroup")
         actions_layout = QVBoxLayout()
+        actions_layout.setSpacing(8)
         
-        self.manage_button = QPushButton(get_icon("archive", theme=self.current_theme), " Archivio Clienti e Dispositivi")
+        self.manage_button = QPushButton(get_icon("archive", theme=self.current_theme), " Archivio e Dispositivi")
         self.manage_button.setObjectName("secondaryButton")
-        self.manage_button.setMinimumHeight(40)
+        self.manage_button.setFixedHeight(36)
         self.manage_button.setToolTip("Apri l'archivio completo di clienti, destinazioni e dispositivi")
         self.manage_button.clicked.connect(self.open_db_manager)
         
         self.sync_button = QPushButton(get_icon("sync", theme=self.current_theme), " Sincronizza Dati")
         self.sync_button.setObjectName("editButton")
-        self.sync_button.setMinimumHeight(40)
+        self.sync_button.setFixedHeight(36)
         self.sync_button.setToolTip("Invia e ricevi gli aggiornamenti dal server")
         self.sync_button.clicked.connect(self.run_synchronization)
         
@@ -1752,7 +1776,7 @@ class MainWindow(QMainWindow):
         self.update_dashboard()
     
     def _create_stats_cards(self):
-        """Crea le cards moderne per le statistiche."""
+        """Crea le cards moderne e interattive per le statistiche."""
         group = QGroupBox("📊 Panoramica")
         group.setObjectName("statsGroupBox")
         layout = QVBoxLayout()
@@ -1762,30 +1786,36 @@ class MainWindow(QMainWindow):
         self.stats_layout.setHorizontalSpacing(8)
         self.stats_layout.setVerticalSpacing(8)
         
-        # Crea placeholders per le cards
-        self.total_card = QLabel()
+        # Crea placeholders per le cards interattive
+        self.total_card = ClickableStatsLabel()
         self.total_card.setObjectName("statsCardPrimary")
         self.total_card.setTextFormat(Qt.RichText)
         self.total_card.setWordWrap(True)
-        self.total_card.setMinimumHeight(88)
+        self.total_card.setMinimumHeight(84)
         self.total_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.total_card.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.total_card.setToolTip("Clicca per aprire la Dashboard Statistiche (Panoramica)")
+        self.total_card.clicked.connect(lambda: self.open_stats_dashboard(0))
 
-        self.conformi_card = QLabel()
+        self.conformi_card = ClickableStatsLabel()
         self.conformi_card.setObjectName("statsCardSuccess")
         self.conformi_card.setTextFormat(Qt.RichText)
         self.conformi_card.setWordWrap(True)
-        self.conformi_card.setMinimumHeight(82)
+        self.conformi_card.setMinimumHeight(78)
         self.conformi_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.conformi_card.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.conformi_card.setToolTip("Clicca per aprire le Statistiche di Conformità")
+        self.conformi_card.clicked.connect(lambda: self.open_stats_dashboard(1))
 
-        self.non_conformi_card = QLabel()
+        self.non_conformi_card = ClickableStatsLabel()
         self.non_conformi_card.setObjectName("statsCardDanger")
         self.non_conformi_card.setTextFormat(Qt.RichText)
         self.non_conformi_card.setWordWrap(True)
-        self.non_conformi_card.setMinimumHeight(82)
+        self.non_conformi_card.setMinimumHeight(78)
         self.non_conformi_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self.non_conformi_card.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        self.non_conformi_card.setToolTip("Clicca per aprire le Statistiche di Conformità")
+        self.non_conformi_card.clicked.connect(lambda: self.open_stats_dashboard(1))
         
         self.stats_layout.addWidget(self.total_card, 0, 0, 1, 2)
         self.stats_layout.addWidget(self.conformi_card, 1, 0)
@@ -1860,11 +1890,11 @@ class MainWindow(QMainWindow):
         bar = QFrame()
         bar.setObjectName("drillBreadcrumbBar")
         layout = QHBoxLayout(bar)
-        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setContentsMargins(14, 10, 14, 10)
         layout.setSpacing(6)
 
         # Crumb clienti (sempre cliccabile)
-        self.drill_crumb_customer = QPushButton("Clienti")
+        self.drill_crumb_customer = QPushButton("🏢 Clienti")
         self.drill_crumb_customer.setObjectName("drillCrumb")
         self.drill_crumb_customer.setProperty("crumbStep", "0")
         self.drill_crumb_customer.clicked.connect(lambda: self._drill_back_to(0))
@@ -1876,7 +1906,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._drill_arrow1)
 
         # Crumb destinazioni
-        self.drill_crumb_destination = QPushButton("—")
+        self.drill_crumb_destination = QPushButton("📍 Destinazioni")
         self.drill_crumb_destination.setObjectName("drillCrumb")
         self.drill_crumb_destination.setProperty("crumbStep", "1")
         self.drill_crumb_destination.clicked.connect(lambda: self._drill_back_to(1))
@@ -1889,7 +1919,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._drill_arrow2)
 
         # Crumb dispositivi (solo testo, step finale - usa QPushButton per QSS affidabile)
-        self.drill_crumb_device = QPushButton("Dispositivi")
+        self.drill_crumb_device = QPushButton("🩺 Dispositivi")
         self.drill_crumb_device.setObjectName("drillCrumbCurrent")
         self.drill_crumb_device.setEnabled(True)
         self.drill_crumb_device.setFocusPolicy(Qt.NoFocus)
@@ -1898,6 +1928,12 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.drill_crumb_device)
 
         layout.addStretch()
+
+        # Indicatore sessione integrato nella barra superiore
+        self.session_status_label = QLabel()
+        self.session_status_label.setObjectName("sessionStatusBadge")
+        self.session_status_label.setAlignment(Qt.AlignVCenter | Qt.AlignRight)
+        layout.addWidget(self.session_status_label)
 
         # Contatore risultati (visibile su tutti gli step)
         self.drill_count_label = QLabel("")
@@ -1970,26 +2006,108 @@ class MainWindow(QMainWindow):
         lay.setContentsMargins(12, 8, 12, 8)
         lay.setSpacing(6)
 
-        # Toolbar ricerca + azioni
-        toolbar = QHBoxLayout()
-        toolbar.setSpacing(6)
+        # ── TOOLBAR UNIFICATA: Ricerca + Filtri Rapidi (Chips) + Controlli + Nuovo Dispositivo ──────
+        toolbar_row = QHBoxLayout()
+        toolbar_row.setSpacing(6)
+        toolbar_row.setAlignment(Qt.AlignVCenter)
 
+        # 1. Campo di ricerca rapida (allargato per mostrare comodamente tutto il placeholder)
         self.device_search = QLineEdit()
-        self.device_search.setPlaceholderText("Cerca dispositivo, S/N, inventario...")
-        self.device_search.setFixedHeight(38)
+        self.device_search.setObjectName("deviceSearchEdit")
+        self.device_search.setPlaceholderText("🔍 Cerca dispositivo, S/N, inventario...")
+        self.device_search.setFixedHeight(30)
+        self.device_search.setMinimumWidth(240)
+        self.device_search.setMaximumWidth(300)
         self.device_search.textChanged.connect(self.filter_devices)
         self.device_search.textChanged.connect(lambda *_: self._persist_main_view_state())
-        toolbar.addWidget(self.device_search, 1)
+        toolbar_row.addWidget(self.device_search)
 
-        self.add_device_button = QPushButton(get_icon("add", theme=self.current_theme), "")
-        self.add_device_button.setObjectName("addButton")
-        self.add_device_button.setProperty("homeIconButton", True)
-        self.add_device_button.setProperty("iconRole", "add")
-        self.add_device_button.setToolTip("Aggiungi nuovo dispositivo")
-        self._prepare_home_icon_button(self.add_device_button, size=38, icon_size=16)
+        # 2. Filtri rapidi a pillola (mutualmente esclusivi) affiancati alla ricerca
+        self.device_filter_button_group = QButtonGroup(page)
+        self.device_filter_button_group.setExclusive(True)
+
+        self.chip_all = QPushButton("📋 Tutti")
+        self.chip_all.setObjectName("deviceFilterChip")
+        self.chip_all.setCheckable(True)
+        self.chip_all.setFixedHeight(30)
+        self.chip_all.setProperty("filterMode", "ALL")
+        self.device_filter_button_group.addButton(self.chip_all)
+        toolbar_row.addWidget(self.chip_all)
+
+        self.chip_unverified = QPushButton("🔍 Da verificare")
+        self.chip_unverified.setObjectName("deviceFilterChip")
+        self.chip_unverified.setCheckable(True)
+        self.chip_unverified.setChecked(True)
+        self.chip_unverified.setFixedHeight(30)
+        self.chip_unverified.setProperty("filterMode", "UNVERIFIED_60")
+        self.device_filter_button_group.addButton(self.chip_unverified)
+        toolbar_row.addWidget(self.chip_unverified)
+
+        self.chip_both = QPushButton("⚠️ Manca VE o VF")
+        self.chip_both.setObjectName("deviceFilterChip")
+        self.chip_both.setCheckable(True)
+        self.chip_both.setFixedHeight(30)
+        self.chip_both.setProperty("filterMode", "BOTH_60")
+        self.chip_both.setToolTip("Mostra i dispositivi con una sola verifica eseguita (manca VE oppure manca VF)")
+        self.device_filter_button_group.addButton(self.chip_both)
+        toolbar_row.addWidget(self.chip_both)
+
+        self.chip_missing_ve = QPushButton("⚡ Manca VE")
+        self.chip_missing_ve.setObjectName("deviceFilterChip")
+        self.chip_missing_ve.setCheckable(True)
+        self.chip_missing_ve.setFixedHeight(30)
+        self.chip_missing_ve.setProperty("filterMode", "ONLY_ELECTRICAL_60")
+        self.device_filter_button_group.addButton(self.chip_missing_ve)
+        toolbar_row.addWidget(self.chip_missing_ve)
+
+        self.chip_missing_vf = QPushButton("💜 Manca VF")
+        self.chip_missing_vf.setObjectName("deviceFilterChip")
+        self.chip_missing_vf.setCheckable(True)
+        self.chip_missing_vf.setFixedHeight(30)
+        self.chip_missing_vf.setProperty("filterMode", "ONLY_FUNCTIONAL_60")
+        self.device_filter_button_group.addButton(self.chip_missing_vf)
+        toolbar_row.addWidget(self.chip_missing_vf)
+
+        self.device_filter_button_group.buttonClicked.connect(self._on_device_filter_chip_clicked)
+
+        # 3. Controlli secondari: calendario periodo e ordinamento
+        self.device_period_button = QPushButton(get_icon("calendar", theme=self.current_theme), "")
+        self.device_period_button.setObjectName("devicePeriodButton")
+        self.device_period_button.setProperty("homeIconButton", True)
+        self.device_period_button.setProperty("iconRole", "calendar")
+        self._prepare_home_icon_button(self.device_period_button, size=30, icon_size=15)
+        self.device_period_button.clicked.connect(self.choose_device_filter_period)
+        self._update_device_period_button_tooltip()
+        toolbar_row.addWidget(self.device_period_button)
+
+        # Selettore ordinamento
+        self.device_sort_combo = QComboBox()
+        self.device_sort_combo.setObjectName("deviceSortCombo")
+        self.device_sort_combo.setFixedHeight(30)
+        self.device_sort_combo.setToolTip("Ordina i dispositivi")
+        self.device_sort_combo.addItem("↕ Tipologia", "description")
+        self.device_sort_combo.addItem("↕ S/N", "serial_number")
+        self.device_sort_combo.addItem("↕ Inv. AMS", "ams_inventory")
+        self.device_sort_combo.addItem("↕ Inv. Cliente", "customer_inventory")
+        self.device_sort_combo.setCurrentIndex(0)
+        self.device_sort_combo.currentIndexChanged.connect(
+            lambda *_: self._populate_device_list(self._get_device_cache(),
+                                                   self.device_search.text() if hasattr(self, 'device_search') else '')
+        )
+        toolbar_row.addWidget(self.device_sort_combo)
+
+        # 4. Pulsante primario: Nuovo Dispositivo
+        self.add_device_button = QPushButton(get_icon("add", theme=self.current_theme), " Nuovo Dispositivo")
+        self.add_device_button.setObjectName("btnAddNewDevice")
+        self.add_device_button.setFixedHeight(30)
+        self.add_device_button.setToolTip("Aggiungi nuovo dispositivo a questa destinazione")
         self.add_device_button.clicked.connect(self.quick_add_device)
-        toolbar.addWidget(self.add_device_button)
+        toolbar_row.addWidget(self.add_device_button)
 
+        # Spaziatore finale per mantenere tutti i controlli compatti a sinistra
+        toolbar_row.addStretch(1)
+
+        # Manteniamo device_verification_filter_combo nascosto per retrocompatibilità con persistenza e query
         self.device_verification_filter_combo = QComboBox()
         self.device_verification_filter_combo.addItem("🔍 Nessuna verifica eseguita", "UNVERIFIED_60")
         self.device_verification_filter_combo.addItem("🫀 Manca funzionale", "ONLY_FUNCTIONAL_60")
@@ -1997,38 +2115,12 @@ class MainWindow(QMainWindow):
         self.device_verification_filter_combo.addItem("✅ VE O VF MANCANTE", "BOTH_60")
         self.device_verification_filter_combo.addItem("📋 Tutti i dispositivi", "ALL")
         self.device_verification_filter_combo.setCurrentIndex(0)
-        self.device_verification_filter_combo.setFixedHeight(38)
-        self.device_verification_filter_combo.setToolTip(
-            "Filtra i dispositivi in base alle verifiche elettriche/funzionali nel periodo selezionato"
-        )
+        self.device_verification_filter_combo.hide()
         self.device_verification_filter_combo.currentIndexChanged.connect(self.reload_devices)
         self.device_verification_filter_combo.currentIndexChanged.connect(lambda *_: self._persist_main_view_state())
-        toolbar.addWidget(self.device_verification_filter_combo)
+        toolbar_row.addWidget(self.device_verification_filter_combo)
 
-        self.device_period_button = QPushButton(get_icon("calendar", theme=self.current_theme), "")
-        self.device_period_button.setObjectName("calendarFilterButton")
-        self.device_period_button.setProperty("homeIconButton", True)
-        self.device_period_button.setProperty("iconRole", "calendar")
-        self._prepare_home_icon_button(self.device_period_button, size=38, icon_size=16)
-        self.device_period_button.clicked.connect(self.choose_device_filter_period)
-        self._update_device_period_button_tooltip()
-        toolbar.addWidget(self.device_period_button)
-
-        self.device_sort_combo = QComboBox()
-        self.device_sort_combo.setFixedHeight(38)
-        self.device_sort_combo.setToolTip("Ordina i dispositivi")
-        self.device_sort_combo.addItem("↕ Tipologia",  "description")
-        self.device_sort_combo.addItem("↕ S/N",         "serial_number")
-        self.device_sort_combo.addItem("↕ Inv. AMS",    "ams_inventory")
-        self.device_sort_combo.addItem("↕ Inv. Cliente", "customer_inventory")
-        self.device_sort_combo.setCurrentIndex(0)
-        self.device_sort_combo.currentIndexChanged.connect(
-            lambda *_: self._populate_device_list(self._get_device_cache(),
-                                                   self.device_search.text() if hasattr(self, 'device_search') else '')
-        )
-        toolbar.addWidget(self.device_sort_combo)
-
-        lay.addLayout(toolbar)
+        lay.addLayout(toolbar_row)
 
         self.device_list = QListWidget()
         self.device_list.setObjectName("drillListWidget")
@@ -2097,9 +2189,9 @@ class MainWindow(QMainWindow):
         if hasattr(self, "drill_crumb_customer"):
             if self.selected_customer_id:
                 name = getattr(self, '_drill_customer_name', None) or "Cliente"
-                self.drill_crumb_customer.setText(name)
+                self.drill_crumb_customer.setText(f"🏢 {name}")
             else:
-                self.drill_crumb_customer.setText("Clienti")
+                self.drill_crumb_customer.setText("🏢 Clienti")
             self.drill_crumb_customer.setProperty("crumbActive", "true" if step > 0 else "current")
             self.drill_crumb_customer.style().unpolish(self.drill_crumb_customer)
             self.drill_crumb_customer.style().polish(self.drill_crumb_customer)
@@ -2111,9 +2203,9 @@ class MainWindow(QMainWindow):
             self.drill_crumb_destination.setVisible(step >= 1)
             if self.selected_destination_id:
                 name = getattr(self, '_drill_destination_name', None) or "Destinazione"
-                self.drill_crumb_destination.setText(name)
+                self.drill_crumb_destination.setText(f"📍 {name}")
             else:
-                self.drill_crumb_destination.setText("Destinazioni")
+                self.drill_crumb_destination.setText("📍 Destinazioni")
             self.drill_crumb_destination.setProperty("crumbActive", "true" if step > 1 else "current")
             self.drill_crumb_destination.style().unpolish(self.drill_crumb_destination)
             self.drill_crumb_destination.style().polish(self.drill_crumb_destination)
@@ -2132,10 +2224,10 @@ class MainWindow(QMainWindow):
                             dev_name = dict(d).get('description') or None
                     except Exception:
                         pass
-                self.drill_crumb_device.setText(dev_name or 'Dispositivo')
+                self.drill_crumb_device.setText(f"🩺 {dev_name or 'Dispositivo'}")
                 self.drill_crumb_device.setObjectName("drillCrumbSelected")
             else:
-                self.drill_crumb_device.setText('Dispositivi')
+                self.drill_crumb_device.setText('🩺 Dispositivi')
                 self.drill_crumb_device.setObjectName("drillCrumbCurrent")
             self.drill_crumb_device.setStyleSheet("")
             self.drill_crumb_device.style().unpolish(self.drill_crumb_device)
@@ -2199,45 +2291,16 @@ class MainWindow(QMainWindow):
                 has_device and self.functional_profile_selector.count() > 0
             )
 
-        # ── Breadcrumb step labels ───────────────────────────────────────────────
-        if hasattr(self, "bc_customer_label"):
-            customer_name = getattr(self, '_drill_customer_name', None) if has_customer else None
-            if customer_name:
-                self.bc_customer_label.setText(f"① {customer_name}")
-                self.bc_customer_label.setProperty("state", "active")
-            else:
-                self.bc_customer_label.setText("① Cliente")
-                self.bc_customer_label.setProperty("state", "pending")
-            self.bc_customer_label.style().unpolish(self.bc_customer_label)
-            self.bc_customer_label.style().polish(self.bc_customer_label)
-
-        if hasattr(self, "bc_dest_label"):
-            dest_name = getattr(self, '_drill_destination_name', None) if has_destination else None
-            if dest_name:
-                self.bc_dest_label.setText(f"② {dest_name}")
-                self.bc_dest_label.setProperty("state", "active")
-            else:
-                self.bc_dest_label.setText("② Destinazione")
-                self.bc_dest_label.setProperty("state", "pending" if has_customer else "locked")
-            self.bc_dest_label.style().unpolish(self.bc_dest_label)
-            self.bc_dest_label.style().polish(self.bc_dest_label)
-
-        if hasattr(self, "bc_device_label"):
-            device_name = getattr(self, '_drill_device_name', None) if has_device else None
-            if device_name:
-                self.bc_device_label.setText(f"③ {device_name}")
-                self.bc_device_label.setProperty("state", "active")
-            else:
-                self.bc_device_label.setText("③ Dispositivo")
-                self.bc_device_label.setProperty("state", "pending" if has_destination else "locked")
-            self.bc_device_label.style().unpolish(self.bc_device_label)
-            self.bc_device_label.style().polish(self.bc_device_label)
+        if hasattr(self, "btn_view_verifications"):
+            self.btn_view_verifications.setEnabled(has_device)
 
         # ── Badge sessione ───────────────────────────────────────────────────────
         if hasattr(self, "session_status_label"):
             if self.current_mti_info:
-                sn = self.current_mti_info.get("serial_number") or self.current_mti_info.get("com_port", "?")
-                self.session_status_label.setText(f"🔧 Strumento: {sn}")
+                strum = self.current_mti_info.get('instrument')
+                com = self.current_mti_info.get("com_port")
+                sn =  self.current_mti_info.get('serial', 'N/A')
+                self.session_status_label.setText(f"🔧 Strumento: {strum} SN: {sn}")
                 self.session_status_label.setProperty("state", "ready")
             else:
                 self.session_status_label.setText("⚠ Sessione non impostata")
@@ -2245,12 +2308,19 @@ class MainWindow(QMainWindow):
             self.session_status_label.style().unpolish(self.session_status_label)
             self.session_status_label.style().polish(self.session_status_label)
 
-        # ── Testo pulsante sessione sidebar ─────────────────────────────────────
+        # ── Testo e stato pulsante sessione sidebar ─────────────────────────────
         if hasattr(self, "change_session_btn"):
             if has_device and not self.current_mti_info:
-                self.change_session_btn.setText(" Imposta Sessione per Verifica")
+                self.change_session_btn.setText(" Imposta Sessione")
+                self.change_session_btn.setProperty("state", "warning")
+            elif self.current_mti_info:
+                self.change_session_btn.setText(" Modifica Sessione")
+                self.change_session_btn.setProperty("state", "ready")
             else:
                 self.change_session_btn.setText(" Imposta Sessione")
+                self.change_session_btn.setProperty("state", "default")
+            self.change_session_btn.style().unpolish(self.change_session_btn)
+            self.change_session_btn.style().polish(self.change_session_btn)
 
         # ── Breadcrumb drill-down ────────────────────────────────────────────────
         self._update_drill_breadcrumb()
@@ -2361,10 +2431,9 @@ class MainWindow(QMainWindow):
         QWidget.setTabOrder(self.destination_search, self.destination_list)
         QWidget.setTabOrder(self.destination_list, self.device_search)
         QWidget.setTabOrder(self.device_search, self.device_list)
-        QWidget.setTabOrder(self.device_list, self.profile_selector)
-        QWidget.setTabOrder(self.profile_selector, self.functional_profile_selector)
-        QWidget.setTabOrder(self.functional_profile_selector, self.btn_edit_device)
-        QWidget.setTabOrder(self.btn_edit_device, self.start_electrical_button)
+        QWidget.setTabOrder(self.device_list, self.btn_edit_device)
+        QWidget.setTabOrder(self.btn_edit_device, self.btn_view_verifications)
+        QWidget.setTabOrder(self.btn_view_verifications, self.start_electrical_button)
         QWidget.setTabOrder(self.start_electrical_button, self.start_functional_button)
 
     def _can_use_home_shortcuts(self) -> bool:
@@ -2420,12 +2489,12 @@ class MainWindow(QMainWindow):
         group.setObjectName("searchGroupBox")
         # Gli stili sono gestiti dal QSS del tema
         layout = QHBoxLayout(group)
-        layout.setSpacing(10)
+        layout.setSpacing(8)
         
         # Campo di ricerca
         self.global_device_search_edit = QLineEdit()
         self.global_device_search_edit.setPlaceholderText("Cerca cliente, destinazione o dispositivo")
-        self.global_device_search_edit.setMinimumHeight(45)
+        self.global_device_search_edit.setFixedHeight(36)
         self.global_device_search_edit.setCompleter(None)  # Disabilita memoria/autocomplete
         self.global_device_search_edit.returnPressed.connect(self.perform_global_search)
         self.global_device_search_edit.textChanged.connect(lambda *_: self._persist_main_view_state())
@@ -2435,7 +2504,7 @@ class MainWindow(QMainWindow):
         self.global_search_button.setObjectName("primaryButton")
         self.global_search_button.setProperty("homeIconButton", True)
         self.global_search_button.setProperty("iconRole", "search")
-        self._prepare_home_icon_button(self.global_search_button, size=38, icon_size=18)
+        self._prepare_home_icon_button(self.global_search_button, size=36, icon_size=16)
         self.global_search_button.setToolTip("Cerca")
         self.global_search_button.clicked.connect(self.perform_global_search)
         
@@ -2632,16 +2701,8 @@ class MainWindow(QMainWindow):
 
         self._restoring_persisted_state = True
         try:
-            start_value = self.settings.value("main_window/device_filter_start_date", "")
-            end_value = self.settings.value("main_window/device_filter_end_date", "")
-            try:
-                if start_value:
-                    self.device_filter_start_date = date.fromisoformat(str(start_value))
-                if end_value:
-                    self.device_filter_end_date = date.fromisoformat(str(end_value))
-            except ValueError:
-                logging.warning("Impossibile ripristinare il periodo filtro dispositivi salvato.")
-
+            self.device_filter_start_date = date.today()
+            self.device_filter_end_date = date.today()
             self._update_device_period_button_tooltip()
 
             filter_mode = self.settings.value("main_window/device_filter_mode", "UNVERIFIED_60")
@@ -2910,150 +2971,171 @@ class MainWindow(QMainWindow):
     
     def _create_bottom_action_panel(self):
         """
-        Barra contestuale sticky: breadcrumb flusso + dettagli dispositivo
-        + profili + pulsanti azione sempre visibili.
-        Layout:
-          ┌─ BREADCRUMB (cliente → destinazione → dispositivo) ─── [🔧 Sessione] ─┐
-          │  dettagli dispositivo  │  profili  │  pulsanti azione                  │
-          └────────────────────────────────────────────────────────────────────────┘
+        Action Hub contestuale:
+        - Stato A: nessun dispositivo selezionato -> banner compatto ed elegante.
+        - Stato B: dispositivo selezionato -> card a 3 sezioni (Info & Esito, Profili, Azioni).
         """
         panel = QFrame()
         panel.setObjectName("stickyActionBar")
         outer = QVBoxLayout(panel)
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
+        outer.setSizeConstraint(QLayout.SetMinimumSize)
 
-        # ── RIGA 1: BREADCRUMB + INDICATORE SESSIONE ─────────────────────────────
-        breadcrumb_bar = QFrame()
-        breadcrumb_bar.setObjectName("flowBreadcrumbBar")
-        bc_layout = QHBoxLayout(breadcrumb_bar)
-        bc_layout.setContentsMargins(14, 8, 14, 8)
-        bc_layout.setSpacing(4)
+        # ── STATO A: VUOTO (NESSUN DISPOSITIVO SELEZIONATO) ────────────────────
+        self.action_hub_empty_frame = QFrame()
+        self.action_hub_empty_frame.setObjectName("actionHubEmptyFrame")
+        empty_layout = QHBoxLayout(self.action_hub_empty_frame)
+        empty_layout.setContentsMargins(18, 10, 18, 10)
+        empty_layout.setSpacing(10)
 
-        def _make_step(obj_name: str, text: str) -> QLabel:
-            lbl = QLabel(text)
-            lbl.setObjectName(obj_name)
-            lbl.setAlignment(Qt.AlignVCenter | Qt.AlignLeft)
-            return lbl
+        empty_icon = QLabel()
+        empty_icon.setPixmap(qta.icon("fa5s.laptop-medical", color="#6366f1").pixmap(20, 20))
+        empty_layout.addWidget(empty_icon)
 
-        def _make_arrow() -> QLabel:
-            arr = QLabel("›")
-            arr.setObjectName("breadcrumbArrow")
-            arr.setAlignment(Qt.AlignVCenter | Qt.AlignHCenter)
-            return arr
+        empty_msg = QLabel("Seleziona un dispositivo dalla lista per visualizzarne la scheda tecnica e avviare le verifiche.")
+        empty_msg.setObjectName("actionHubEmptyLabel")
+        empty_layout.addWidget(empty_msg, 1)
 
-        self.bc_customer_label  = _make_step("breadcrumbStep", "① Cliente")
-        self.bc_dest_label      = _make_step("breadcrumbStep", "② Destinazione")
-        self.bc_device_label    = _make_step("breadcrumbStep", "③ Dispositivo")
+        outer.addWidget(self.action_hub_empty_frame)
 
-        bc_layout.addWidget(self.bc_customer_label)
-        bc_layout.addWidget(_make_arrow())
-        bc_layout.addWidget(self.bc_dest_label)
-        bc_layout.addWidget(_make_arrow())
-        bc_layout.addWidget(self.bc_device_label)
-        bc_layout.addStretch()
+        # ── STATO B: ATTIVO (DISPOSITIVO SELEZIONATO) ──────────────────────────
+        self.action_hub_device_frame = QFrame()
+        self.action_hub_device_frame.setObjectName("actionHubDeviceFrame")
+        self.action_hub_device_frame.hide()
 
-        # Indicatore sessione compatto integrato nella barra
-        self.session_status_label = QLabel()
-        self.session_status_label.setObjectName("sessionStatusBadge")
-        self.session_status_label.setAlignment(Qt.AlignVCenter | Qt.AlignRight)
-        bc_layout.addWidget(self.session_status_label)
+        hub_layout = QHBoxLayout(self.action_hub_device_frame)
+        hub_layout.setContentsMargins(14, 8, 14, 8)
+        hub_layout.setSpacing(14)
 
-        outer.addWidget(breadcrumb_bar)
+        # ── SEZIONE 1: IDENTIFICAZIONE DISPOSITIVO & ESITO (Sinistra) ─────────
+        dev_info_col = QVBoxLayout()
+        dev_info_col.setSpacing(4)
+        dev_info_col.setContentsMargins(0, 0, 0, 0)
 
-        # Separatore
-        sep = QFrame()
-        sep.setFrameShape(QFrame.HLine)
-        sep.setObjectName("sectionDivider")
-        outer.addWidget(sep)
+        title_row = QHBoxLayout()
+        title_row.setSpacing(8)
+        title_row.setContentsMargins(0, 0, 0, 0)
 
-        # ── RIGA 2: DETTAGLI + PROFILI + AZIONI ──────────────────────────────────
-        summary_frame = QFrame()
-        summary_frame.setObjectName("summaryFrame")
-        summary_layout = QGridLayout(summary_frame)
-        summary_layout.setHorizontalSpacing(12)
-        summary_layout.setVerticalSpacing(4)
-        summary_layout.setContentsMargins(12, 10, 12, 10)
+        self.summary_title_label = QLabel("Nessun dispositivo")
+        self.summary_title_label.setObjectName("summaryDeviceTitle")
+        title_row.addWidget(self.summary_title_label, 0, Qt.AlignVCenter)
 
-        def add_caption(text: str, row: int, col: int):
+        self.summary_outcome_badge = QLabel("⚪ Nessuna verifica")
+        self.summary_outcome_badge.setObjectName("summaryOutcomeBadge")
+        self.summary_outcome_badge.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self.summary_outcome_badge.setFixedHeight(22)
+        title_row.addWidget(self.summary_outcome_badge, 0, Qt.AlignVCenter)
+        title_row.addStretch()
+
+        dev_info_col.addLayout(title_row)
+
+        # Griglia compatta 2x3 per i dettagli tecnici
+        details_grid = QGridLayout()
+        details_grid.setHorizontalSpacing(10)
+        details_grid.setVerticalSpacing(2)
+        details_grid.setContentsMargins(0, 0, 0, 0)
+
+        def make_caption(text: str, r: int, c: int):
             lbl = QLabel(text)
             lbl.setObjectName("summaryCaptionLabel")
-            summary_layout.addWidget(lbl, row, col)
+            details_grid.addWidget(lbl, r, c)
 
-        # Col 0-3: dettagli dispositivo + selettori profilo
-        # (Dispositivo e Destinazione sono gia mostrati nel breadcrumb sopra)
-        # Riga 0: i due selettori di profilo affiancati
-        add_caption("⚡ Profilo elettrico", 0, 0)
+        def make_val_lbl(r: int, c: int) -> QLabel:
+            lbl = QLabel("—")
+            lbl.setObjectName("summaryLabel")
+            details_grid.addWidget(lbl, r, c)
+            return lbl
+
+        make_caption("S/N:", 0, 0)
+        self.summary_serial_label = make_val_lbl(0, 1)
+
+        make_caption("Costruttore:", 0, 2)
+        self.summary_manufacturer_label = make_val_lbl(0, 3)
+
+        make_caption("Modello:", 1, 0)
+        self.summary_model_label = make_val_lbl(1, 1)
+
+        make_caption("Reparto:", 1, 2)
+        self.summary_department_label = make_val_lbl(1, 3)
+
+        make_caption("Inv. AMS:", 2, 0)
+        self.summary_ams_inventory_label = make_val_lbl(2, 1)
+
+        make_caption("Inv. Cliente:", 2, 2)
+        self.summary_customer_inventory_label = make_val_lbl(2, 3)
+
+        dev_info_col.addLayout(details_grid)
+        dev_info_col.addStretch(1)
+        hub_layout.addLayout(dev_info_col, 1)
+
+        # Separatore verticale 1
+        sep1 = QFrame()
+        sep1.setFrameShape(QFrame.VLine)
+        sep1.setObjectName("sectionDivider")
+        hub_layout.addWidget(sep1)
+
+        # ── SEZIONE 2: PROFILI PREDEFINITI (Centro) ───────────────────────────
+        profiles_box = QFrame()
+        profiles_box.setObjectName("summaryProfilesBox")
+        profiles_box.setMaximumWidth(320)
+        profiles_layout = QVBoxLayout(profiles_box)
+        profiles_layout.setContentsMargins(10, 6, 10, 6)
+        profiles_layout.setSpacing(4)
+
+        profiles_header = QLabel("⚙️ Profili di Prova")
+        profiles_header.setObjectName("summaryProfilesHeader")
+        profiles_layout.addWidget(profiles_header)
+
+        # Profilo elettrico
+        ve_prof_row = QHBoxLayout()
+        ve_prof_row.setSpacing(6)
+        lbl_ve_prof = QLabel("⚡ Elettrico:")
+        lbl_ve_prof.setObjectName("summaryCaptionLabel")
         self.profile_selector = QComboBox()
-        self.profile_selector.setMinimumHeight(32)
-        self.profile_selector.setMaximumWidth(360)
-        self.profile_selector.setAutoFillBackground(False)
-        self._update_summary_fields_background()
-        summary_layout.addWidget(self.profile_selector, 0, 1)
+        self.profile_selector.setMinimumHeight(28)
+        self.profile_selector.setMinimumWidth(150)
+        self.profile_selector.setMaximumWidth(210)
+        self.profile_selector.setFocusPolicy(Qt.NoFocus)
+        self.profile_selector.wheelEvent = lambda event: event.ignore()
+        ve_prof_row.addWidget(lbl_ve_prof)
+        ve_prof_row.addWidget(self.profile_selector, 1)
+        profiles_layout.addLayout(ve_prof_row)
 
-        add_caption("💜 Profilo funzionale", 0, 2)
+        # Profilo funzionale
+        vf_prof_row = QHBoxLayout()
+        vf_prof_row.setSpacing(6)
+        lbl_vf_prof = QLabel("💜 Funzionale:")
+        lbl_vf_prof.setObjectName("summaryCaptionLabel")
         self.functional_profile_selector = QComboBox()
-        self.functional_profile_selector.setMinimumHeight(32)
-        self.functional_profile_selector.setMaximumWidth(360)
-        self.functional_profile_selector.setAutoFillBackground(False)
-        summary_layout.addWidget(self.functional_profile_selector, 0, 3)
+        self.functional_profile_selector.setMinimumHeight(28)
+        self.functional_profile_selector.setMinimumWidth(150)
+        self.functional_profile_selector.setMaximumWidth(210)
+        self.functional_profile_selector.setFocusPolicy(Qt.NoFocus)
+        self.functional_profile_selector.wheelEvent = lambda event: event.ignore()
+        vf_prof_row.addWidget(lbl_vf_prof)
+        vf_prof_row.addWidget(self.functional_profile_selector, 1)
+        profiles_layout.addLayout(vf_prof_row)
 
-        # Righe 1-3: dettagli dispositivo
-        add_caption("🔢 S/N", 1, 0)
-        self.summary_serial_label = QLabel("—")
-        self.summary_serial_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_serial_label, 1, 1)
+        hub_layout.addWidget(profiles_box, 0)
 
-        add_caption("🏭 Costruttore", 1, 2)
-        self.summary_manufacturer_label = QLabel("—")
-        self.summary_manufacturer_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_manufacturer_label, 1, 3)
+        # Separatore verticale 2
+        sep2 = QFrame()
+        sep2.setFrameShape(QFrame.VLine)
+        sep2.setObjectName("sectionDivider")
+        hub_layout.addWidget(sep2)
 
-        add_caption("🏷️ Modello", 2, 0)
-        self.summary_model_label = QLabel("—")
-        self.summary_model_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_model_label, 2, 1)
+        # ── SEZIONE 3: PULSANTI AZIONE (Destra) ────────────────────────────────
+        actions_col = QVBoxLayout()
+        actions_col.setSpacing(4)
+        actions_col.setContentsMargins(0, 0, 0, 0)
+        actions_col.setAlignment(Qt.AlignVCenter)
 
-        add_caption("📋 Inv. Cliente", 2, 2)
-        self.summary_customer_inventory_label = QLabel("—")
-        self.summary_customer_inventory_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_customer_inventory_label, 2, 3)
-
-        add_caption("🗂️ Inv. AMS", 3, 0)
-        self.summary_ams_inventory_label = QLabel("—")
-        self.summary_ams_inventory_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_ams_inventory_label, 3, 1)
-
-        add_caption("🏥 Reparto", 3, 2)
-        self.summary_department_label = QLabel("—")
-        self.summary_department_label.setObjectName("summaryLabel")
-        summary_layout.addWidget(self.summary_department_label, 3, 3)
-
-        QTimer.singleShot(100, self._update_summary_fields_background)
-
-        # Separatore verticale tra dettagli e azioni
-        v_sep2 = QFrame()
-        v_sep2.setFrameShape(QFrame.VLine)
-        v_sep2.setObjectName("sectionDivider")
-        summary_layout.addWidget(v_sep2, 0, 4, 4, 1)
-
-        # Col 8: pulsanti azione in verticale (sempre visibili, disabilitati se non pronti)
-        action_col = QVBoxLayout()
-        action_col.setSpacing(6)
-
-        self.btn_edit_device = QPushButton(get_icon("edit", theme=self.current_theme), " Modifica")
-        self.btn_edit_device.setObjectName("editButton")
-        self.btn_edit_device.setProperty("summaryRole", "neutral")
-        self.btn_edit_device.setMinimumHeight(40)
-        self.btn_edit_device.setEnabled(False)
-        self.btn_edit_device.clicked.connect(self.on_edit_selected_device_new)
-        action_col.addWidget(self.btn_edit_device)
-
-
+        # Bottone primario Verifica Elettrica
         self.start_electrical_button = QPushButton(get_icon("electrical_verify", theme=self.current_theme), " Verifica Elettrica ▼")
-        self.start_electrical_button.setObjectName("secondaryButton")
-        self.start_electrical_button.setProperty("summaryRole", "electrical")
-        self.start_electrical_button.setMinimumHeight(40)
+        self.start_electrical_button.setObjectName("actionHubPrimaryBtn")
+        self.start_electrical_button.setMinimumHeight(32)
+        self.start_electrical_button.setMaximumWidth(210)
         self.start_electrical_button.setEnabled(False)
         self.start_electrical_button.setToolTip("Avvia una verifica elettrica (manuale, automatica o di sistema)")
 
@@ -3072,24 +3154,44 @@ class MainWindow(QMainWindow):
             self.start_system_verification
         ).setToolTip("Verifica più dispositivi insieme come sistema (CEI 62353)")
         self.start_electrical_button.setMenu(self._electrical_menu)
-        action_col.addWidget(self.start_electrical_button)
+        actions_col.addWidget(self.start_electrical_button)
 
+        # Bottone Verifica Funzionale
         self.start_functional_button = QPushButton(get_icon("functional_verify", theme=self.current_theme), " Verifica Funzionale")
-        self.start_functional_button.setObjectName("secondaryButton")
-        self.start_functional_button.setProperty("summaryRole", "functional")
-        self.start_functional_button.setMinimumHeight(40)
+        self.start_functional_button.setObjectName("actionHubSecondaryBtn")
+        self.start_functional_button.setMinimumHeight(32)
+        self.start_functional_button.setMaximumWidth(210)
         self.start_functional_button.setEnabled(False)
         self.start_functional_button.setToolTip("Avvia il flusso guidato della verifica funzionale")
         self.start_functional_button.clicked.connect(self.start_functional_verification)
-        action_col.addWidget(self.start_functional_button)
+        actions_col.addWidget(self.start_functional_button)
 
-        summary_layout.addLayout(action_col, 0, 5, 4, 1)
+        # Riga pulsanti utility secondari
+        sub_actions_row = QHBoxLayout()
+        sub_actions_row.setSpacing(6)
 
-        summary_layout.setColumnStretch(1, 2)
-        summary_layout.setColumnStretch(3, 2)
-        summary_layout.setColumnStretch(5, 0)
+        self.btn_edit_device = QPushButton(get_icon("edit", theme=self.current_theme), " Modifica")
+        self.btn_edit_device.setObjectName("actionHubUtilityBtn")
+        self.btn_edit_device.setMinimumHeight(28)
+        self.btn_edit_device.setMaximumWidth(102)
+        self.btn_edit_device.setEnabled(False)
+        self.btn_edit_device.clicked.connect(self.on_edit_selected_device_new)
+        sub_actions_row.addWidget(self.btn_edit_device)
 
-        outer.addWidget(summary_frame)
+        self.btn_view_verifications = QPushButton(get_icon("report", theme=self.current_theme), " Storico")
+        self.btn_view_verifications.setObjectName("actionHubUtilityBtn")
+        self.btn_view_verifications.setMinimumHeight(28)
+        self.btn_view_verifications.setMaximumWidth(102)
+        self.btn_view_verifications.setEnabled(False)
+        self.btn_view_verifications.setVisible(True)
+        self.btn_view_verifications.setToolTip("Visualizza tutte le verifiche eseguite su questo apparecchio")
+        self.btn_view_verifications.clicked.connect(self.show_selected_device_verifications)
+        sub_actions_row.addWidget(self.btn_view_verifications)
+
+        actions_col.addLayout(sub_actions_row)
+        hub_layout.addLayout(actions_col, 0)
+
+        outer.addWidget(self.action_hub_device_frame)
         return panel
     
     def create_device_details_panel(self):
@@ -3134,36 +3236,42 @@ class MainWindow(QMainWindow):
         self.on_device_selection_changed(self.device_selector.currentIndex())
 
     def _create_session_group(self):
-        """Crea il gruppo sessione con design moderno."""
+        """Crea il gruppo sessione con design moderno e compatto."""
         user_info = auth_manager.get_current_user_info()
         self.current_technician_name = user_info.get('full_name')
         
         group = QGroupBox("👤 Sessione di Verifica")
+        group.setObjectName("sessionGroupBox")
         layout = QVBoxLayout(group)
-        layout.setSpacing(12)
+        layout.setContentsMargins(10, 12, 10, 8)
+        layout.setSpacing(6)
         
         # Label tecnico nascosta (usata internamente, non mostrata)
         self.current_technician_label = QLabel(self.current_technician_name or "N/D")
         self.current_technician_label.hide()
 
-        # Info strumento
+        # Info strumento (riga compatta)
         instr_layout = QHBoxLayout()
+        instr_layout.setSpacing(6)
         instr_icon = QLabel()
-        instr_icon.setPixmap(get_pixmap("instrument", color="#16a34a", size=24))
+        instr_icon.setPixmap(get_pixmap("instrument", color="#16a34a", size=16))
         instr_layout.addWidget(instr_icon)
         instr_title_label = QLabel("Strumento:")
-        instr_title_label.setStyleSheet("font-weight: 700; background-color: transparent;")
+        instr_title_label.setObjectName("instrTitleLabel")
+        instr_title_label.setStyleSheet("font-weight: 700; font-size: 11px; background-color: transparent;")
         instr_layout.addWidget(instr_title_label)
         self.current_instrument_label = QLabel("Nessuno strumento selezionato")
-        self.current_instrument_label.setStyleSheet("color: #64748b; font-style: italic; background-color: transparent;")
-        instr_layout.addWidget(self.current_instrument_label)
-        instr_layout.addStretch()
+        self.current_instrument_label.setObjectName("instrValueLabel")
+        self.current_instrument_label.setStyleSheet("color: #64748b; font-style: italic; font-size: 11px; background-color: transparent;")
+        self.current_instrument_label.setWordWrap(True)
+        instr_layout.addWidget(self.current_instrument_label, 1)
         layout.addLayout(instr_layout)
         
-        # Pulsante cambia sessione
+        # Pulsante cambia sessione compatto
         self.change_session_btn = QPushButton(get_icon("settings", theme=self.current_theme), " Imposta Sessione")
-        self.change_session_btn.setObjectName("warningButton") 
-        self.change_session_btn.setMinimumHeight(45)
+        self.change_session_btn.setObjectName("compactSessionBtn") 
+        self.change_session_btn.setFixedHeight(32)
+        self.change_session_btn.setCursor(Qt.PointingHandCursor)
         self.change_session_btn.clicked.connect(self.setup_session)
         layout.addWidget(self.change_session_btn)
         
@@ -3364,7 +3472,7 @@ class MainWindow(QMainWindow):
                 instrument_name = self.current_mti_info.get('instrument', 'N/A')
                 serial_number = self.current_mti_info.get('serial', 'N/A')
                 self.current_instrument_label.setText(f"{instrument_name} (S/N: {serial_number})")
-                self.current_instrument_label.setStyleSheet("color: #16a34a; font-weight: 600; background-color: transparent;")
+                self.current_instrument_label.setStyleSheet("color: #16a34a; font-weight: 600; font-size: 11px; background-color: transparent;")
                 self.current_technician_label.setText(self.current_technician_name or "N/D")
                 self.current_technician_label.setStyleSheet("color: #2563eb; font-weight: 600; background-color: transparent;")
                 logging.info(f"Sessione impostata per tecnico '{self.current_technician_name}' con strumento S/N {serial_number} su porta {self.current_mti_info.get('com_port', 'N/A')}.")
@@ -3474,6 +3582,8 @@ class MainWindow(QMainWindow):
         
         # Abilita pulsanti azione
         self.btn_edit_device.setEnabled(True)
+        if hasattr(self, "btn_view_verifications"):
+            self.btn_view_verifications.setEnabled(True)
         self.start_electrical_button.setEnabled(True)
         self.start_functional_button.setEnabled(self.functional_profile_selector.count() > 0)
         self._persist_main_view_state()
@@ -3502,43 +3612,103 @@ class MainWindow(QMainWindow):
         self._populate_device_list(self._get_device_cache(), text)
     
     def update_summary_panel(self):
-        """Aggiorna il pannello di riepilogo in basso."""
-        # Dispositivo e dettagli
+        """Aggiorna l'Action Hub in basso con i dati del dispositivo selezionato ed esito verifiche."""
         if self.selected_device_id:
             device_data = services.database.get_device_by_id(self.selected_device_id)
             if device_data:
                 dev = dict(device_data)
 
-                # Numero di Serie
+                # Mostra frame attivo e nasconde frame vuoto
+                if hasattr(self, "action_hub_empty_frame") and hasattr(self, "action_hub_device_frame"):
+                    self.action_hub_empty_frame.hide()
+                    self.action_hub_device_frame.show()
+
+                # Titolo identificativo dispositivo
+                desc = dev.get('description', '') or 'Dispositivo'
+                model = dev.get('model', '') or ''
+                title_text = f"{desc} ({model})" if model else desc
+                if hasattr(self, "summary_title_label"):
+                    self.summary_title_label.setText(title_text)
+
+                # Badge esito ultima verifica (elettrica o funzionale)
+                if hasattr(self, "summary_outcome_badge"):
+                    outcome_info = services.get_device_last_verification_outcome(self.selected_device_id)
+                    if outcome_info:
+                        status_raw = (outcome_info.get("overall_status") or "").strip().upper()
+                        date_raw = str(outcome_info.get("verification_date") or "")
+                        if len(date_raw) >= 10 and "-" in date_raw[:10]:
+                            parts = date_raw[:10].split("-")
+                            date_fmt = f"{parts[2]}/{parts[1]}/{parts[0]}" if len(parts) == 3 else date_raw[:10]
+                        else:
+                            date_fmt = date_raw
+
+                        v_icon = "⚡" if outcome_info.get("verification_type") == "electrical" else "💜"
+                        if "FALLIT" in status_raw or "NON CONFORME" in status_raw:
+                            outcome_status = "failed"
+                            badge_text = f"❌ Non Conforme ({v_icon} {date_fmt})"
+                        elif "ANNOTAZION" in status_raw:
+                            outcome_status = "warning"
+                            badge_text = f"⚠️ Conforme con annotazione ({v_icon} {date_fmt})"
+                        elif "PASSAT" in status_raw or "CONFORME" in status_raw:
+                            outcome_status = "passed"
+                            badge_text = f"✅ Conforme ({v_icon} {date_fmt})"
+                        else:
+                            outcome_status = "none"
+                            badge_text = f"ℹ️ {status_raw} ({v_icon} {date_fmt})"
+                    else:
+                        outcome_status = "none"
+                        badge_text = "⚪ Nessuna verifica"
+
+                    self.summary_outcome_badge.setText(badge_text)
+                    self.summary_outcome_badge.setProperty("outcome", outcome_status)
+                    self.summary_outcome_badge.style().unpolish(self.summary_outcome_badge)
+                    self.summary_outcome_badge.style().polish(self.summary_outcome_badge)
+
+                # Dettagli tecnici
                 serial_number = dev.get('serial_number', '—') or '—'
                 self.summary_serial_label.setText(f"<b>{serial_number}</b>")
                 
-                # Costruttore
                 manufacturer = dev.get('manufacturer', '—') or '—'
                 self.summary_manufacturer_label.setText(f"<b>{manufacturer}</b>")
                 
-                # Modello
-                model = dev.get('model', '—') or '—'
-                self.summary_model_label.setText(f"<b>{model}</b>")
+                self.summary_model_label.setText(f"<b>{model or '—'}</b>")
                 
-                # Inventario Cliente
                 customer_inventory = dev.get('customer_inventory', '—') or '—'
                 self.summary_customer_inventory_label.setText(f"<b>{customer_inventory}</b>")
                 
-                # Inventario AMS
                 ams_inventory = dev.get('ams_inventory', '—') or '—'
                 self.summary_ams_inventory_label.setText(f"<b>{ams_inventory}</b>")
                 
-                # Reparto
                 department = dev.get('department', '—') or '—'
                 self.summary_department_label.setText(f"<b>{department}</b>")
+
+                # Abilitazione pulsanti
+                self.btn_edit_device.setEnabled(True)
+                if hasattr(self, "btn_view_verifications"):
+                    self.btn_view_verifications.setEnabled(True)
+                self.start_electrical_button.setEnabled(True)
+                self.start_functional_button.setEnabled(
+                    self.functional_profile_selector.count() > 0
+                )
             else:
                 self._clear_summary_device()
         else:
             self._clear_summary_device()
     
     def _clear_summary_device(self):
-        """Pulisce i dettagli dispositivo nel summary."""
+        """Pulisce i dettagli dispositivo nel summary e reimposta l'Action Hub su stato vuoto."""
+        if hasattr(self, "action_hub_empty_frame") and hasattr(self, "action_hub_device_frame"):
+            self.action_hub_device_frame.hide()
+            self.action_hub_empty_frame.show()
+
+        if hasattr(self, "summary_title_label"):
+            self.summary_title_label.setText("Nessun dispositivo selezionato")
+        if hasattr(self, "summary_outcome_badge"):
+            self.summary_outcome_badge.setText("⚪ Nessuna verifica")
+            self.summary_outcome_badge.setProperty("outcome", "none")
+            self.summary_outcome_badge.style().unpolish(self.summary_outcome_badge)
+            self.summary_outcome_badge.style().polish(self.summary_outcome_badge)
+
         self.summary_serial_label.setText("—")
         self.summary_manufacturer_label.setText("—")
         self.summary_model_label.setText("—")
@@ -3546,6 +3716,8 @@ class MainWindow(QMainWindow):
         self.summary_ams_inventory_label.setText("—")
         self.summary_department_label.setText("—")
         self.btn_edit_device.setEnabled(False)
+        if hasattr(self, "btn_view_verifications"):
+            self.btn_view_verifications.setEnabled(False)
         self.start_electrical_button.setEnabled(False)
         self.start_functional_button.setEnabled(False)
 
@@ -3642,11 +3814,27 @@ class MainWindow(QMainWindow):
                         break
                 
                 self.update_summary_panel()
-                self.show_success_feedback("Dispositivo aggiornato con successo.")
-        
         except Exception as e:
             logging.error("Errore durante la modifica del dispositivo", exc_info=True)
             QMessageBox.critical(self, "Errore", f"Modifica non riuscita:\n{e}")
+
+    def show_selected_device_verifications(self):
+        """Apre il dialog con lo storico delle verifiche per il dispositivo selezionato."""
+        if not self.selected_device_id:
+            QMessageBox.warning(self, "Attenzione", "Nessun dispositivo selezionato.")
+            return
+        self.show_device_verifications(self.selected_device_id)
+
+    def show_device_verifications(self, device_id: int):
+        """Apre il dialog con lo storico completo verifiche di un apparecchio."""
+        if not device_id:
+            return
+        try:
+            dialog = DeviceVerificationsDialog(device_id=device_id, parent=self, main_window=self)
+            dialog.exec()
+        except Exception as e:
+            logging.error(f"Errore durante l'apertura dello storico verifiche: {e}", exc_info=True)
+            QMessageBox.critical(self, "Errore", f"Impossibile aprire lo storico verifiche:\n{e}")
     
     def reload_devices(self, *, reset_search: bool = False):
         """Ricarica la lista dispositivi per la destinazione selezionata."""
@@ -3656,6 +3844,7 @@ class MainWindow(QMainWindow):
         
         if not self.selected_destination_id:
             self.device_count_label.setText("<i>Seleziona una destinazione</i>")
+            self._update_device_filter_chips_counts()
             return
         
         devices = self._get_filtered_devices_for_destination(self.selected_destination_id)
@@ -3664,8 +3853,46 @@ class MainWindow(QMainWindow):
         search_query = self.device_search.text() if getattr(self, "device_search", None) is not None else ""
         self._populate_device_list(self._get_device_cache(), search_query)
 
+    def _on_device_filter_chip_clicked(self, button):
+        """Gestisce il clic su uno dei chip filtro rapidi."""
+        mode = button.property("filterMode") if button else None
+        if mode:
+            combo = getattr(self, "device_verification_filter_combo", None)
+            if combo is not None:
+                idx = combo.findData(mode)
+                if idx != -1 and combo.currentIndex() != idx:
+                    combo.setCurrentIndex(idx)
+                    return
+        self.reload_devices()
+        self._persist_main_view_state()
+
+    def _update_device_filter_chips_counts(self, c_all=None, c_unverif=None, c_both=None, c_ve=None, c_vf=None):
+        """Aggiorna le etichette dei chip filtro con i conteggi in tempo reale."""
+        if not hasattr(self, "chip_all"):
+            return
+        if c_all is not None:
+            self.chip_all.setText(f"📋 Tutti ({c_all})")
+            self.chip_unverified.setText(f"🔍 Da verificare ({c_unverif})")
+            if hasattr(self, "chip_both") and c_both is not None:
+                self.chip_both.setText(f"⚠️ Manca VE o VF ({c_both})")
+            self.chip_missing_ve.setText(f"⚡ Manca VE ({c_ve})")
+            self.chip_missing_vf.setText(f"💜 Manca VF ({c_vf})")
+        else:
+            self.chip_all.setText("📋 Tutti")
+            self.chip_unverified.setText("🔍 Da verificare")
+            if hasattr(self, "chip_both"):
+                self.chip_both.setText("⚠️ Manca VE o VF")
+            self.chip_missing_ve.setText("⚡ Manca VE")
+            self.chip_missing_vf.setText("💜 Manca VF")
+
     def _get_device_filter_mode(self) -> str:
         """Restituisce la modalità di filtro dispositivi attiva."""
+        if hasattr(self, "device_filter_button_group"):
+            btn = self.device_filter_button_group.checkedButton()
+            if btn:
+                mode = btn.property("filterMode")
+                if mode:
+                    return str(mode)
         combo = getattr(self, "device_verification_filter_combo", None)
         if combo is not None:
             mode = combo.currentData()
@@ -3675,19 +3902,23 @@ class MainWindow(QMainWindow):
 
     def _set_device_filter_mode(self, mode: str):
         """Imposta la modalità filtro dispositivi se disponibile."""
+        if hasattr(self, "device_filter_button_group"):
+            for btn in self.device_filter_button_group.buttons():
+                if btn.property("filterMode") == mode:
+                    btn.setChecked(True)
+                    break
         combo = getattr(self, "device_verification_filter_combo", None)
-        if combo is None:
-            return
-        idx = combo.findData(mode)
-        if idx != -1 and combo.currentIndex() != idx:
-            combo.setCurrentIndex(idx)
+        if combo is not None:
+            idx = combo.findData(mode)
+            if idx != -1 and combo.currentIndex() != idx:
+                combo.setCurrentIndex(idx)
 
     def _get_device_filter_label(self, mode: str) -> str:
         labels = {
             "UNVERIFIED_60": "nessuna verifica",
             "ONLY_FUNCTIONAL_60": "manca funzionale",
             "ONLY_ELECTRICAL_60": "manca elettrica",
-            "BOTH_60": "non complete (elettrica+funzionale)",
+            "BOTH_60": "manca VE o VF",
             "ALL": "tutti",
         }
         return labels.get(mode, "personalizzato")
@@ -3705,6 +3936,8 @@ class MainWindow(QMainWindow):
         end = self.device_filter_end_date
         if start > end:
             start, end = end, start
+        if start == end:
+            return start.strftime('%d/%m/%Y')
         return f"{start.strftime('%d/%m/%Y')} - {end.strftime('%d/%m/%Y')}"
 
     def _update_device_period_button_tooltip(self):
@@ -3716,6 +3949,18 @@ class MainWindow(QMainWindow):
     def choose_device_filter_period(self):
         """Apre il calendario standard già usato nel programma."""
         dialog = SingleCalendarRangeDialog(self)
+        if hasattr(self, 'device_filter_start_date') and hasattr(self, 'device_filter_end_date'):
+            from PySide6.QtCore import QDate
+            q_start = QDate(self.device_filter_start_date.year, self.device_filter_start_date.month, self.device_filter_start_date.day)
+            q_end = QDate(self.device_filter_end_date.year, self.device_filter_end_date.month, self.device_filter_end_date.day)
+            dialog.start_date = q_start
+            dialog.end_date = q_end
+            dialog.start_label.setText(f"<b>{q_start.toString('dd/MM/yyyy')}</b>".upper())
+            dialog.end_label.setText(f"<b>{q_end.toString('dd/MM/yyyy')}</b>".upper())
+            dialog.calendar.setSelectedDate(q_start)
+            dialog._update_highlight()
+            dialog.buttons.button(QDialogButtonBox.Ok).setEnabled(True)
+
         if dialog.exec() != QDialog.Accepted:
             return
 
@@ -3735,12 +3980,9 @@ class MainWindow(QMainWindow):
         self._persist_main_view_state()
 
     def _get_filtered_devices_for_destination(self, destination_id: int):
-        """Recupera i dispositivi della destinazione applicando il filtro verifiche."""
+        """Recupera i dispositivi della destinazione applicando il filtro verifiche e aggiorna i conteggi dei chip."""
         all_devices = services.database.get_devices_for_destination(destination_id)
         mode = self._get_device_filter_mode()
-
-        if mode == "ALL":
-            return all_devices
 
         start_date_str, end_date_str = self._get_device_filter_period()
 
@@ -3768,6 +4010,34 @@ class MainWindow(QMainWindow):
         except Exception:
             unavail_ids = set()
 
+        # Calcolo conteggi per ciascun chip rapido
+        c_all = 0
+        c_unverif = 0
+        c_both = 0
+        c_ve = 0
+        c_vf = 0
+
+        for dev_row in all_devices:
+            dev_id = dict(dev_row).get('id')
+            if dev_id in unavail_ids:
+                continue
+            c_all += 1
+            has_electrical = dev_id in electrical_ids
+            has_functional = dev_id in functional_ids
+            if not has_electrical and not has_functional:
+                c_unverif += 1
+            elif has_functional and not has_electrical:
+                c_ve += 1
+            elif has_electrical and not has_functional:
+                c_vf += 1
+            if has_electrical != has_functional:
+                c_both += 1
+
+        self._update_device_filter_chips_counts(c_all, c_unverif, c_both, c_ve, c_vf)
+
+        if mode == "ALL":
+            return all_devices
+
         filtered = []
         for dev_row in all_devices:
             dev = dict(dev_row)
@@ -3791,9 +4061,8 @@ class MainWindow(QMainWindow):
                 # Solo elettrica da eseguire: funzionale presente, elettrica assente
                 include = has_functional and not has_electrical
             elif mode == "BOTH_60":
-                # Nasconde i dispositivi con entrambe le verifiche già eseguite nel periodo,
-                # mostrando tutti gli altri.
-                include = not (has_electrical and has_functional)
+                # Mostra solo dispositivi con una sola verifica eseguita (manca VE oppure manca VF, esclude chi non ha nessuna verifica)
+                include = (has_electrical != has_functional)
 
             if include:
                 filtered.append(dev_row)
@@ -5153,6 +5422,9 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Errore", str(e))
 
     def confirm_and_force_push(self):
+        if auth_manager.get_current_role() != 'admin':
+            QMessageBox.warning(self, "Accesso Negato", "Solo gli utenti con ruolo Amministratore possono forzare l'upload dei dati.")
+            return
         reply = QMessageBox.question(
             self, "Conferma Forza Upload",
             ("Questa azione segna TUTTI i dati locali come da sincronizzare e li invierà al server "
@@ -5221,10 +5493,10 @@ class MainWindow(QMainWindow):
         if hasattr(self, 'manage_functional_profiles_action'):
             self.manage_functional_profiles_action.setVisible(not is_technician)
         if hasattr(self, 'manage_users_action'):
-            self.manage_users_action.setVisible(not is_technician)
-        if hasattr (self, 'force_push_action' ):
-            self.force_push_action.setVisible(not is_technician)
-        if hasattr (self, 'manage_instruments_action' ):
+            self.manage_users_action.setVisible(is_admin)
+        if hasattr(self, 'force_push_action'):
+            self.force_push_action.setVisible(is_admin)
+        if hasattr(self, 'manage_instruments_action'):
             self.manage_instruments_action.setVisible(not is_technician)
         # Solo ADMIN può vedere "Correggi Descrizioni Dispositivi" e "Controllo Qualità Dati"
         if hasattr(self, 'correction_action'):
@@ -5385,6 +5657,7 @@ class MainWindow(QMainWindow):
             ("add", getattr(self, "add_device_button", None)),
             ("calendar", getattr(self, "device_period_button", None)),
             ("edit", getattr(self, "btn_edit_device", None)),
+            ("report", getattr(self, "btn_view_verifications", None)),
             ("electrical_verify", getattr(self, "start_electrical_button", None)),
             ("functional_verify", getattr(self, "start_functional_button", None)),
             ("settings", getattr(self, "change_session_btn", None)),
@@ -5487,6 +5760,9 @@ class MainWindow(QMainWindow):
             self.close()
 
     def open_user_manager(self):
+        if auth_manager.get_current_role() != 'admin':
+            QMessageBox.warning(self, "Accesso Negato", "Solo gli utenti con ruolo Amministratore possono accedere alla Gestione Utenti.")
+            return
         dialog = UserManagerDialog(self)
         self._show_embedded_dialog(dialog, "GESTIONE UTENTI")
 
@@ -6728,7 +7004,7 @@ class MainWindow(QMainWindow):
                 self.current_instrument_label.setText(
                     f"{self.current_mti_info.get('instrument')} (S/N: {self.current_mti_info.get('serial')})"
                 )
-                self.current_instrument_label.setStyleSheet("color: #16a34a; font-weight: 600; background-color: transparent;")
+                self.current_instrument_label.setStyleSheet("color: #16a34a; font-weight: 600; font-size: 11px; background-color: transparent;")
                 self.current_technician_label.setText(self.current_technician_name or "N/D")
                 self.current_technician_label.setStyleSheet("color: #2563eb; font-weight: 600; background-color: transparent;")
                 logging.info(f"Sessione impostata per tecnico '{self.current_technician_name}'.")

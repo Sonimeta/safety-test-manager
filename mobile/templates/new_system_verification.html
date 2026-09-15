@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+
+{% block title %}Nuova Verifica di Sistema — STM Mobile{% endblock %}
+{% block header_title %}Verifica di Sistema{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">{{ destination.name }} · {{ customer_name }}</p>{% endblock %}
+
+{% block content %}
+<div class="px-4 py-4" x-data="sysVePicker()" x-init="init()">
+
+    {# ── Modal selezione strumento ──────────────────────────────────────── #}
+    <div x-show="showModal" x-cloak
+         style="position:fixed;inset:0;z-index:200;background:rgba(15,23,42,.55);display:flex;align-items:flex-end;justify-content:center;">
+        <div style="background:#fff;border-radius:20px 20px 0 0;width:100%;max-width:480px;padding:1.5rem 1.25rem 2rem;"
+             @click.stop>
+            <div style="width:40px;height:4px;background:#e2e8f0;border-radius:2px;margin:0 auto .75rem;"></div>
+            <h2 style="font-size:1rem;font-weight:700;color:#1e293b;margin-bottom:.25rem;"><i class="ti ti-ruler-2" style="margin-right:.375rem;color:#2563eb;"></i>Seleziona strumento di misura</h2>
+            <p style="font-size:.75rem;color:#94a3b8;margin-bottom:1.25rem;">Scegli lo strumento prima di avviare la verifica di sistema.</p>
+
+            {% if instruments %}
+            <div style="margin-bottom:1rem;">
+                <select class="form-input" x-model="instrUuid" @change="onSelect($event.target)">
+                    <option value="">— Seleziona strumento —</option>
+                    {% for i in instruments %}
+                    <option value="{{ i.uuid }}"
+                            data-name="{{ i.instrument_name }}"
+                            data-serial="{{ i.serial_number or '' }}"
+                            data-cal="{{ i.calibration_date or '' }}">
+                        {{ i.instrument_name }}{% if i.serial_number %} — {{ i.serial_number }}{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div x-show="instrName" style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.8rem;color:#1e3a8a;">
+                <p style="font-weight:700;" x-text="instrName"></p>
+                <p x-show="instrSerial" style="opacity:.7;">S/N: <span x-text="instrSerial"></span></p>
+                <p x-show="instrCal" style="opacity:.7;">Scad. calibrazione: <span x-text="instrCal"></span></p>
+            </div>
+            {% else %}
+            <div style="background:#fffbeb;border:1.5px solid #fde68a;color:#92400e;border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.875rem;">
+                <i class="ti ti-alert-triangle"></i> Nessuno strumento disponibile. Aggiungerne uno dalla sezione <strong>Strumenti</strong>.
+            </div>
+            {% endif %}
+
+            <button type="button"
+                    :disabled="!instrUuid"
+                    @click="confirm()"
+                    class="btn-primary"
+                    :style="!instrUuid ? 'opacity:.45;cursor:not-allowed;' : ''">
+                <i class="ti ti-player-play" style="margin-right:.375rem;"></i>Avvia verifica
+            </button>
+            <a href="/mobile/destinations/{{ destination.uuid }}" class="btn-secondary block text-center" style="margin-top:.625rem;">Annulla</a>
+        </div>
+    </div>
+
+    {% if error %}
+    <div style="background:#fef2f2;border:1.5px solid #fca5a5;color:#991b1b;border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.875rem;display:flex;align-items:center;gap:.5rem;">
+        <i class="ti ti-alert-circle" style="flex-shrink:0;"></i> {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="POST" action="/mobile/destinations/{{ destination.uuid }}/new-system-verification"
+          id="sys-form" class="space-y-5" x-show="!showModal" x-cloak>
+        <input type="hidden" name="instrument_uuid" x-model="instrUuid">
+
+        {# Riepilogo strumento selezionato #}
+        <div style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:12px;padding:.625rem 1rem;display:flex;align-items:center;gap:.625rem;">
+            <i class="ti ti-ruler-2" style="color:#2563eb;font-size:1.125rem;flex-shrink:0;"></i>
+            <div class="flex-1 min-w-0">
+                <p style="font-size:.8rem;font-weight:700;color:#1e3a8a;" x-text="instrName"></p>
+                <p style="font-size:.7rem;color:#6b7280;" x-show="instrSerial">S/N: <span x-text="instrSerial"></span></p>
+            </div>
+            <button type="button" @click="showModal=true"
+                    style="font-size:.7rem;color:#2563eb;background:none;border:none;cursor:pointer;text-decoration:underline;">Cambia</button>
+        </div>
+
+        <!-- Info Sistema -->
+        <div class="card p-4 space-y-4">
+            <h2 class="section-title" style="border-bottom:1px solid #f1f5f9;padding-bottom:.5rem;">Dati del Sistema</h2>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Nome del Sistema <span class="text-red-500">*</span></label>
+                <input type="text" name="system_name" class="form-input" placeholder="Es: Colonna Laparoscopica Sala 1, Sistema Radiologico..." required value="{{ system_name or '' }}">
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Data verifica <span class="text-red-500">*</span></label>
+                <input type="date" name="verification_date" class="form-input" value="{{ today }}" required>
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Profilo di verifica CEI 62353 <span class="text-red-500">*</span></label>
+                <select name="profile_key" class="form-input" required
+                        hx-get="/mobile/partials/profile-tests"
+                        hx-trigger="change"
+                        hx-target="#tests-container"
+                        hx-include="[name='profile_key']"
+                        hx-indicator="#tests-spinner">
+                    <option value="">— Seleziona profilo —</option>
+                    {% for p in profiles %}
+                    <option value="{{ p.profile_key }}" {% if selected_profile == p.profile_key %}selected{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <!-- Selezione Dispositivi Componenti -->
+        <div class="card p-4 space-y-3">
+            <div class="flex items-center justify-between">
+                <h2 class="section-title" style="margin-bottom:0;">Dispositivi del Sistema <span class="text-red-500">*</span></h2>
+                <span class="text-xs font-bold text-blue-600" x-text="selectedCount + ' selezionat' + (selectedCount === 1 ? 'o' : 'i')"></span>
+            </div>
+            <p class="text-xs text-gray-400">Seleziona almeno 1 dispositivo appartenente a questo sistema.</p>
+
+            <input type="text" x-model="deviceSearch" placeholder="🔍 Filtra dispositivi..." class="form-input text-xs py-1.5">
+
+            <div class="flex gap-2 pt-1">
+                <button type="button" @click="selectAll()" class="text-[11px] font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded">Tutti</button>
+                <button type="button" @click="deselectAll()" class="text-[11px] font-bold text-gray-600 bg-gray-100 px-2.5 py-1 rounded">Nessuno</button>
+            </div>
+
+            <div class="max-h-64 overflow-y-auto divide-y divide-gray-100 border border-gray-100 rounded-lg">
+                {% for dev in devices %}
+                <label class="flex items-start gap-3 p-2.5 hover:bg-gray-50 cursor-pointer"
+                       x-show="matchesSearch('{{ (dev.description or dev.model or '')|escape }}', '{{ dev.serial_number or '' }}', '{{ dev.ams_inventory or '' }}')">
+                    <input type="checkbox" name="device_uuids" value="{{ dev.uuid }}"
+                           class="mt-1 rounded text-blue-600 focus:ring-blue-500"
+                           @change="updateCount()"
+                           {% if preselected_uuid == dev.uuid %}checked{% endif %}>
+                    <div class="flex-1 min-w-0 text-xs">
+                        <p class="font-bold text-gray-800 truncate">{{ dev.description or dev.model or 'Dispositivo' }}</p>
+                        <p class="text-gray-400 truncate">
+                            {% if dev.manufacturer %}{{ dev.manufacturer }}{% endif %}
+                            {% if dev.model %} · {{ dev.model }}{% endif %}
+                            {% if dev.serial_number %} · S/N: {{ dev.serial_number }}{% endif %}
+                        </p>
+                        {% if dev.department %}
+                        <p class="text-[10px] text-gray-400">Rep: {{ dev.department }}</p>
+                        {% endif %}
+                    </div>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Ispezione visiva -->
+        <div class="card p-4 space-y-3">
+            <h2 class="section-title" style="border-bottom:1px solid #f1f5f9;padding-bottom:.5rem;">Ispezione visiva sistema</h2>
+            {% set vi_items = [
+                "Involucri e parti meccaniche dei dispositivi integri.",
+                "Cavi di alimentazione, spine e multiprese conformi e senza danni.",
+                "Cavi di interconnessione e accessori del sistema integri.",
+                "Marcature CE, etichette e dati di targa leggibili.",
+                "Assenza di liquidi, sporcizia o surriscaldamenti anomali.",
+                "Accensione e operatività simultanea corretta."
+            ] %}
+            {% for item in vi_items %}
+            <div class="flex items-center justify-between gap-2 py-1 border-b border-gray-50 last:border-0">
+                <span class="text-xs text-gray-700 flex-1 leading-snug">{{ item }}</span>
+                <div class="flex gap-1 flex-shrink-0">
+                    <label class="btn-toggle text-[11px]">
+                        <input type="radio" name="vi_{{ loop.index0 }}" value="OK" checked class="sr-only">
+                        <span class="px-2 py-0.5 rounded border border-green-300 text-green-700 bg-green-50 font-bold peer-checked:bg-green-600 peer-checked:text-white cursor-pointer">OK</span>
+                    </label>
+                    <label class="btn-toggle text-[11px]">
+                        <input type="radio" name="vi_{{ loop.index0 }}" value="NO" class="sr-only">
+                        <span class="px-2 py-0.5 rounded border border-red-300 text-red-700 bg-red-50 font-bold cursor-pointer">NO</span>
+                    </label>
+                    <label class="btn-toggle text-[11px]">
+                        <input type="radio" name="vi_{{ loop.index0 }}" value="NA" class="sr-only">
+                        <span class="px-2 py-0.5 rounded border border-gray-300 text-gray-500 bg-gray-50 font-bold cursor-pointer">N/A</span>
+                    </label>
+                </div>
+            </div>
+            {% endfor %}
+            <div class="pt-2">
+                <textarea name="vi_notes" class="form-input" rows="2" placeholder="Note aggiuntive sull'ispezione visiva..."></textarea>
+            </div>
+        </div>
+
+        <!-- Prove Elettriche -->
+        <div class="relative">
+            <span id="tests-spinner" class="htmx-indicator absolute top-2 right-2 z-10">
+                <i class="ti ti-loader-2 animate-spin" style="font-size:1.25rem;color:#2563eb;"></i>
+            </span>
+            <div id="tests-container"
+                 hx-get="/mobile/partials/profile-tests"
+                 hx-trigger="load"
+                 hx-include="[name='profile_key']"
+                 hx-swap="innerHTML">
+            </div>
+        </div>
+
+        <!-- Note e Valutazione Finale -->
+        <div class="card p-4 space-y-4">
+            <h2 class="section-title" style="border-bottom:1px solid #f1f5f9;padding-bottom:.5rem;">Valutazione Finale</h2>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Esito Complessivo <span class="text-red-500">*</span></label>
+                <select name="overall_status" class="form-input font-bold" required>
+                    <option value="CONFORME" selected class="text-green-700">CONFORME</option>
+                    <option value="CONFORME CON ANNOTAZIONE" class="text-amber-700">CONFORME CON ANNOTAZIONE</option>
+                    <option value="NON CONFORME" class="text-red-700">NON CONFORME</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Note e Raccomandazioni</label>
+                <textarea name="notes" class="form-input" rows="3" placeholder="Note aggiuntive sulla verifica del sistema..."></textarea>
+            </div>
+        </div>
+
+        <!-- Submit -->
+        <div class="space-y-2 pb-6">
+            <button type="submit" class="btn-primary" id="submit-btn" :disabled="selectedCount === 0">
+                <i class="ti ti-device-floppy" style="margin-right:.375rem;"></i>Salva Verifica di Sistema
+            </button>
+            <a href="/mobile/destinations/{{ destination.uuid }}" class="btn-secondary block text-center">Annulla</a>
+        </div>
+
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('sys-form').addEventListener('submit', function(e) {
+    const checkboxes = document.querySelectorAll('input[name="device_uuids"]:checked');
+    if (checkboxes.length === 0) {
+        alert('Seleziona almeno un dispositivo per il sistema.');
+        e.preventDefault();
+        return;
+    }
+    const btn = document.getElementById('submit-btn');
+    btn.textContent = 'Salvataggio...';
+    btn.disabled = true;
+});
+
+function sysVePicker() {
+    return {
+        showModal: true,
+        instrUuid: '',
+        instrName: '',
+        instrSerial: '',
+        instrCal: '',
+        deviceSearch: '',
+        selectedCount: 0,
+        init() {
+            this.updateCount();
+            {% if error and instruments %}
+            this.showModal = true;
+            {% endif %}
+        },
+        onSelect(selectEl) {
+            const opt = selectEl.options[selectEl.selectedIndex];
+            this.instrName   = opt.dataset.name   || '';
+            this.instrSerial = opt.dataset.serial  || '';
+            this.instrCal    = opt.dataset.cal     || '';
+        },
+        confirm() {
+            if (!this.instrUuid) return;
+            this.showModal = false;
+        },
+        matchesSearch(desc, sn, ams) {
+            if (!this.deviceSearch) return true;
+            const q = this.deviceSearch.toLowerCase();
+            return (desc || '').toLowerCase().includes(q) ||
+                   (sn || '').toLowerCase().includes(q) ||
+                   (ams || '').toLowerCase().includes(q);
+        },
+        updateCount() {
+            this.selectedCount = document.querySelectorAll('input[name="device_uuids"]:checked').length;
+        },
+        selectAll() {
+            document.querySelectorAll('input[name="device_uuids"]').forEach(el => el.checked = true);
+            this.updateCount();
+        },
+        deselectAll() {
+            document.querySelectorAll('input[name="device_uuids"]').forEach(el => el.checked = false);
+            this.updateCount();
+        }
+    };
+}
+</script>
+{% endblock %}

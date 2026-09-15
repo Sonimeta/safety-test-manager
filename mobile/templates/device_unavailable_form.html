@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}Segnala Non Messo a Disposizione — STM Mobile{% endblock %}
+{% block header_title %}Non a disposizione{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">{{ device.description or device.model or 'Dispositivo' }}</p>{% endblock %}
+
+{% block content %}
+<div class="px-4 py-4 space-y-4">
+
+    {% if error %}
+    <div style="background:#fef2f2;border:1.5px solid #fca5a5;color:#991b1b;border-radius:12px;padding:.75rem 1rem;font-size:.875rem;display:flex;align-items:center;gap:.5rem;">
+        <i class="ti ti-alert-circle" style="flex-shrink:0;"></i> {{ error }}
+    </div>
+    {% endif %}
+
+    <!-- Card riassunto dispositivo -->
+    <div class="card p-4 space-y-2 bg-amber-50/50 border border-amber-200">
+        <div class="flex items-center gap-2 text-amber-800 font-bold text-xs">
+            <i class="ti ti-device-heart text-base"></i>
+            <span>{{ device.description or 'Apparecchio' }}</span>
+        </div>
+        <div class="grid grid-cols-2 gap-2 text-xs text-gray-600 pt-1">
+            {% if device.serial_number %}
+            <div><span class="text-gray-400">S/N:</span> <b>{{ device.serial_number }}</b></div>
+            {% endif %}
+            {% if device.ams_inventory %}
+            <div><span class="text-gray-400">AMS:</span> <b>{{ device.ams_inventory }}</b></div>
+            {% endif %}
+            {% if device.department %}
+            <div><span class="text-gray-400">Reparto:</span> {{ device.department }}</div>
+            {% endif %}
+            {% if destination_name %}
+            <div><span class="text-gray-400">Destinazione:</span> {{ destination_name }}</div>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Form segnalazione -->
+    <form method="POST" class="space-y-4">
+        <div class="card p-4 space-y-4">
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Data Segnalazione <span class="text-red-500">*</span></label>
+                <input type="date" name="period_start" class="form-input" required value="{{ today_date }}">
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Motivazione <span class="text-red-500">*</span></label>
+                <select name="reason_preset" id="reason_preset" class="form-input" onchange="checkReason(this)">
+                    <option value="Apparecchio in uso / non disponibile">Apparecchio in uso / non disponibile</option>
+                    <option value="Apparecchio non trovato / spostato">Apparecchio non trovato / spostato</option>
+                    <option value="Apparecchio in riparazione / fuori servizio">Apparecchio in riparazione / fuori servizio</option>
+                    <option value="Reparto chiuso / inaccessibile">Reparto chiuso / inaccessibile</option>
+                    <option value="custom">Altro (specificare di seguito)...</option>
+                </select>
+            </div>
+
+            <div id="custom_reason_div" style="display:none;">
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Specifica Motivazione <span class="text-red-500">*</span></label>
+                <input type="text" name="custom_reason" id="custom_reason" class="form-input" placeholder="es. Paziente in isolamento">
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Note Aggiuntive</label>
+                <textarea name="notes" rows="3" class="form-input" placeholder="Dettagli aggiuntivi (es. contattato caposala...)"></textarea>
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Tecnico</label>
+                <input type="text" name="technician_name" class="form-input bg-gray-50" value="{{ user.full_name or user.username }}" readonly>
+            </div>
+
+        </div>
+
+        <div class="space-y-2 pb-4">
+            <button type="submit" class="btn-primary" style="background:#d97706;">
+                <i class="ti ti-alert-triangle" style="margin-right:.375rem;"></i>Conferma Segnalazione
+            </button>
+            <a href="/mobile/devices/{{ device.uuid }}" class="btn-secondary">Annulla</a>
+        </div>
+    </form>
+
+</div>
+
+<script>
+function checkReason(select) {
+    var customDiv = document.getElementById('custom_reason_div');
+    var customInput = document.getElementById('custom_reason');
+    if (select.value === 'custom') {
+        customDiv.style.display = 'block';
+        customInput.required = true;
+        customInput.focus();
+    } else {
+        customDiv.style.display = 'none';
+        customInput.required = false;
+    }
+}
+</script>
+{% endblock %}

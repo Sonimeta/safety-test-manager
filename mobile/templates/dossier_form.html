@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block title %}Genera Fascicolo PDF — STM Mobile{% endblock %}
+{% block header_title %}Fascicolo Verifiche{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">Generazione Dossier Unificato PDF</p>{% endblock %}
+
+{% block content %}
+<div class="px-4 py-4" x-data="dossierForm()" x-init="init()">
+
+    {% if error %}
+    <div style="background:#fef2f2;border:1.5px solid #fca5a5;color:#991b1b;border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.875rem;display:flex;align-items:center;gap:.5rem;">
+        <i class="ti ti-alert-circle" style="flex-shrink:0;"></i> {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="POST" action="/mobile/dossier/generate" id="dossier-form" class="space-y-4" target="_blank">
+
+        <!-- Ambito del Fascicolo -->
+        <div class="card p-4 space-y-3">
+            <h2 class="section-title" style="border-bottom:1px solid #f1f5f9;padding-bottom:.5rem;">1. Ambito del Fascicolo</h2>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Livello di aggregazione</label>
+                <div class="grid grid-cols-3 gap-1.5">
+                    <label class="text-center py-2 px-1 border rounded-lg cursor-pointer text-xs font-semibold"
+                           :class="scope === 'destination' ? 'border-blue-600 bg-blue-50 text-blue-800' : 'border-gray-200 text-gray-600'">
+                        <input type="radio" name="scope" value="destination" x-model="scope" class="sr-only">
+                        <span>Singola Sede</span>
+                    </label>
+                    <label class="text-center py-2 px-1 border rounded-lg cursor-pointer text-xs font-semibold"
+                           :class="scope === 'customer' ? 'border-blue-600 bg-blue-50 text-blue-800' : 'border-gray-200 text-gray-600'">
+                        <input type="radio" name="scope" value="customer" x-model="scope" class="sr-only">
+                        <span>Intero Cliente</span>
+                    </label>
+                    <label class="text-center py-2 px-1 border rounded-lg cursor-pointer text-xs font-semibold"
+                           :class="scope === 'all' ? 'border-blue-600 bg-blue-50 text-blue-800' : 'border-gray-200 text-gray-600'">
+                        <input type="radio" name="scope" value="all" x-model="scope" class="sr-only">
+                        <span>Tutte le Sedi</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Selezione Cliente -->
+            <div x-show="scope === 'customer' || scope === 'destination'">
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Cliente <span class="text-red-500">*</span></label>
+                <select name="customer_uuid" x-model="selectedCustomerUuid" @change="onCustomerChange()" class="form-input text-xs" :required="scope === 'customer' || scope === 'destination'">
+                    <option value="">— Seleziona Cliente —</option>
+                    {% for c in customers %}
+                    <option value="{{ c.uuid }}">{{ c.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Selezione Sede -->
+            <div x-show="scope === 'destination'">
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Sede / Destinazione <span class="text-red-500">*</span></label>
+                <select name="destination_uuid" x-model="selectedDestinationUuid" class="form-input text-xs" :required="scope === 'destination'">
+                    <option value="">— Seleziona Sede —</option>
+                    <template x-for="d in availableDestinations" :key="d.uuid">
+                        <option :value="d.uuid" x-text="d.name"></option>
+                    </template>
+                </select>
+            </div>
+        </div>
+
+        <!-- Periodo Temporale -->
+        <div class="card p-4 space-y-3">
+            <div class="flex items-center justify-between">
+                <h2 class="section-title" style="margin-bottom:0;">2. Periodo Verifiche</h2>
+                <div class="flex gap-1">
+                    <button type="button" @click="setRange('year')" class="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">Anno</button>
+                    <button type="button" @click="setRange('30days')" class="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">30 gg</button>
+                    <button type="button" @click="setRange('all')" class="text-[10px] font-bold text-gray-600 bg-gray-100 px-2 py-0.5 rounded">Tutto</button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">Da data</label>
+                    <input type="date" name="start_date" x-model="startDate" class="form-input text-xs" required>
+                </div>
+                <div>
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">A data</label>
+                    <input type="date" name="end_date" x-model="endDate" class="form-input text-xs" required>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tipologie di Verifica -->
+        <div class="card p-4 space-y-2">
+            <h2 class="section-title" style="border-bottom:1px solid #f1f5f9;padding-bottom:.5rem;">3. Verifiche da Includere</h2>
+
+            <label class="flex items-center gap-2.5 py-1 text-xs cursor-pointer">
+                <input type="checkbox" name="include_electrical" value="1" checked class="rounded text-blue-600 focus:ring-blue-500">
+                <span class="font-semibold text-gray-800">⚡ Verifiche Elettriche (CEI 62353)</span>
+            </label>
+
+            <label class="flex items-center gap-2.5 py-1 text-xs cursor-pointer">
+                <input type="checkbox" name="include_functional" value="1" checked class="rounded text-blue-600 focus:ring-blue-500">
+                <span class="font-semibold text-gray-800">⚙️ Verifiche Funzionali</span>
+            </label>
+
+            <label class="flex items-center gap-2.5 py-1 text-xs cursor-pointer">
+                <input type="checkbox" name="include_system" value="1" checked class="rounded text-blue-600 focus:ring-blue-500">
+                <span class="font-semibold text-gray-800">🔗 Verifiche di Sistema</span>
+            </label>
+
+            <label class="flex items-center gap-2.5 py-1 text-xs cursor-pointer">
+                <input type="checkbox" name="include_ecografo_cq" value="1" checked class="rounded text-blue-600 focus:ring-blue-500">
+                <span class="font-semibold text-gray-800">🩺 CQ Sonde Ecografiche</span>
+            </label>
+        </div>
+
+        <!-- Opzioni Fascicolo -->
+        <div class="card p-4 space-y-3">
+            <h2 class="section-title" style="border-bottom:1px solid #f1f5f9;padding-bottom:.5rem;">4. Opzioni e Allegati</h2>
+
+            <label class="flex items-center gap-2.5 py-1 text-xs cursor-pointer">
+                <input type="checkbox" name="latest_only" value="1" checked class="rounded text-blue-600 focus:ring-blue-500">
+                <span class="font-semibold text-gray-800">Solo ultima verifica per dispositivo</span>
+            </label>
+
+            <div>
+                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">Contenuto iniziale fascicolo</label>
+                <select name="merged_intro_mode" class="form-input text-xs">
+                    <option value="cover_and_table" selected>Frontespizio con statistiche + Tabella apparecchi</option>
+                    <option value="table_only">Solo Tabella riassuntiva</option>
+                    <option value="cover_only">Solo Frontespizio</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">Ordinamento e formato nome</label>
+                <select name="naming_format" class="form-input text-xs">
+                    <option value="ams_inventory" selected>Inventario AMS</option>
+                    <option value="serial_number">Numero di Serie (S/N)</option>
+                    <option value="customer_inventory">Inventario Cliente</option>
+                </select>
+            </div>
+
+            <div class="bg-blue-50 p-2.5 rounded-lg border border-blue-100">
+                <label class="flex items-center gap-2.5 text-xs cursor-pointer">
+                    <input type="checkbox" name="include_calibration_certs" value="1" checked class="rounded text-blue-600 focus:ring-blue-500">
+                    <span class="font-bold text-blue-950">📎 Allega certificati di calibrazione strumenti usati</span>
+                </label>
+                <p class="text-[10px] text-blue-700 mt-1 pl-6">Inserisce in calce al fascicolo i certificati PDF degli strumenti con segnalibri dedicati.</p>
+            </div>
+        </div>
+
+        <!-- Pulsante Download -->
+        <div class="space-y-2 pb-6">
+            <button type="submit" class="btn-primary" id="submit-btn">
+                <i class="ti ti-file-type-pdf" style="margin-right:.375rem;"></i>Genera e Scarica Fascicolo PDF
+            </button>
+            <a href="{{ back_url or '/mobile/dashboard' }}" class="btn-secondary block text-center">Torna indietro</a>
+        </div>
+
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const allDestinationsMap = {{ destinations_map_json|safe }};
+
+function dossierForm() {
+    return {
+        scope: '{{ preselected_scope or "destination" }}',
+        selectedCustomerUuid: '{{ preselected_customer_uuid or "" }}',
+        selectedDestinationUuid: '{{ preselected_destination_uuid or "" }}',
+        startDate: '{{ default_start_date }}',
+        endDate: '{{ today }}',
+        availableDestinations: [],
+
+        init() {
+            this.updateAvailableDestinations();
+        },
+        onCustomerChange() {
+            this.updateAvailableDestinations();
+            this.selectedDestinationUuid = '';
+        },
+        updateAvailableDestinations() {
+            if (this.selectedCustomerUuid && allDestinationsMap[this.selectedCustomerUuid]) {
+                this.availableDestinations = allDestinationsMap[this.selectedCustomerUuid];
+            } else {
+                this.availableDestinations = [];
+            }
+        },
+        setRange(type) {
+            const today = new Date();
+            const yyyy = today.getFullYear();
+            const mm = String(today.getMonth() + 1).padStart(2, '0');
+            const dd = String(today.getDate()).padStart(2, '0');
+            this.endDate = `${yyyy}-${mm}-${dd}`;
+
+            if (type === 'year') {
+                this.startDate = `${yyyy}-01-01`;
+            } else if (type === '30days') {
+                const past = new Date();
+                past.setDate(past.getDate() - 30);
+                const pY = past.getFullYear();
+                const pM = String(past.getMonth() + 1).padStart(2, '0');
+                const pD = String(past.getDate()).padStart(2, '0');
+                this.startDate = `${pY}-${pM}-${pD}`;
+            } else if (type === 'all') {
+                this.startDate = '2000-01-01';
+            }
+        }
+    };
+}
+</script>
+{% endblock %}

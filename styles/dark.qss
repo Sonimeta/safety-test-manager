@@ -1,4 +1,4 @@
-﻿/* =====================================================
+/* =====================================================
    TEMA SCURO â€” Safety Test Manager V2
    Design System: Indigo / Slate / Glass â€” Dark Variant
    Superfici layered con alto contrasto
@@ -719,8 +719,60 @@ QLabel#homeHeroHint {
 }
 
 QGroupBox#statsGroupBox,
-QGroupBox#homeActionsGroup {
-    border-radius: 18px;
+QGroupBox#homeActionsGroup,
+QGroupBox#sessionGroupBox {
+    border-radius: 16px;
+}
+
+QGroupBox#homeActionsGroup QPushButton {
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+/* === COMPACT SESSION BUTTON (Sidebar Dark) === */
+QPushButton#compactSessionBtn {
+    min-height: 22px;
+    max-height: 22px;
+    height: 22px;
+    font-size: 12px;
+    font-weight: 600;
+    border-radius: 8px;
+    padding: 4px 10px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #cbd5e1;
+}
+
+QPushButton#compactSessionBtn:hover {
+    background: #334155;
+    border-color: #475569;
+    color: #f1f5f9;
+}
+
+QPushButton#compactSessionBtn:pressed {
+    background: #0f172a;
+}
+
+QPushButton#compactSessionBtn[state="warning"] {
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid #f59e0b;
+    color: #fbbf24;
+}
+
+QPushButton#compactSessionBtn[state="warning"]:hover {
+    background: rgba(245, 158, 11, 0.25);
+    border-color: #fbbf24;
+}
+
+QPushButton#compactSessionBtn[state="ready"] {
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid #10b981;
+    color: #34d399;
+}
+
+QPushButton#compactSessionBtn[state="ready"]:hover {
+    background: rgba(16, 185, 129, 0.25);
+    border-color: #34d399;
 }
 
 /* === BADGE CONTESTO FLUSSO GUIDATO (DARK) === */
@@ -772,7 +824,7 @@ QLabel#summaryContextBadge[state="warning"] {
     border: 1px solid rgba(251, 191, 36, 0.28);
 }
 
-/* === STATS CARDS DARK === */
+/* === STATS CARDS INTERATTIVI DARK === */
 
 QLabel#statsIntroLabel {
     color: #8fa1bd;
@@ -787,16 +839,20 @@ QLabel#statsTimestampLabel {
     padding-right: 4px;
 }
 
+ClickableStatsLabel#statsCardPrimary,
+ClickableStatsLabel#statsCardSuccess,
+ClickableStatsLabel#statsCardDanger,
 QLabel#statsCardPrimary,
 QLabel#statsCardSuccess,
 QLabel#statsCardDanger {
     border-radius: 14px;
-    padding: 12px 16px;
+    padding: 10px 14px;
     border: 2px solid transparent;
     font-weight: 700;
     font-size: 13px;
 }
 
+ClickableStatsLabel#statsCardPrimary,
 QLabel#statsCardPrimary {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                                 stop:0 rgba(59, 130, 246, 0.22),
@@ -805,6 +861,7 @@ QLabel#statsCardPrimary {
     border-color: rgba(96, 165, 250, 0.35);
 }
 
+ClickableStatsLabel#statsCardPrimary:hover,
 QLabel#statsCardPrimary:hover {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                                 stop:0 rgba(59, 130, 246, 0.32),
@@ -812,6 +869,7 @@ QLabel#statsCardPrimary:hover {
     border-color: rgba(129, 140, 248, 0.55);
 }
 
+ClickableStatsLabel#statsCardSuccess,
 QLabel#statsCardSuccess {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                                 stop:0 rgba(16, 185, 129, 0.22),
@@ -820,6 +878,7 @@ QLabel#statsCardSuccess {
     border-color: rgba(52, 211, 153, 0.35);
 }
 
+ClickableStatsLabel#statsCardSuccess:hover,
 QLabel#statsCardSuccess:hover {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                                 stop:0 rgba(16, 185, 129, 0.32),
@@ -827,6 +886,7 @@ QLabel#statsCardSuccess:hover {
     border-color: rgba(52, 211, 153, 0.55);
 }
 
+ClickableStatsLabel#statsCardDanger,
 QLabel#statsCardDanger {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                                 stop:0 rgba(239, 68, 68, 0.22),
@@ -835,6 +895,7 @@ QLabel#statsCardDanger {
     border-color: rgba(248, 113, 113, 0.35);
 }
 
+ClickableStatsLabel#statsCardDanger:hover,
 QLabel#statsCardDanger:hover {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
                                 stop:0 rgba(239, 68, 68, 0.32),
@@ -1265,6 +1326,117 @@ QWidget#drillPage {
     background: transparent;
 }
 
+/* === DISPOSITIVI TOOLBAR & CHIPS — DARK === */
+QLineEdit#deviceSearchEdit {
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 0px 8px;
+    font-size: 12px;
+    background: #0f172a;
+    color: #f8fafc;
+    min-height: 28px;
+    max-height: 28px;
+    margin: 0px;
+}
+QLineEdit#deviceSearchEdit:focus {
+    border-color: #6366f1;
+    background: #1e293b;
+}
+
+QPushButton#btnAddNewDevice {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #10b981, stop:1 #059669);
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 700;
+    border: 1px solid #047857;
+    border-radius: 6px;
+    padding: 0px 12px;
+    min-height: 28px;
+    max-height: 28px;
+    margin: 0px;
+}
+QPushButton#btnAddNewDevice:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #059669, stop:1 #047857);
+}
+QPushButton#btnAddNewDevice:pressed {
+    background: #047857;
+}
+
+QPushButton#deviceFilterChip {
+    background: rgba(30, 41, 59, 0.50);
+    color: #cbd5e1;
+    font-size: 11px;
+    font-weight: 600;
+    border: 1px solid #334155;
+    border-radius: 14px;
+    padding: 0px 8px;
+    min-height: 28px;
+    max-height: 28px;
+    margin: 0px;
+}
+QPushButton#deviceFilterChip:hover {
+    background: rgba(99, 102, 241, 0.20);
+    border-color: #6366f1;
+    color: #e0e7ff;
+}
+QPushButton#deviceFilterChip:checked {
+    background: #6366f1;
+    color: #ffffff;
+    border: 1px solid #818cf8;
+    font-weight: 700;
+}
+QPushButton#deviceFilterChip:checked:hover {
+    background: #4f46e5;
+}
+
+QPushButton#devicePeriodButton {
+    background: rgba(30, 41, 59, 0.50);
+    color: #cbd5e1;
+    border: 1px solid #334155;
+    padding: 0px;
+    min-height: 28px;
+    max-height: 28px;
+    min-width: 28px;
+    max-width: 28px;
+    border-radius: 6px;
+    margin: 0px;
+}
+QPushButton#devicePeriodButton:hover {
+    background: rgba(99, 102, 241, 0.20);
+    border-color: #6366f1;
+}
+QPushButton#devicePeriodButton:pressed {
+    background: rgba(99, 102, 241, 0.35);
+    border-color: #818cf8;
+}
+
+QComboBox#deviceSortCombo {
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 0px 6px;
+    font-size: 12px;
+    background-color: #0f172a;
+    color: #f8fafc;
+    min-height: 28px;
+    max-height: 28px;
+    margin: 0px;
+}
+QComboBox#deviceSortCombo:hover {
+    border-color: #6366f1;
+}
+QComboBox#deviceSortCombo:focus {
+    border: 1px solid #6366f1;
+}
+QComboBox#deviceSortCombo::drop-down {
+    border: none;
+    width: 16px;
+    subcontrol-origin: padding;
+    subcontrol-position: top right;
+}
+QComboBox#deviceSortCombo::down-arrow {
+    image: none;
+}
+
 QListWidget#drillListWidget {
     border: none;
     background: #0d1526;
@@ -1418,11 +1590,148 @@ QLabel#destinationCountBadge {
     border: 1px solid rgba(147,197,253,0.25);
 }
 
-/* === STICKY ACTION BAR (Opzione C) — DARK === */
-QFrame#stickyActionBar {
+/* === STICKY ACTION BAR & ACTION HUB — DARK === */
+QFrame#stickyActionBar,
+QFrame#actionHubPanel {
     background: #131c2e;
     border: 1px solid #253352;
-    border-radius: 16px;
+    border-radius: 14px;
+}
+
+QFrame#actionHubEmptyFrame {
+    background: rgba(30, 41, 59, 0.40);
+    border: 1px dashed #334155;
+    border-radius: 10px;
+}
+
+QLabel#actionHubEmptyLabel {
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+QFrame#actionHubDeviceFrame {
+    background: transparent;
+}
+
+QLabel#summaryDeviceTitle {
+    font-size: 14px;
+    font-weight: 800;
+    color: #f1f5f9;
+}
+
+QLabel#summaryOutcomeBadge {
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 11px;
+    padding: 1px 10px;
+    min-height: 20px;
+    max-height: 22px;
+}
+
+QLabel#summaryOutcomeBadge[outcome="passed"] {
+    background: rgba(16, 185, 129, 0.20);
+    color: #6ee7b7;
+    border: 1px solid rgba(52, 211, 153, 0.40);
+}
+
+QLabel#summaryOutcomeBadge[outcome="warning"] {
+    background: rgba(245, 158, 11, 0.20);
+    color: #fde68a;
+    border: 1px solid rgba(252, 211, 77, 0.40);
+}
+
+QLabel#summaryOutcomeBadge[outcome="failed"] {
+    background: rgba(239, 68, 68, 0.20);
+    color: #fca5a5;
+    border: 1px solid rgba(248, 113, 113, 0.40);
+}
+
+QLabel#summaryOutcomeBadge[outcome="none"] {
+    background: rgba(148, 163, 184, 0.15);
+    color: #94a3b8;
+    border: 1px solid rgba(148, 163, 184, 0.30);
+}
+
+QFrame#summaryProfilesBox {
+    background: #1a2540;
+    border: 1px solid #253352;
+    border-radius: 10px;
+}
+
+QLabel#summaryProfilesHeader {
+    font-size: 11px;
+    font-weight: 700;
+    color: #94a3b8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+QPushButton#actionHubPrimaryBtn {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #10b981, stop:1 #059669);
+    color: #ffffff;
+    font-weight: 800;
+    font-size: 12px;
+    border: 1px solid #047857;
+    border-radius: 8px;
+    padding: 5px 12px;
+    max-width: 210px;
+    min-width: 180px;
+}
+
+QPushButton#actionHubPrimaryBtn:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #059669, stop:1 #047857);
+}
+
+QPushButton#actionHubPrimaryBtn:disabled {
+    background: #1e293b;
+    color: #475569;
+    border: 1px solid #334155;
+}
+
+QPushButton#actionHubSecondaryBtn {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #6366f1, stop:1 #4f46e5);
+    color: #ffffff;
+    font-weight: 800;
+    font-size: 12px;
+    border: 1px solid #4338ca;
+    border-radius: 8px;
+    padding: 5px 12px;
+    max-width: 210px;
+    min-width: 180px;
+}
+
+QPushButton#actionHubSecondaryBtn:hover {
+    background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #4f46e5, stop:1 #3730a3);
+}
+
+QPushButton#actionHubSecondaryBtn:disabled {
+    background: #1e293b;
+    color: #475569;
+    border: 1px solid #334155;
+}
+
+QPushButton#actionHubUtilityBtn {
+    background: #1e293b;
+    color: #cbd5e1;
+    font-weight: 600;
+    font-size: 11px;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 4px 8px;
+    max-width: 102px;
+}
+
+QPushButton#actionHubUtilityBtn:hover {
+    background: #253352;
+    border-color: #475569;
+    color: #ffffff;
+}
+
+QPushButton#actionHubUtilityBtn:disabled {
+    background: #131c2e;
+    color: #475569;
+    border-color: #1e293b;
 }
 
 QFrame#flowBreadcrumbBar {

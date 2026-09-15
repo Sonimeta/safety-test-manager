@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+
+{% block title %}{{ check.verification_code or 'CQ Sonde Ecografo' }} — STM Mobile{% endblock %}
+{% block header_title %}Controllo Qualità Sonde{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">{{ device.description or device.model or 'Ecografo' }} · {{ customer_name }}</p>{% endblock %}
+
+{% block header_actions %}
+<a href="/mobile/ecografo-cq/{{ check.uuid }}/report" class="btn-sm" style="background:#2563eb;color:#fff;" title="Scarica Report PDF" target="_blank">
+    <i class="ti ti-file-type-pdf"></i>
+</a>
+<form method="POST" action="/mobile/ecografo-cq/{{ check.uuid }}/delete" onsubmit="return confirm('Eliminare questo controllo qualità sonde?');" style="display:inline">
+    <button type="submit" class="btn-sm" style="background:#ef4444;color:#fff;"><i class="ti ti-trash"></i></button>
+</form>
+{% endblock %}
+
+{% block content %}
+<div class="px-4 py-4 space-y-4">
+
+    <!-- Card Intestazione -->
+    <div class="card p-4 space-y-3">
+        <div class="flex items-center justify-between">
+            <span class="text-xs font-mono font-bold text-gray-500">{{ check.verification_code or 'EQ' }}</span>
+            {% if check.overall_status == 'CONFORME CON ANNOTAZIONE' %}
+            <span class="badge-warn">C.C.A.</span>
+            {% elif check.overall_status in ('CONFORME', 'PASSATO', 'PASS', 'OK') %}
+            <span class="badge-pass">CONFORME</span>
+            {% else %}
+            <span class="badge-fail">NON CONFORME</span>
+            {% endif %}
+        </div>
+
+        <div class="grid grid-cols-2 gap-3 pt-1">
+            <div>
+                <p class="text-[10px] uppercase font-bold text-gray-400">Data Verifica</p>
+                <p class="text-sm font-semibold text-gray-800">{{ check.verification_date | date_it }}</p>
+            </div>
+            <div>
+                <p class="text-[10px] uppercase font-bold text-gray-400">Tecnico</p>
+                <p class="text-sm font-semibold text-gray-800">{{ check.technician_name or 'N/D' }}</p>
+            </div>
+            <div>
+                <p class="text-[10px] uppercase font-bold text-gray-400">Ecografo</p>
+                <p class="text-sm font-semibold text-gray-800 truncate">{{ device.description or device.model or 'Ecografo' }}</p>
+                {% if device.serial_number %}
+                <p class="text-[10px] text-gray-400">S/N: {{ device.serial_number }}</p>
+                {% endif %}
+            </div>
+            <div>
+                <p class="text-[10px] uppercase font-bold text-gray-400">Sonde Verificate</p>
+                <p class="text-sm font-semibold text-blue-600">{{ check.probes|length }} sonda/e</p>
+            </div>
+        </div>
+
+        {% if check.notes %}
+        <div class="border-t border-gray-100 pt-2">
+            <p class="text-[10px] uppercase font-bold text-gray-400">Note e Conclusioni</p>
+            <p class="text-xs text-gray-700 italic mt-0.5">"{{ check.notes }}"</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Dettaglio Sonde -->
+    <div class="space-y-4">
+        <h2 class="section-title px-1" style="margin-bottom:0;">Sonde Verificate ({{ check.probes|length }})</h2>
+
+        {% for probe in check.probes %}
+        <div class="card p-4 space-y-3">
+            <div class="flex items-center justify-between border-b border-gray-100 pb-2">
+                <div>
+                    <p class="text-xs font-bold text-blue-900">Sonda {{ loop.index }}: {{ probe.model or 'N/D' }}</p>
+                    <p class="text-[10px] text-gray-400">S/N: {{ probe.serial_number or 'N/D' }} · {{ probe.probe_type or 'Tipo N/D' }}</p>
+                </div>
+                {% if probe.overall_judgment == 'CONFORME CON ANNOTAZIONE' %}
+                <span class="badge-warn">C.C.A.</span>
+                {% elif probe.overall_judgment in ('CONFORME', 'PASSATO', 'PASS', 'OK') %}
+                <span class="badge-pass">CONF.</span>
+                {% else %}
+                <span class="badge-fail">N.CONF.</span>
+                {% endif %}
+            </div>
+
+            <!-- Parametri Acquisizione -->
+            <div class="grid grid-cols-2 gap-2 text-xs bg-gray-50 p-2.5 rounded-lg text-gray-600">
+                <div>Fase: <strong class="text-gray-800">{{ probe.control_stage or 'Baseline' }}</strong></div>
+                <div>Preset: <strong class="text-gray-800">{{ probe.preset or 'N/D' }}</strong></div>
+                <div>Guadagno: <strong class="text-gray-800">{{ probe.gain or 'N/D' }}</strong></div>
+                <div>Potenza: <strong class="text-gray-800">{{ probe.power or 'N/D' }}</strong></div>
+            </div>
+
+            <!-- Controlli Qualità della Sonda -->
+            {% if probe.controls %}
+            <div class="space-y-1.5 pt-1">
+                <p class="text-[10px] uppercase font-bold text-gray-400 tracking-wide">Esito Controlli</p>
+                <div class="divide-y divide-gray-50 text-xs">
+                    {% for c in probe.controls %}
+                    <div class="py-1.5 flex items-center justify-between gap-2">
+                        <span class="text-gray-600 flex-1">{{ c.control_label or c.control_key }}</span>
+                        <div class="flex items-center gap-1.5 flex-shrink-0 font-mono">
+                            {% if c.value %}
+                            <span class="font-bold text-gray-800">{{ c.value }} {{ c.unit or '' }}</span>
+                            {% endif %}
+                            {% if c.passed is not none %}
+                                {% if c.passed %}
+                                <span class="text-[10px] text-green-600 font-bold">PASS</span>
+                                {% else %}
+                                <span class="text-[10px] text-red-600 font-bold">FAIL</span>
+                                {% endif %}
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            {% if probe.notes %}
+            <p class="text-[11px] text-gray-500 italic pt-1">Note: {{ probe.notes }}</p>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Pulsanti Azione -->
+    <div class="space-y-2 pt-2 pb-6">
+        <a href="/mobile/ecografo-cq/{{ check.uuid }}/report" target="_blank" class="btn-primary" style="background:#2563eb;">
+            <i class="ti ti-file-type-pdf" style="margin-right:.375rem;"></i>Scarica Report PDF (EQ)
+        </a>
+        <a href="/mobile/devices/{{ device.uuid }}" class="btn-secondary block text-center">Torna al Dispositivo</a>
+    </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+
+{% block title %}Profili di Verifica — STM Mobile{% endblock %}
+{% block header_title %}Profili di Verifica{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">Elettrici CEI 62353 e Funzionali</p>{% endblock %}
+
+{% block header_actions %}
+<div x-data>
+    <a :href="currentTab === 'electrical' ? '/mobile/profiles/electrical/new' : '/mobile/profiles/functional/new'"
+       class="btn-sm" style="background:#2563eb;color:#fff;" title="Nuovo Profilo">
+        <i class="ti ti-plus"></i> Nuovo
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="px-4 py-4 space-y-4" x-data="{
+    tab: '{{ initial_tab or "electrical" }}',
+    search: '',
+    confirmDelete(url, name) {
+        if (confirm(`Eliminare il profilo '${name}'?`)) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = url;
+            document.body.appendChild(form);
+            form.submit();
+        }
+    }
+}">
+
+    <!-- Tab Switching -->
+    <div class="flex bg-slate-200 p-1 rounded-xl">
+        <button type="button" @click="tab = 'electrical'; window.currentTab = 'electrical'"
+                class="flex-1 py-2 text-xs font-bold rounded-lg transition"
+                :class="tab === 'electrical' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-600'">
+            ⚡ Elettrici ({{ electrical_profiles|length }})
+        </button>
+        <button type="button" @click="tab = 'functional'; window.currentTab = 'functional'"
+                class="flex-1 py-2 text-xs font-bold rounded-lg transition"
+                :class="tab === 'functional' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-600'">
+            ⚙️ Funzionali ({{ functional_profiles|length }})
+        </button>
+    </div>
+
+    <!-- Search input -->
+    <div class="relative">
+        <i class="ti ti-search absolute left-3 top-3 text-gray-400"></i>
+        <input type="text" x-model="search" placeholder="Cerca profilo per nome o tipo..."
+               class="form-input pl-9 text-xs">
+    </div>
+
+    <!-- Tab 1: Electrical Profiles -->
+    <div x-show="tab === 'electrical'" class="space-y-3">
+        {% if electrical_profiles %}
+        <div class="space-y-2.5">
+            {% for p in electrical_profiles %}
+            <div class="card p-3.5 space-y-2"
+                 x-show="!search || '{{ p.name|lower }}'.includes(search.toLowerCase()) || '{{ (p.norma or '')|lower }}'.includes(search.toLowerCase())">
+                <div class="flex items-start justify-between gap-2">
+                    <div>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="text-sm font-bold text-gray-900">{{ p.name }}</span>
+                            <span class="badge-gray text-[10px]">{{ p.norma or 'CEI EN 62353' }}</span>
+                        </div>
+                        <p class="text-[11px] text-gray-500 mt-0.5">
+                            Chiave: <code class="bg-gray-100 px-1 py-0.5 rounded text-[10px]">{{ p.profile_key }}</code> · {{ p.test_count }} prove
+                        </p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-1.5 pt-2 border-t border-slate-100">
+                    <a href="/mobile/profiles/electrical/{{ p.uuid }}/edit" class="btn-sm flex-1 justify-center"
+                       style="background:#eff6ff;color:#1d4ed8;font-size:11px;">
+                        <i class="ti ti-pencil"></i> Modifica
+                    </a>
+                    <form method="POST" action="/mobile/profiles/electrical/{{ p.uuid }}/duplicate" style="display:inline;" class="flex-1">
+                        <button type="submit" class="btn-sm w-full justify-center"
+                                style="background:#f8fafc;color:#475569;border:1px solid #e2e8f0;font-size:11px;">
+                            <i class="ti ti-copy"></i> Duplica
+                        </button>
+                    </form>
+                    <button type="button" @click="confirmDelete('/mobile/profiles/electrical/{{ p.uuid }}/delete', '{{ p.name }}')"
+                            class="btn-sm px-2.5" style="background:#fef2f2;color:#dc2626;" title="Elimina">
+                        <i class="ti ti-trash"></i>
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="card p-8 text-center text-gray-400">
+            <i class="ti ti-bolt text-4xl mb-2"></i>
+            <p class="text-sm font-medium">Nessun profilo elettrico presente</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Tab 2: Functional Profiles -->
+    <div x-show="tab === 'functional'" class="space-y-3" style="display:none;">
+        {% if functional_profiles %}
+        <div class="space-y-2.5">
+            {% for fp in functional_profiles %}
+            <div class="card p-3.5 space-y-2"
+                 x-show="!search || '{{ fp.name|lower }}'.includes(search.toLowerCase()) || '{{ (fp.device_type or '')|lower }}'.includes(search.toLowerCase())">
+                <div class="flex items-start justify-between gap-2">
+                    <div>
+                        <div class="flex items-center gap-1.5 flex-wrap">
+                            <span class="text-sm font-bold text-gray-900">{{ fp.name }}</span>
+                            {% if fp.device_type %}
+                            <span class="badge-pass text-[10px]">{{ fp.device_type }}</span>
+                            {% endif %}
+                        </div>
+                        <p class="text-[11px] text-gray-500 mt-0.5">
+                            Chiave: <code class="bg-gray-100 px-1 py-0.5 rounded text-[10px]">{{ fp.profile_key }}</code> · {{ fp.sections_count }} sezioni
+                        </p>
+                    </div>
+                </div>
+
+                <div class="flex items-center gap-1.5 pt-2 border-t border-slate-100">
+                    <a href="/mobile/profiles/functional/{{ fp.uuid }}/edit" class="btn-sm flex-1 justify-center"
+                       style="background:#eff6ff;color:#1d4ed8;font-size:11px;">
+                        <i class="ti ti-pencil"></i> Modifica
+                    </a>
+                    <form method="POST" action="/mobile/profiles/functional/{{ fp.uuid }}/duplicate" style="display:inline;" class="flex-1">
+                        <button type="submit" class="btn-sm w-full justify-center"
+                                style="background:#f8fafc;color:#475569;border:1px solid #e2e8f0;font-size:11px;">
+                            <i class="ti ti-copy"></i> Duplica
+                        </button>
+                    </form>
+                    <button type="button" @click="confirmDelete('/mobile/profiles/functional/{{ fp.uuid }}/delete', '{{ fp.name }}')"
+                            class="btn-sm px-2.5" style="background:#fef2f2;color:#dc2626;" title="Elimina">
+                        <i class="ti ti-trash"></i>
+                    </button>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="card p-8 text-center text-gray-400">
+            <i class="ti ti-settings text-4xl mb-2"></i>
+            <p class="text-sm font-medium">Nessun profilo funzionale presente</p>
+        </div>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}

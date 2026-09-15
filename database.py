@@ -684,16 +684,32 @@ def search_destinations_globally(search_term: str):
 
 def get_devices_with_last_verification_for_destination(destination_id: int):
     """
-    Recupera tutti i dispositivi di una destinazione con i dati della loro ultima verifica.
-    Ora include l'inventario cliente e il nome della destinazione.
+    Recupera tutti i dispositivi di una destinazione con i dati della loro ultima verifica (elettrica e funzionale).
     """
     with DatabaseConnection() as conn:
-        
         query = """
+            WITH RankedVerifications AS (
+                SELECT
+                    v.*,
+                    ROW_NUMBER() OVER(PARTITION BY v.device_id ORDER BY v.verification_date DESC, v.id DESC) as rn
+                FROM
+                    verifications v
+                WHERE
+                    v.is_deleted = 0
+            ),
+            RankedFunctionalVerifications AS (
+                SELECT
+                    fv.*,
+                    ROW_NUMBER() OVER(PARTITION BY fv.device_id ORDER BY fv.verification_date DESC, fv.id DESC) as rn
+                FROM
+                    functional_verifications fv
+                WHERE
+                    fv.is_deleted = 0
+            )
             SELECT
                 CASE
-                    WHEN d.status = "active" THEN "ATTIVO"
-                    WHEN d.status = "inactive" THEN "DISMESSO"
+                    WHEN d.status = "active" THEN "IN USO"
+                    ELSE "DISMESSO"
                 END AS "STATO",
                 d.ams_inventory AS "INVENTARIO AMS",
                 d.customer_inventory AS "INVENTARIO CLIENTE",
@@ -702,26 +718,36 @@ def get_devices_with_last_verification_for_destination(destination_id: int):
                 d.model AS "MODELLO",
                 d.serial_number AS "MATRICOLA",
                 d.department AS "REPARTO",
-                v.verification_date AS "DATA",
-                v.technician_name AS "TECNICO",
+                COALESCE(rv.verification_date, rfv.verification_date, '') AS "DATA",
+                COALESCE(rv.technician_name, rfv.technician_name, '') AS "TECNICO",
+                COALESCE(
+                    json_extract(rv.visual_inspection_json, '$.notes'),
+                    rfv.notes,
+                    ''
+                ) AS "NOTE",
                 CASE
-                    WHEN v.overall_status = "PASSATO" THEN "CONFORME"
-                    WHEN v.overall_status = "CONFORME CON ANNOTAZIONE" THEN "CONFORME CON ANNOTAZIONE"
-                    WHEN v.overall_status = "FALLITO" THEN "NON CONFORME"
+                    WHEN rv.overall_status IN ('PASSATO', 'CONFORME') THEN 'CONFORME'
+                    WHEN rv.overall_status = 'CONFORME CON ANNOTAZIONE' THEN 'CONFORME CON ANNOTAZIONE'
+                    WHEN rv.overall_status IN ('FALLITO', 'NON CONFORME') THEN 'NON CONFORME'
+                    WHEN rv.overall_status IS NOT NULL AND rv.overall_status != '' THEN rv.overall_status
+                    ELSE 'Nessuna verifica'
                 END AS "ESITO",
+                CASE
+                    WHEN rfv.overall_status IN ('PASSATO', 'CONFORME') THEN 'CONFORME'
+                    WHEN rfv.overall_status = 'CONFORME CON ANNOTAZIONE' THEN 'CONFORME CON ANNOTAZIONE'
+                    WHEN rfv.overall_status IN ('FALLITO', 'NON CONFORME') THEN 'NON CONFORME'
+                    WHEN rfv.overall_status IS NOT NULL AND rfv.overall_status != '' THEN rfv.overall_status
+                    ELSE 'Nessuna verifica'
+                END AS "ESITO VERIFICHE FUNZIONALI",
                 dest.name AS "DESTINAZIONE" 
             FROM
                 devices d
-            LEFT JOIN
-                (
-                    SELECT
-                        *,
-                        ROW_NUMBER() OVER(PARTITION BY device_id ORDER BY verification_date DESC) as rn
-                    FROM verifications
-                    WHERE is_deleted = 0
-                ) v ON d.id = v.device_id AND v.rn = 1
             JOIN
                 destinations dest ON d.destination_id = dest.id
+            LEFT JOIN
+                RankedVerifications rv ON d.id = rv.device_id AND rv.rn = 1
+            LEFT JOIN
+                RankedFunctionalVerifications rfv ON d.id = rfv.device_id AND rfv.rn = 1
             WHERE
                 d.destination_id = ? AND d.is_deleted = 0
             ORDER BY
@@ -731,22 +757,15 @@ def get_devices_with_last_verification_for_destination(destination_id: int):
 
 def get_devices_with_verifications_for_destination_by_date_range(destination_id: int, start_date: str, end_date: str):
     """
-    Recupera TUTTI i dispositivi di una destinazione. Se sono state eseguite
-    verifiche nell'intervallo di date specificato, include SOLO i dati della
-    verifica PIÙ RECENTE per ciascun dispositivo.
+    Recupera TUTTI i dispositivi di una destinazione con i dati della verifica più recente
+    nell'intervallo di date specificato.
     """
     with DatabaseConnection() as conn:
-        # --- INIZIO QUERY CORRETTA ---
-        # La query ora recupera TUTTI i dispositivi della destinazione.
-        # Poi, tramite un LEFT JOIN su una sottoquery (RankedVerifications), associa
-        # i dati della verifica PIÙ RECENTE eseguita nell'intervallo di date.
-        # Se un dispositivo non ha verifiche nel periodo, i campi relativi (DATA, TECNICO, ESITO)
-        # risulteranno vuoti, ma il dispositivo sarà comunque presente una sola volta.
         query = """
             WITH RankedVerifications AS (
                 SELECT
                     v.*,
-                    ROW_NUMBER() OVER(PARTITION BY v.device_id ORDER BY v.verification_date DESC) as rn
+                    ROW_NUMBER() OVER(PARTITION BY v.device_id ORDER BY v.verification_date DESC, v.id DESC) as rn
                 FROM
                     verifications v
                 WHERE
@@ -756,7 +775,7 @@ def get_devices_with_verifications_for_destination_by_date_range(destination_id:
             RankedFunctionalVerifications AS (
                 SELECT
                     fv.*,
-                    ROW_NUMBER() OVER(PARTITION BY fv.device_id ORDER BY fv.verification_date DESC) as rn
+                    ROW_NUMBER() OVER(PARTITION BY fv.device_id ORDER BY fv.verification_date DESC, fv.id DESC) as rn
                 FROM
                     functional_verifications fv
                 WHERE
@@ -775,14 +794,27 @@ def get_devices_with_verifications_for_destination_by_date_range(destination_id:
                 d.model AS "MODELLO",
                 d.serial_number AS "MATRICOLA",
                 d.department AS "REPARTO",
-                rv.verification_date AS "DATA",
-                rv.technician_name AS "TECNICO",
+                COALESCE(rv.verification_date, rfv.verification_date, '') AS "DATA",
+                COALESCE(rv.technician_name, rfv.technician_name, '') AS "TECNICO",
+                COALESCE(
+                    json_extract(rv.visual_inspection_json, '$.notes'),
+                    rfv.notes,
+                    ''
+                ) AS "NOTE",
                 CASE 
-                    WHEN rv.overall_status = "PASSATO" THEN "CONFORME" 
-                    WHEN rv.overall_status = "CONFORME CON ANNOTAZIONE" THEN "CONFORME CON ANNOTAZIONE"
-                    WHEN rv.overall_status = "FALLITO" THEN "NON CONFORME"
+                    WHEN rv.overall_status IN ('PASSATO', 'CONFORME') THEN 'CONFORME' 
+                    WHEN rv.overall_status = 'CONFORME CON ANNOTAZIONE' THEN 'CONFORME CON ANNOTAZIONE'
+                    WHEN rv.overall_status IN ('FALLITO', 'NON CONFORME') THEN 'NON CONFORME'
+                    WHEN rv.overall_status IS NOT NULL AND rv.overall_status != '' THEN rv.overall_status
+                    ELSE 'Nessuna verifica'
                 END AS "ESITO",
-                COALESCE(rfv.overall_status, 'Nessuna verifica') AS "ESITO VERIFICHE FUNZIONALI",
+                CASE
+                    WHEN rfv.overall_status IN ('PASSATO', 'CONFORME') THEN 'CONFORME'
+                    WHEN rfv.overall_status = 'CONFORME CON ANNOTAZIONE' THEN 'CONFORME CON ANNOTAZIONE'
+                    WHEN rfv.overall_status IN ('FALLITO', 'NON CONFORME') THEN 'NON CONFORME'
+                    WHEN rfv.overall_status IS NOT NULL AND rfv.overall_status != '' THEN rfv.overall_status
+                    ELSE 'Nessuna verifica'
+                END AS "ESITO VERIFICHE FUNZIONALI",
                 dest.name AS "DESTINAZIONE" 
             FROM 
                 devices d
@@ -797,8 +829,6 @@ def get_devices_with_verifications_for_destination_by_date_range(destination_id:
             ORDER BY 
                 d.description;
         """
-        # I parametri devono corrispondere ai '?' nella query nell'ordine corretto
-        # start_date e end_date vengono usati due volte: una per le verifiche elettriche e una per quelle funzionali
         return conn.execute(query, (start_date, end_date, start_date, end_date, destination_id)).fetchall()
     
 def get_devices_for_customer_inventory_export(customer_id: int):
@@ -1819,6 +1849,55 @@ def get_verifications_for_device(device_id: int, search_query: str = None):
     return [_decode_json_fields(r, ['results_json', 'visual_inspection_json']) for r in rows]
 
 
+def get_device_last_verification_outcome(device_id: int) -> dict | None:
+    """
+    Recupera la data e l'esito della verifica più recente (elettrica o funzionale) per un dispositivo.
+    In caso di verifiche nello stesso giorno, sceglie quella con esito peggiore.
+    """
+    if not device_id:
+        return None
+    with DatabaseConnection() as conn:
+        query = """
+        WITH all_verifications AS (
+            SELECT 
+                verification_date, 
+                overall_status,
+                'electrical' AS verification_type,
+                CASE 
+                    WHEN UPPER(overall_status) LIKE '%FALLIT%' OR UPPER(overall_status) LIKE '%NON CONFORME%' THEN 1
+                    WHEN UPPER(overall_status) LIKE '%ANNOTAZION%' THEN 2
+                    WHEN UPPER(overall_status) LIKE '%PASSAT%' OR UPPER(overall_status) LIKE '%CONFORME%' THEN 3
+                    ELSE 4
+                END AS severity
+            FROM verifications
+            WHERE device_id = ? AND is_deleted = 0
+            
+            UNION ALL
+            
+            SELECT 
+                verification_date, 
+                overall_status,
+                'functional' AS verification_type,
+                CASE 
+                    WHEN UPPER(overall_status) LIKE '%FALLIT%' OR UPPER(overall_status) LIKE '%NON CONFORME%' THEN 1
+                    WHEN UPPER(overall_status) LIKE '%ANNOTAZION%' THEN 2
+                    WHEN UPPER(overall_status) LIKE '%PASSAT%' OR UPPER(overall_status) LIKE '%CONFORME%' THEN 3
+                    ELSE 4
+                END AS severity
+            FROM functional_verifications
+            WHERE device_id = ? AND is_deleted = 0
+        )
+        SELECT verification_date, overall_status, verification_type
+        FROM all_verifications
+        ORDER BY verification_date DESC, severity ASC
+        LIMIT 1
+        """
+        row = conn.execute(query, (device_id, device_id)).fetchone()
+        if row:
+            return dict(row)
+        return None
+
+
 def get_verification_with_device_info(verification_id: int):
     """Recupera una verifica elettrica con contesto completo del dispositivo."""
     with DatabaseConnection() as conn:
@@ -1932,9 +2011,10 @@ def get_devices_with_last_verification():
                 PARTITION BY av.device_id 
                 ORDER BY 
                     CASE 
-                        WHEN av.overall_status IN ('FALLITO', 'NON CONFORME', 'CONFORME CON ANNOTAZIONE') THEN 1
-                        WHEN av.overall_status IN ('PASSATO', 'CONFORME') THEN 2
-                        ELSE 3
+                        WHEN av.overall_status IN ('FALLITO', 'NON CONFORME') THEN 1
+                        WHEN av.overall_status IN ('CONFORME CON ANNOTAZIONE') THEN 2
+                        WHEN av.overall_status IN ('PASSATO', 'CONFORME') THEN 3
+                        ELSE 4
                     END,
                     av.id DESC
             ) as rn
@@ -2334,7 +2414,7 @@ def get_all_instruments(instrument_type: str = None, user_sede: str = None):
 
     if user_sede:
         clean_sede = str(user_sede).strip().upper()
-        if clean_sede and clean_sede not in ("TUTTE", "ALL", "ADMIN"):
+        if clean_sede and clean_sede not in ("TUTTE", "ALL"):
             conditions.append("(UPPER(TRIM(sede)) = ? OR sede IS NULL OR TRIM(sede) = '')")
             params.append(clean_sede)
 
@@ -2351,7 +2431,7 @@ def add_instrument(uuid: str, name: str, serial: str, fw: str,
     _ensure_mti_instruments_columns()
     clean_sede = str(sede).strip().upper() if sede and str(sede).strip() else None
     with DatabaseConnection() as conn:
-        conn.execute(
+        cursor = conn.execute(
             """INSERT INTO mti_instruments 
                (uuid, instrument_name, serial_number, fw_version, 
                 calibration_date, instrument_type, sede, last_modified, is_synced) 
@@ -2359,6 +2439,7 @@ def add_instrument(uuid: str, name: str, serial: str, fw: str,
             (uuid, name, serial, fw, cal_date, instrument_type, clean_sede, timestamp)
         )
         conn.commit()
+        return cursor.lastrowid
 
 def update_instrument(inst_id, name, serial, fw, cal_date, timestamp, instrument_type: str = None, com_port: str = None, sede: str = None):
     """Update an instrument in the database.
@@ -4025,6 +4106,27 @@ def get_top_technicians_by_verifications(limit=10):
 # STATISTICHE DASHBOARD AVANZATE
 # ==============================================================================
 
+def get_electrical_verification_stats():
+    """Recupera statistiche sulle verifiche elettriche (totale, conformi, non conformi)."""
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT 
+                COUNT(*) as totale,
+                SUM(CASE WHEN overall_status IN ('PASSATO', 'CONFORME', 'CONFORME CON ANNOTAZIONE') THEN 1 ELSE 0 END) as conformi,
+                SUM(CASE WHEN overall_status IN ('FALLITO', 'NON CONFORME') THEN 1 ELSE 0 END) as non_conformi
+            FROM verifications
+            WHERE is_deleted = 0
+        """
+        result = conn.execute(query).fetchone()
+        if not result:
+            return {'totale': 0, 'conformi': 0, 'non_conformi': 0}
+        return {
+            'totale': int(result['totale'] or 0),
+            'conformi': int(result['conformi'] or 0),
+            'non_conformi': int(result['non_conformi'] or 0)
+        }
+
+
 def get_functional_verification_stats():
     """Recupera statistiche sulle verifiche funzionali."""
     with DatabaseConnection() as conn:
@@ -4143,80 +4245,55 @@ def get_verifications_per_day_last_n_days(days=30):
 
 
 def get_dashboard_summary_stats():
-    """Statistiche riassuntive complete per la dashboard."""
+    """Statistiche riassuntive complete per la dashboard (ottimizzata in query singola consolidata)."""
     with DatabaseConnection() as conn:
-        stats = {}
-        # Clienti attivi
-        stats['customers'] = conn.execute(
-            "SELECT COUNT(*) FROM customers WHERE is_deleted = 0"
-        ).fetchone()[0] or 0
-        # Destinazioni attive
-        stats['destinations'] = conn.execute(
-            "SELECT COUNT(*) FROM destinations WHERE is_deleted = 0"
-        ).fetchone()[0] or 0
-        # Dispositivi attivi
-        stats['devices_active'] = conn.execute(
-            "SELECT COUNT(*) FROM devices WHERE is_deleted = 0 AND status = 'active'"
-        ).fetchone()[0] or 0
-        # Dispositivi dismessi
-        stats['devices_decommissioned'] = conn.execute(
-            "SELECT COUNT(*) FROM devices WHERE is_deleted = 0 AND status = 'decommissioned'"
-        ).fetchone()[0] or 0
-        # Totale dispositivi
-        stats['devices_total'] = conn.execute(
-            "SELECT COUNT(*) FROM devices WHERE is_deleted = 0"
-        ).fetchone()[0] or 0
-        # Strumenti attivi
-        stats['instruments'] = conn.execute(
-            "SELECT COUNT(*) FROM mti_instruments WHERE is_deleted = 0"
-        ).fetchone()[0] or 0
-        # Profili elettrici
-        stats['profiles_electrical'] = conn.execute(
-            "SELECT COUNT(*) FROM profiles WHERE is_deleted = 0"
-        ).fetchone()[0] or 0
-        # Profili funzionali
-        stats['profiles_functional'] = conn.execute(
-            "SELECT COUNT(*) FROM functional_profiles WHERE is_deleted = 0"
-        ).fetchone()[0] or 0
-        # Verifiche elettriche totali
-        stats['verifications_electrical'] = conn.execute(
-            "SELECT COUNT(*) FROM verifications WHERE is_deleted = 0"
-        ).fetchone()[0] or 0
-        # Verifiche funzionali totali
-        stats['verifications_functional'] = conn.execute(
-            "SELECT COUNT(*) FROM functional_verifications WHERE is_deleted = 0"
-        ).fetchone()[0] or 0
-        # Verifiche questo mese
-        stats['verifications_this_month'] = conn.execute(
-            "SELECT COUNT(*) FROM verifications WHERE is_deleted = 0 AND strftime('%Y-%m', verification_date) = strftime('%Y-%m', 'now')"
-        ).fetchone()[0] or 0
-        stats['functional_verifications_this_month'] = conn.execute(
-            "SELECT COUNT(*) FROM functional_verifications WHERE is_deleted = 0 AND strftime('%Y-%m', verification_date) = strftime('%Y-%m', 'now')"
-        ).fetchone()[0] or 0
-        # Verifiche oggi
-        stats['verifications_today'] = conn.execute(
-            "SELECT COUNT(*) FROM verifications WHERE is_deleted = 0 AND verification_date = date('now')"
-        ).fetchone()[0] or 0
-        stats['functional_verifications_today'] = conn.execute(
-            "SELECT COUNT(*) FROM functional_verifications WHERE is_deleted = 0 AND verification_date = date('now')"
-        ).fetchone()[0] or 0
-        # Ultima verifica
-        last_e = conn.execute(
-            "SELECT MAX(verification_date) FROM verifications WHERE is_deleted = 0"
-        ).fetchone()[0]
-        last_f = conn.execute(
-            "SELECT MAX(verification_date) FROM functional_verifications WHERE is_deleted = 0"
-        ).fetchone()[0]
-        stats['last_verification'] = max(last_e or '', last_f or '') or 'N/A'
-        # Dispositivi senza verifica
-        stats['devices_never_verified'] = conn.execute("""
-            SELECT COUNT(*) FROM devices d
-            WHERE d.is_deleted = 0 AND d.status = 'active'
-            AND NOT EXISTS (SELECT 1 FROM verifications v WHERE v.device_id = d.id AND v.is_deleted = 0)
-            AND NOT EXISTS (SELECT 1 FROM functional_verifications fv WHERE fv.device_id = d.id AND fv.is_deleted = 0)
-        """).fetchone()[0] or 0
+        query = """
+            SELECT
+                (SELECT COUNT(*) FROM customers WHERE is_deleted = 0) as customers,
+                (SELECT COUNT(*) FROM destinations WHERE is_deleted = 0) as destinations,
+                (SELECT COUNT(*) FROM devices WHERE is_deleted = 0 AND status = 'active') as devices_active,
+                (SELECT COUNT(*) FROM devices WHERE is_deleted = 0 AND status = 'decommissioned') as devices_decommissioned,
+                (SELECT COUNT(*) FROM devices WHERE is_deleted = 0) as devices_total,
+                (SELECT COUNT(*) FROM mti_instruments WHERE is_deleted = 0) as instruments,
+                (SELECT COUNT(*) FROM profiles WHERE is_deleted = 0) as profiles_electrical,
+                (SELECT COUNT(*) FROM functional_profiles WHERE is_deleted = 0) as profiles_functional,
+                (SELECT COUNT(*) FROM verifications WHERE is_deleted = 0) as verifications_electrical,
+                (SELECT COUNT(*) FROM functional_verifications WHERE is_deleted = 0) as verifications_functional,
+                (SELECT COUNT(*) FROM verifications WHERE is_deleted = 0 AND strftime('%Y-%m', verification_date) = strftime('%Y-%m', 'now')) as verifications_this_month,
+                (SELECT COUNT(*) FROM functional_verifications WHERE is_deleted = 0 AND strftime('%Y-%m', verification_date) = strftime('%Y-%m', 'now')) as functional_verifications_this_month,
+                (SELECT COUNT(*) FROM verifications WHERE is_deleted = 0 AND verification_date = date('now')) as verifications_today,
+                (SELECT COUNT(*) FROM functional_verifications WHERE is_deleted = 0 AND verification_date = date('now')) as functional_verifications_today,
+                (SELECT MAX(verification_date) FROM verifications WHERE is_deleted = 0) as last_e,
+                (SELECT MAX(verification_date) FROM functional_verifications WHERE is_deleted = 0) as last_f,
+                (SELECT COUNT(*) FROM devices d WHERE d.is_deleted = 0 AND d.status = 'active'
+                 AND NOT EXISTS (SELECT 1 FROM verifications v WHERE v.device_id = d.id AND v.is_deleted = 0)
+                 AND NOT EXISTS (SELECT 1 FROM functional_verifications fv WHERE fv.device_id = d.id AND fv.is_deleted = 0)) as devices_never_verified
+        """
+        row = conn.execute(query).fetchone()
+        if not row:
+            return {}
+        last_e = row['last_e']
+        last_f = row['last_f']
+        last_verif = max(last_e or '', last_f or '') or 'N/A'
         
-        return stats
+        return {
+            'customers': int(row['customers'] or 0),
+            'destinations': int(row['destinations'] or 0),
+            'devices_active': int(row['devices_active'] or 0),
+            'devices_decommissioned': int(row['devices_decommissioned'] or 0),
+            'devices_total': int(row['devices_total'] or 0),
+            'instruments': int(row['instruments'] or 0),
+            'profiles_electrical': int(row['profiles_electrical'] or 0),
+            'profiles_functional': int(row['profiles_functional'] or 0),
+            'verifications_electrical': int(row['verifications_electrical'] or 0),
+            'verifications_functional': int(row['verifications_functional'] or 0),
+            'verifications_this_month': int(row['verifications_this_month'] or 0),
+            'functional_verifications_this_month': int(row['functional_verifications_this_month'] or 0),
+            'verifications_today': int(row['verifications_today'] or 0),
+            'functional_verifications_today': int(row['functional_verifications_today'] or 0),
+            'last_verification': last_verif,
+            'devices_never_verified': int(row['devices_never_verified'] or 0),
+        }
 
 
 def get_top_device_types_by_verifications(limit=10):
@@ -4293,6 +4370,8 @@ def log_audit(username, user_full_name, action_type, entity_type, entity_id=None
         with DatabaseConnection() as conn:
             new_uuid = str(uuid_lib.uuid4())
             timestamp = datetime.now(timezone.utc).isoformat()
+            safe_username = username or 'system'
+            safe_full_name = user_full_name or ('Sistema' if not username else username)
             
             # Converte details in JSON se è un dizionario
             details_json = None
@@ -4310,7 +4389,7 @@ def log_audit(username, user_full_name, action_type, entity_type, entity_id=None
             """
             
             conn.execute(query, (
-                new_uuid, timestamp, username, user_full_name, action_type, entity_type,
+                new_uuid, timestamp, safe_username, safe_full_name, action_type, entity_type,
                 entity_id, entity_description, details_json, ip_address, timestamp
             ))
             
@@ -4867,7 +4946,7 @@ def save_verification_attachment(
 def get_verification_attachments(
     verification_id: int, verification_type: str = "functional"
 ) -> list[dict]:
-    """Restituisce tutti gli allegati (metadati) per una verifica."""
+    """Restituisce tutti gli allegati (metadati) per una verifica o strumento."""
     with DatabaseConnection() as conn:
         rows = conn.execute(
             """
@@ -4880,6 +4959,76 @@ def get_verification_attachments(
             (verification_id, verification_type),
         ).fetchall()
         return [dict(r) for r in rows]
+
+
+def save_instrument_attachment(
+    instrument_id: int,
+    filename: str,
+    file_data: bytes,
+    mime_type: str = "application/pdf",
+    description: str = "Certificato di calibrazione",
+) -> int:
+    """Salva il certificato di calibrazione di uno strumento su disco e registra il record nel DB."""
+    attachment_uuid = str(uuid.uuid4())
+    timestamp = datetime.now(timezone.utc).isoformat()
+    file_size = len(file_data)
+
+    inst_dir = os.path.join(config.ATTACHMENTS_DIR, "instruments", str(instrument_id))
+    os.makedirs(inst_dir, exist_ok=True)
+
+    ext = os.path.splitext(filename)[1] if '.' in filename else '.pdf'
+    safe_filename = f"{attachment_uuid}{ext}"
+    file_path = os.path.join(inst_dir, safe_filename)
+
+    with open(file_path, 'wb') as f:
+        f.write(file_data)
+
+    relative_path = os.path.join("instruments", str(instrument_id), safe_filename)
+
+    with DatabaseConnection() as conn:
+        cursor = conn.execute(
+            """
+            INSERT INTO verification_attachments
+                (uuid, verification_id, verification_type, filename, file_path,
+                 mime_type, file_size, description, created_at, last_modified,
+                 is_synced, is_deleted)
+            VALUES (?, ?, 'instrument', ?, ?, ?, ?, ?, ?, ?, 0, 0)
+            RETURNING id
+            """,
+            (
+                attachment_uuid,
+                instrument_id,
+                filename,
+                relative_path,
+                mime_type,
+                file_size,
+                description,
+                timestamp,
+                timestamp,
+            ),
+        )
+        new_id = cursor.fetchone()[0]
+    logging.info(f"Certificato calibrazione salvato: id={new_id}, instrument_id={instrument_id}, file={filename}")
+    return new_id
+
+
+def get_instrument_attachments(instrument_id: int) -> list[dict]:
+    """Restituisce tutti i certificati di calibrazione (metadati) per uno strumento."""
+    return get_verification_attachments(instrument_id, verification_type="instrument")
+
+
+def get_instrument_attachments_count_map() -> dict[int, int]:
+    """Restituisce una mappa instrument_id -> conteggio certificati attivi."""
+    with DatabaseConnection() as conn:
+        rows = conn.execute(
+            """
+            SELECT verification_id as instrument_id, COUNT(*) as cnt
+            FROM verification_attachments
+            WHERE verification_type = 'instrument' AND is_deleted = 0
+            GROUP BY verification_id
+            """
+        ).fetchall()
+        return {r["instrument_id"]: r["cnt"] for r in rows}
 
 
 def get_attachment_data(attachment_id: int) -> dict | None:
@@ -6128,10 +6277,136 @@ def get_ecografo_quality_checks_by_date_range(
         return conn.execute(query, tuple(params)).fetchall()
 
 
+# ==============================================================================
+# PRESET PARTI APPLICATE (Applied Parts Presets)
+# ==============================================================================
+
+def _ensure_applied_parts_presets_table():
+    """Garantisce che la tabella applied_parts_presets esista."""
+    with DatabaseConnection() as conn:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS applied_parts_presets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                uuid TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL UNIQUE,
+                description TEXT,
+                parts_json TEXT NOT NULL,
+                last_modified TEXT NOT NULL DEFAULT (datetime('now')),
+                is_deleted INTEGER NOT NULL DEFAULT 0,
+                is_synced INTEGER NOT NULL DEFAULT 0
+            );
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_pa_presets_name ON applied_parts_presets(name);")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_pa_presets_deleted ON applied_parts_presets(is_deleted);")
+
+
+def get_applied_parts_presets():
+    """Recupera tutti i preset delle parti applicate attivi."""
+    _ensure_applied_parts_presets_table()
+    with DatabaseConnection() as conn:
+        query = """
+            SELECT id, uuid, name, description, parts_json, last_modified, is_synced
+            FROM applied_parts_presets
+            WHERE is_deleted = 0
+            ORDER BY name ASC
+        """
+        rows = conn.execute(query).fetchall()
+        results = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d['parts'] = json.loads(d.get('parts_json') or '[]')
+            except (json.JSONDecodeError, TypeError):
+                d['parts'] = []
+            results.append(d)
+        return results
+
+
+def get_applied_parts_preset_by_id(preset_id: int):
+    """Recupera un singolo preset per ID."""
+    _ensure_applied_parts_presets_table()
+    with DatabaseConnection() as conn:
+        query = "SELECT * FROM applied_parts_presets WHERE id = ? AND is_deleted = 0"
+        row = conn.execute(query, (preset_id,)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        try:
+            d['parts'] = json.loads(d.get('parts_json') or '[]')
+        except (json.JSONDecodeError, TypeError):
+            d['parts'] = []
+        return d
+
+
+def save_applied_parts_preset(name: str, parts: list, description: str = "", preset_id: int | None = None) -> int:
+    """Crea o aggiorna un preset di parti applicate."""
+    _ensure_applied_parts_presets_table()
+    parts_data = []
+    for p in parts:
+        if isinstance(p, dict):
+            parts_data.append({
+                'name': p.get('name', '').strip(),
+                'part_type': p.get('part_type', 'BF')
+            })
+        elif hasattr(p, 'name') and hasattr(p, 'part_type'):
+            parts_data.append({
+                'name': str(p.name).strip(),
+                'part_type': str(p.part_type)
+            })
+    
+    parts_json = json.dumps(parts_data)
+    timestamp = datetime.now(timezone.utc).isoformat()
+
+    with DatabaseConnection() as conn:
+        if preset_id:
+            conn.execute("""
+                UPDATE applied_parts_presets
+                SET name = ?, description = ?, parts_json = ?, last_modified = ?, is_deleted = 0, is_synced = 0
+                WHERE id = ?
+            """, (name.strip(), description.strip(), parts_json, timestamp, preset_id))
+            return preset_id
+        else:
+            # Controlla se esiste già un preset con lo stesso nome (anche se eliminato)
+            existing = conn.execute(
+                "SELECT id FROM applied_parts_presets WHERE LOWER(name) = LOWER(?)",
+                (name.strip(),)
+            ).fetchone()
+            if existing:
+                existing_id = existing['id']
+                conn.execute("""
+                    UPDATE applied_parts_presets
+                    SET name = ?, description = ?, parts_json = ?, last_modified = ?, is_deleted = 0, is_synced = 0
+                    WHERE id = ?
+                """, (name.strip(), description.strip(), parts_json, timestamp, existing_id))
+                return existing_id
+            else:
+                new_uuid = str(uuid.uuid4())
+                cur = conn.execute("""
+                    INSERT INTO applied_parts_presets (uuid, name, description, parts_json, last_modified, is_deleted, is_synced)
+                    VALUES (?, ?, ?, ?, ?, 0, 0)
+                """, (new_uuid, name.strip(), description.strip(), parts_json, timestamp))
+                return cur.lastrowid
+
+
+def delete_applied_parts_preset(preset_id: int) -> bool:
+    """Soft delete di un preset di parti applicate."""
+    _ensure_applied_parts_presets_table()
+    timestamp = datetime.now(timezone.utc).isoformat()
+    with DatabaseConnection() as conn:
+        conn.execute("""
+            UPDATE applied_parts_presets
+            SET is_deleted = 1, last_modified = ?, is_synced = 0
+            WHERE id = ?
+        """, (timestamp, preset_id))
+        return True
+
+
 # Applica le migrazioni del database all'avvio del modulo
 migrate_database()
 ensure_assignments_table()
 ensure_unavailability_table()
 _ensure_ecografo_quality_tables()
 _ensure_mti_instruments_columns()
+_ensure_applied_parts_presets_table()
+
 

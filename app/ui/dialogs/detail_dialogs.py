@@ -1,9 +1,12 @@
+import os
 import logging
 from PySide6.QtWidgets import (QDialog, QFormLayout, QLineEdit, QDialogButtonBox, QMessageBox, QGridLayout,
-    QVBoxLayout, QGroupBox, QTableWidget, QTableWidgetItem, QHBoxLayout, QComboBox, QPushButton, QApplication, QStyle, QLabel, QCompleter)
+    QVBoxLayout, QGroupBox, QTableWidget, QTableWidgetItem, QHBoxLayout, QComboBox, QPushButton, QApplication, QStyle, QLabel, QCompleter, QFileDialog, QInputDialog, QHeaderView)
 from PySide6.QtCore import Qt, QStringListModel
 from app.data_models import AppliedPart
+from app.config import format_date_it
 from app.ui.dialogs.utility_dialogs import DeviceSearchDialog
+from app.ui.dialogs.applied_parts_presets_dialog import AppliedPartsPresetsDialog
 from app import services
 import qtawesome as qta
 
@@ -34,8 +37,6 @@ class DeviceDialog(QDialog):
     def __init__(self, customer_id, destination_id=None, device_data=None, is_copy=False, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Dettagli Dispositivo")
-        self.resize(1300, 930)
-        
         self.AP_CODE_SEQUENCE = ["RA", "LL", "LA", "RL", "V1", "V2", "V3", "V4", "V5", "V6"]
         
         data = device_data or {}
@@ -48,17 +49,18 @@ class DeviceDialog(QDialog):
         self._suppress_profile_signal = False
 
         main_layout = QVBoxLayout(self)
+        main_layout.setSpacing(8)
+        main_layout.setContentsMargins(14, 12, 14, 12)
         
         # Layout orizzontale per i pulsanti di acquisizione rapida
-        quick_actions_layout = QHBoxLayout()
+        top_bar_layout = QHBoxLayout()
+        top_bar_layout.setSpacing(8)
         
-        self.copy_button = QPushButton("COPIA DATI DA UN DISPOSITIVO ESISTENTE...")
-        self.copy_button.setIcon(QApplication.style().standardIcon(QStyle.SP_DialogResetButton))
+        self.copy_button = QPushButton(qta.icon('fa5s.copy'), " Copia dati da un dispositivo esistente...")
         self.copy_button.clicked.connect(self.open_copy_search)
-        quick_actions_layout.addWidget(self.copy_button)
-        
-        quick_actions_layout.addStretch()
-        main_layout.addLayout(quick_actions_layout)
+        top_bar_layout.addWidget(self.copy_button)
+        top_bar_layout.addStretch()
+        main_layout.addLayout(top_bar_layout)
         
         if device_data and not is_copy:
             self.copy_button.hide()
@@ -66,21 +68,24 @@ class DeviceDialog(QDialog):
         # --- SEZIONE UDI ---
         udi_group = QGroupBox("COMPILAZIONE RAPIDA TRAMITE CODICE UDI / BARCODE")
         udi_layout = QHBoxLayout(udi_group)
+        udi_layout.setContentsMargins(8, 6, 8, 6)
+        udi_layout.setSpacing(6)
+        
         self.udi_input = QLineEdit()
         self.udi_input.setPlaceholderText("Scansiona o incolla il codice UDI / barcode qui...")
-        self.udi_input.setMinimumHeight(38)
+        self.udi_input.setMinimumHeight(32)
         self.udi_input.returnPressed.connect(self._lookup_udi)
         udi_layout.addWidget(self.udi_input, 1)
 
         self.udi_lookup_btn = QPushButton(qta.icon('fa5s.search'), " Cerca")
-        self.udi_lookup_btn.setMinimumHeight(38)
+        self.udi_lookup_btn.setMinimumHeight(32)
         self.udi_lookup_btn.setToolTip("Cerca informazioni dispositivo dal codice UDI")
         self.udi_lookup_btn.clicked.connect(self._lookup_udi)
         udi_layout.addWidget(self.udi_lookup_btn)
 
         # Pulsante scansione da telefono (usa il QR scanner server già attivo)
         self.udi_phone_btn = QPushButton(qta.icon('fa5s.mobile-alt'), " 📱 Scansiona")
-        self.udi_phone_btn.setMinimumHeight(38)
+        self.udi_phone_btn.setMinimumHeight(32)
         self.udi_phone_btn.setToolTip("Ricevi codice UDI dall'app VScanner sul telefono")
         self.udi_phone_btn.setCheckable(True)
         self.udi_phone_btn.clicked.connect(self._toggle_phone_scan_listener)
@@ -152,7 +157,8 @@ class DeviceDialog(QDialog):
 
         # --- LAYOUT A GRIGLIA A DUE COLONNE ---
         grid_layout = QGridLayout()
-        grid_layout.setSpacing(10)
+        grid_layout.setSpacing(8)
+        grid_layout.setContentsMargins(0, 0, 0, 0)
         
         self.serial_edit = QLineEdit(data.get('serial_number', ''))
         self.desc_edit = QLineEdit(data.get('description', ''))
@@ -168,63 +174,100 @@ class DeviceDialog(QDialog):
         if data.get('verification_interval') is not None:
             self.verification_interval_combo.setCurrentText(str(data['verification_interval']))
 
-        # Riga 0
-        grid_layout.addWidget(QLabel("DESTINAZIONE / SEDE:"), 0, 0, 1, 4)
-        grid_layout.addWidget(self.destination_combo, 1, 0, 1, 4)
-        # Riga 2
-        grid_layout.addWidget(QLabel("DESCRIZIONE:"), 2, 0); grid_layout.addWidget(self.desc_edit, 2, 1)
-        grid_layout.addWidget(QLabel("COSTRUTTORE:"), 2, 2); grid_layout.addWidget(self.mfg_edit, 2, 3)
-        # Riga 3
-        grid_layout.addWidget(QLabel("MODELLO:"), 3, 0); grid_layout.addWidget(self.model_edit, 3, 1)
-        grid_layout.addWidget(QLabel("NUMERO DI SERIE:"), 3, 2); grid_layout.addWidget(self.serial_edit, 3, 3)
-        # Riga 4
-        grid_layout.addWidget(QLabel("REPARTO (DETTAGLIO):"), 4, 0); grid_layout.addWidget(self.department_edit, 4, 1)
-        grid_layout.addWidget(QLabel("PROFILO DI VERIFICA DEFAULT:"), 4, 2); grid_layout.addWidget(self.profile_combo, 4, 3)
-        grid_layout.addWidget(QLabel("PROFILO FUNZIONALE DEFAULT:"), 5, 2); grid_layout.addWidget(self.functional_profile_combo, 5, 3)
-        # Riga 5
-        grid_layout.addWidget(QLabel("INVENTARIO AMS:"), 5, 0); grid_layout.addWidget(self.ams_inv_edit, 5, 1)
-        grid_layout.addWidget(QLabel("INVENTARIO CLIENTE:"), 6, 2); grid_layout.addWidget(self.customer_inv_edit, 6, 3)
-        # Riga 6
-        grid_layout.addWidget(QLabel("INTERVALLO VERIFICA (MESI):"), 6, 0); grid_layout.addWidget(self.verification_interval_combo, 6, 1)
+        # Riga 0: Destinazione / Sede
+        grid_layout.addWidget(QLabel("DESTINAZIONE / SEDE:"), 0, 0)
+        grid_layout.addWidget(self.destination_combo, 0, 1, 1, 3)
+        # Riga 1: Descrizione e Costruttore
+        grid_layout.addWidget(QLabel("DESCRIZIONE:"), 1, 0); grid_layout.addWidget(self.desc_edit, 1, 1)
+        grid_layout.addWidget(QLabel("COSTRUTTORE:"), 1, 2); grid_layout.addWidget(self.mfg_edit, 1, 3)
+        # Riga 2: Modello e Seriale
+        grid_layout.addWidget(QLabel("MODELLO:"), 2, 0); grid_layout.addWidget(self.model_edit, 2, 1)
+        grid_layout.addWidget(QLabel("NUMERO DI SERIE:"), 2, 2); grid_layout.addWidget(self.serial_edit, 2, 3)
+        # Riga 3: Reparto e Profilo VE
+        grid_layout.addWidget(QLabel("REPARTO (DETTAGLIO):"), 3, 0); grid_layout.addWidget(self.department_edit, 3, 1)
+        grid_layout.addWidget(QLabel("PROFILO VE DEFAULT:"), 3, 2); grid_layout.addWidget(self.profile_combo, 3, 3)
+        # Riga 4: Inventario AMS e Profilo Funzionale
+        grid_layout.addWidget(QLabel("INVENTARIO AMS:"), 4, 0); grid_layout.addWidget(self.ams_inv_edit, 4, 1)
+        grid_layout.addWidget(QLabel("PROFILO VF DEFAULT:"), 4, 2); grid_layout.addWidget(self.functional_profile_combo, 4, 3)
+        # Riga 5: Intervallo verifica e Inventario Cliente
+        grid_layout.addWidget(QLabel("INTERVALLO (MESI):"), 5, 0); grid_layout.addWidget(self.verification_interval_combo, 5, 1)
+        grid_layout.addWidget(QLabel("INVENTARIO CLIENTE:"), 5, 2); grid_layout.addWidget(self.customer_inv_edit, 5, 3)
 
         main_layout.addLayout(grid_layout)
         
         pa_group = QGroupBox("PARTI APPLICATE")
         pa_layout = QVBoxLayout(pa_group)
+        pa_layout.setSpacing(6)
+        pa_layout.setContentsMargins(10, 8, 10, 8)
+
+        # --- Barra Preset Parti Applicate ---
+        preset_bar = QHBoxLayout()
+        preset_bar.setSpacing(6)
+        preset_bar.addWidget(QLabel("<b>📦 Preset:</b>"))
+        
+        self.pa_preset_combo = QComboBox()
+        self.pa_preset_combo.setMinimumWidth(220)
+        preset_bar.addWidget(self.pa_preset_combo, 1)
+
+        self.btn_apply_preset = QPushButton(qta.icon('fa5s.check', color='#16a34a'), " Applica")
+        self.btn_apply_preset.setToolTip("Carica le parti applicate del preset selezionato")
+        self.btn_apply_preset.clicked.connect(self._apply_selected_preset)
+        preset_bar.addWidget(self.btn_apply_preset)
+
+        self.btn_save_as_preset = QPushButton(qta.icon('fa5s.save', color='#2563eb'), " Salva come Preset...")
+        self.btn_save_as_preset.setToolTip("Salva le parti applicate attuali come nuovo preset")
+        self.btn_save_as_preset.clicked.connect(self._save_as_preset)
+        preset_bar.addWidget(self.btn_save_as_preset)
+
+        self.btn_manage_presets = QPushButton(qta.icon('fa5s.cog'), " Gestisci...")
+        self.btn_manage_presets.setToolTip("Apri il gestore dei preset delle parti applicate")
+        self.btn_manage_presets.clicked.connect(self._open_manage_presets)
+        preset_bar.addWidget(self.btn_manage_presets)
+
+        pa_layout.addLayout(preset_bar)
+
         self.applied_parts = [AppliedPart(**pa_data) for pa_data in data.get('applied_parts', [])]
         self.pa_table = QTableWidget(0, 3)
         self.pa_table.setHorizontalHeaderLabels(["NOME DESCRITTIVO", "TIPO", "CODICE STRUMENTO"])
-        pa_layout.addWidget(self.pa_table)
+        self.pa_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
+        self.pa_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        self.pa_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        self.pa_table.horizontalHeader().setMinimumSectionSize(110)
+        self.pa_table.setMinimumHeight(180)
+        self.pa_table.setAlternatingRowColors(True)
+        self.pa_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self.pa_table.setSelectionMode(QTableWidget.SingleSelection)
+        pa_layout.addWidget(self.pa_table, 1)
         
-        # --- Layout per i pulsanti di gestione P.A. ---
+        # --- Barra compatta inserimento ed eliminazione P.A. ---
         add_pa_layout = QHBoxLayout()
-        self.pa_name_input = QLineEdit()
-        self.pa_name_input.setPlaceholderText("Nome descrittivo (es. ECG Torace)")
+        add_pa_layout.setSpacing(6)
         
+        add_pa_layout.addWidget(QLabel("<b>NOME:</b>"))
+        self.pa_name_input = QLineEdit()
+        self.pa_name_input.setPlaceholderText("Nome descrittivo (es. ECG Torace, SpO2, Sonda...)")
+        self.pa_name_input.returnPressed.connect(self.add_pa)
+        add_pa_layout.addWidget(self.pa_name_input, 1)
+        
+        add_pa_layout.addWidget(QLabel("<b>TIPO:</b>"))
         self.pa_type_selector = QComboBox()
         self.pa_type_selector.addItems(["B", "BF", "CF"])
-        
-        add_pa_btn = QPushButton("AGGIUNGI P.A.")
-        add_pa_btn.clicked.connect(self.add_pa)
-        
-        add_pa_layout.addWidget(QLabel("NOME:"))
-        add_pa_layout.addWidget(self.pa_name_input)
-        add_pa_layout.addWidget(QLabel("TIPO:"))
+        self.pa_type_selector.setCurrentText("BF")
         add_pa_layout.addWidget(self.pa_type_selector)
+        
+        add_pa_btn = QPushButton(qta.icon('fa5s.plus-circle', color='#16a34a'), " Aggiungi P.A.")
+        add_pa_btn.clicked.connect(self.add_pa)
         add_pa_layout.addWidget(add_pa_btn)
+
+        delete_pa_btn = QPushButton(qta.icon('fa5s.trash-alt', color='#dc2626'), " Elimina Selezionata")
+        delete_pa_btn.clicked.connect(self.delete_pa)
+        add_pa_layout.addWidget(delete_pa_btn)
         
         pa_layout.addLayout(add_pa_layout)
 
-        delete_pa_layout = QHBoxLayout()
-        delete_pa_btn = QPushButton("Elimina P.A. Selezionata")
-        delete_pa_btn.setIcon(QApplication.style().standardIcon(QStyle.SP_TrashIcon))
-        delete_pa_btn.clicked.connect(self.delete_pa)
-        delete_pa_layout.addStretch()
-        delete_pa_layout.addWidget(delete_pa_btn)
-        pa_layout.addLayout(delete_pa_layout)
-
-        main_layout.addWidget(pa_group)
+        main_layout.addWidget(pa_group, 1)
         self.load_pa_table()
+        self._refresh_presets_combo()
         
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         buttons.accepted.connect(self.accept)
@@ -258,6 +301,7 @@ class DeviceDialog(QDialog):
         self.profile_combo.currentIndexChanged.connect(
             self._on_profile_combo_changed
         )
+        self.showMaximized()
 
     def _validate_required_fields(self):
         """
@@ -465,9 +509,108 @@ class DeviceDialog(QDialog):
         for pa in self.applied_parts:
             row = self.pa_table.rowCount()
             self.pa_table.insertRow(row)
-            self.pa_table.setItem(row, 0, QTableWidgetItem(pa.name.upper()))
-            self.pa_table.setItem(row, 1, QTableWidgetItem(pa.part_type.upper()))
-            self.pa_table.setItem(row, 2, QTableWidgetItem(pa.code.upper()))
+            
+            name_item = QTableWidgetItem(pa.name.upper())
+            type_item = QTableWidgetItem(pa.part_type.upper())
+            type_item.setTextAlignment(Qt.AlignCenter)
+            code_item = QTableWidgetItem(pa.code.upper())
+            code_item.setTextAlignment(Qt.AlignCenter)
+            
+            self.pa_table.setItem(row, 0, name_item)
+            self.pa_table.setItem(row, 1, type_item)
+            self.pa_table.setItem(row, 2, code_item)
+
+    def _refresh_presets_combo(self, select_preset_id: int | None = None):
+        """Aggiorna il menu a tendina dei preset disponibili."""
+        self.pa_preset_combo.blockSignals(True)
+        self.pa_preset_combo.clear()
+        self.pa_preset_combo.addItem("— Seleziona preset... —", None)
+        
+        presets = services.get_applied_parts_presets()
+        target_idx = 0
+        for idx, p in enumerate(presets, start=1):
+            parts_count = len(p.get('parts', []))
+            self.pa_preset_combo.addItem(f"📦 {p['name']} ({parts_count} P.A.)", p)
+            if select_preset_id is not None and p.get('id') == select_preset_id:
+                target_idx = idx
+                
+        self.pa_preset_combo.setCurrentIndex(target_idx)
+        self.pa_preset_combo.blockSignals(False)
+
+    def _apply_selected_preset(self):
+        """Applica le parti applicate del preset selezionato."""
+        preset = self.pa_preset_combo.currentData()
+        if not preset:
+            QMessageBox.information(self, "Nessun Preset", "Seleziona prima un preset dal menu a discesa.")
+            return
+
+        parts_to_load = preset.get('parts', [])
+        if not parts_to_load:
+            QMessageBox.warning(self, "Preset Vuoto", "Il preset selezionato non contiene parti applicate.")
+            return
+
+        if self.applied_parts:
+            reply = QMessageBox.question(
+                self,
+                "Sostituire Parti Applicate?",
+                f"Il dispositivo contiene già {len(self.applied_parts)} parti applicate.\n"
+                f"Vuoi sostituirle con quelle del preset '{preset.get('name')}'?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.Yes
+            )
+            if reply != QMessageBox.Yes:
+                return
+
+        self.applied_parts = []
+        for i, p in enumerate(parts_to_load):
+            code = self.AP_CODE_SEQUENCE[i] if i < len(self.AP_CODE_SEQUENCE) else f"PA{i+1}"
+            self.applied_parts.append(AppliedPart(
+                name=p.get('name', ''),
+                part_type=p.get('part_type', 'BF'),
+                code=code
+            ))
+        self.load_pa_table()
+
+    def _save_as_preset(self):
+        """Salva le parti applicate attualmente definite come nuovo preset."""
+        if not self.applied_parts:
+            QMessageBox.warning(self, "Nessuna Parte Applicata", "Inserisci almeno una parte applicata prima di salvare un preset.")
+            return
+
+        suggested_name = f"{self.mfg_edit.text().strip()} {self.model_edit.text().strip()}".strip()
+        if not suggested_name:
+            suggested_name = self.desc_edit.text().strip()
+
+        preset_name, ok = QInputDialog.getText(
+            self,
+            "Salva come Preset",
+            "Nome descrittivo per il nuovo preset:",
+            QLineEdit.Normal,
+            suggested_name
+        )
+        if not ok or not preset_name.strip():
+            return
+
+        preset_name = preset_name.strip()
+        parts_list = [{'name': p.name, 'part_type': p.part_type} for p in self.applied_parts]
+
+        try:
+            new_id = services.save_applied_parts_preset(name=preset_name, parts=parts_list)
+            self._refresh_presets_combo(select_preset_id=new_id)
+            QMessageBox.information(
+                self,
+                "Preset Salvato",
+                f"Il preset '{preset_name}' è stato salvato con successo ({len(parts_list)} parti applicate)!"
+            )
+        except Exception as e:
+            logging.error(f"Errore salvataggio preset: {e}", exc_info=True)
+            QMessageBox.critical(self, "Errore", f"Impossibile salvare il preset:\n{str(e)}")
+
+    def _open_manage_presets(self):
+        """Apre la dialog per gestire tutti i preset."""
+        dlg = AppliedPartsPresetsDialog(parent=self)
+        dlg.exec()
+        self._refresh_presets_combo()
 
     def open_copy_search(self):
         """Apre la dialog di ricerca e popola i campi con i dati del dispositivo scelto."""
@@ -707,7 +850,7 @@ class InstrumentDetailDialog(QDialog):
         self.name_edit = QLineEdit(data.get('instrument_name', ''))
         self.serial_edit = QLineEdit(data.get('serial_number', ''))
         self.version_edit = QLineEdit(data.get('fw_version', ''))
-        self.cal_date_edit = QLineEdit(data.get('calibration_date', ''))
+        self.cal_date_edit = QLineEdit(format_date_it(data.get('calibration_date', '')))
         self.sede_edit = QLineEdit(data.get('sede', ''))
         
         # Tipo strumento
@@ -719,13 +862,23 @@ class InstrumentDetailDialog(QDialog):
         else:
             self.type_combo.setCurrentIndex(0)
         
+        # Certificato PDF opzionale
+        self.chosen_pdf_path = None
+        self.cert_label = QLabel("Nessun PDF selezionato")
+        self.btn_select_pdf = QPushButton("📎 SFOGLIA PDF...")
+        self.btn_select_pdf.clicked.connect(self._select_pdf)
+        pdf_row = QHBoxLayout()
+        pdf_row.addWidget(self.cert_label)
+        pdf_row.addWidget(self.btn_select_pdf)
+        
         # 2. Aggiunta dei widget al layout
         layout.addRow("NOME STRUMENTO:", self.name_edit)
         layout.addRow("NUMERO DI SERIE:", self.serial_edit)
-        layout.addRow("VERSIONE FIRMWARE:", self.version_edit)
+        layout.addRow("NR CERTIFICATO DI CAL.:", self.version_edit)
         layout.addRow("DATA CALIBRAZIONE:", self.cal_date_edit)
         layout.addRow("SEDE:", self.sede_edit)
         layout.addRow("TIPO STRUMENTO:", self.type_combo)
+        layout.addRow("CERTIFICATO CAL.:", pdf_row)
         
         # 4. Aggiunta dei pulsanti finali
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -733,13 +886,22 @@ class InstrumentDetailDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+    def _select_pdf(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Seleziona Certificato di Calibrazione (PDF)", "", "Documenti PDF (*.pdf)"
+        )
+        if file_path:
+            self.chosen_pdf_path = file_path
+            self.cert_label.setText(os.path.basename(file_path))
+
     def get_data(self):
         instrument_type = 'functional' if self.type_combo.currentIndex() == 1 else 'electrical'
         return {
             "instrument_name": self.name_edit.text().strip().upper(),
             "serial_number": self.serial_edit.text().strip().upper(),
             "fw_version": self.version_edit.text().strip().upper(),
-            "calibration_date": self.cal_date_edit.text().strip().upper(),
+            "calibration_date": format_date_it(self.cal_date_edit.text().strip()),
             "sede": self.sede_edit.text().strip().upper() or None,
             "instrument_type": instrument_type,
+            "pdf_path": self.chosen_pdf_path,
         }

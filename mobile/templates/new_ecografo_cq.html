@@ -1,0 +1,344 @@
+{% extends "base.html" %}
+
+{% block title %}Nuovo CQ Sonde Ecografo — STM Mobile{% endblock %}
+{% block header_title %}Controllo Qualità Sonde{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">{{ device.description or device.model or 'Ecografo' }} · {{ customer_name }}</p>{% endblock %}
+
+{% block content %}
+<div class="px-4 py-4" x-data="ecografoCqForm()" x-init="init()">
+
+    <!-- Apparecchio -->
+    <div class="card p-3 mb-4 bg-slate-50 border border-slate-200">
+        <p class="text-[10px] uppercase font-bold text-gray-400">Ecografo in prova</p>
+        <p class="text-sm font-bold text-gray-800">{{ device.description or device.model or 'Ecografo' }}</p>
+        <p class="text-xs text-gray-500">
+            {% if device.manufacturer %}{{ device.manufacturer }}{% endif %}
+            {% if device.model %} · {{ device.model }}{% endif %}
+            {% if device.serial_number %} · S/N: {{ device.serial_number }}{% endif %}
+            {% if device.ams_inventory %} · Inv. AMS: {{ device.ams_inventory }}{% endif %}
+        </p>
+    </div>
+
+    {% if error %}
+    <div style="background:#fef2f2;border:1.5px solid #fca5a5;color:#991b1b;border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.875rem;display:flex;align-items:center;gap:.5rem;">
+        <i class="ti ti-alert-circle" style="flex-shrink:0;"></i> {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="POST" action="/mobile/devices/{{ device.uuid }}/new-ecografo-cq" id="cq-form" class="space-y-5">
+        <input type="hidden" name="probes_json" :value="JSON.stringify(probes)">
+
+        <!-- Dati Generali -->
+        <div class="card p-4 space-y-3">
+            <h2 class="section-title" style="border-bottom:1px solid #f1f5f9;padding-bottom:.5rem;">Dati Verifica</h2>
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Data verifica <span class="text-red-500">*</span></label>
+                <input type="date" name="verification_date" class="form-input" value="{{ today }}" required>
+            </div>
+        </div>
+
+        <!-- Sonde collegate e testate -->
+        <div class="space-y-4">
+            <div class="flex items-center justify-between px-1">
+                <h2 class="section-title" style="margin-bottom:0;">Sonde Testate (<span x-text="probes.length"></span>)</h2>
+                <button type="button" @click="addProbe()"
+                        class="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full flex items-center gap-1">
+                    <i class="ti ti-plus"></i> Aggiungi Sonda
+                </button>
+            </div>
+
+            <template x-for="(probe, pIdx) in probes" :key="probe._id">
+                <div class="card p-4 space-y-4 border-2" :class="probe.overall_judgment === 'NON CONFORME' ? 'border-red-200' : (probe.overall_judgment === 'CONFORME CON ANNOTAZIONE' ? 'border-amber-200' : 'border-blue-100')">
+
+                    <!-- Header Sonda -->
+                    <div class="flex items-center justify-between border-b border-gray-100 pb-2">
+                        <span class="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                            <i class="ti ti-activity-heartbeat text-blue-600"></i> Sonda <span x-text="pIdx + 1"></span>
+                        </span>
+                        <div class="flex items-center gap-2">
+                            <select x-model="probe.overall_judgment" class="text-xs font-bold py-1 px-2 rounded border border-gray-200"
+                                    :class="probe.overall_judgment === 'NON CONFORME' ? 'text-red-700 bg-red-50' : (probe.overall_judgment === 'CONFORME CON ANNOTAZIONE' ? 'text-amber-700 bg-amber-50' : 'text-green-700 bg-green-50')">
+                                <option value="CONFORME">CONFORME</option>
+                                <option value="CONFORME CON ANNOTAZIONE">C.C.A.</option>
+                                <option value="NON CONFORME">NON CONFORME</option>
+                            </select>
+                            <button type="button" @click="removeProbe(pIdx)" x-show="probes.length > 1"
+                                    class="text-red-500 hover:text-red-700 p-1" title="Rimuovi sonda">
+                                <i class="ti ti-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Info Anagrafica Sonda -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="col-span-2">
+                            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">Modello / Sigla Sonda <span class="text-red-500">*</span></label>
+                            <input type="text" x-model="probe.model" class="form-input text-xs" placeholder="Es: CA631, L12-4, C5-2..." required>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">Matricola S/N <span class="text-red-500">*</span></label>
+                            <input type="text" x-model="probe.serial_number" class="form-input text-xs" placeholder="S/N sonda" required>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">Tipo Sonda</label>
+                            <select x-model="probe.probe_type" class="form-input text-xs">
+                                <option value="Convex">Convex</option>
+                                <option value="Lineare">Lineare</option>
+                                <option value="Phased Array">Phased Array (Cardio)</option>
+                                <option value="Microconvex">Microconvex</option>
+                                <option value="Endocavitaria">Endocavitaria</option>
+                                <option value="Transesofagea">Transesofagea (TEE)</option>
+                                <option value="Volumetrica 3D/4D">Volumetrica 3D/4D</option>
+                                <option value="Altro">Altro</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">Costruttore</label>
+                            <input type="text" x-model="probe.manufacturer" class="form-input text-xs" placeholder="Es: Esaote, GE...">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">Inventario / Inv. AMS</label>
+                            <input type="text" x-model="probe.inventory" class="form-input text-xs" placeholder="Inv.">
+                        </div>
+                    </div>
+
+                    <!-- Parametri di acquisizione -->
+                    <div class="bg-gray-50 p-3 rounded-lg space-y-2">
+                        <p class="text-[10px] uppercase font-bold text-gray-500 tracking-wide">Parametri di acquisizione su Phantom</p>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-[9px] font-bold text-gray-400 uppercase">Fase di controllo</label>
+                                <select x-model="probe.control_stage" class="form-input text-xs py-1">
+                                    <option value="Baseline">Baseline (Accettazione)</option>
+                                    <option value="Controllo Periodico">Controllo Periodico</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[9px] font-bold text-gray-400 uppercase">Preset applicato</label>
+                                <input type="text" x-model="probe.preset" class="form-input text-xs py-1" placeholder="Es: Addome, Tiroide...">
+                            </div>
+                            <div>
+                                <label class="block text-[9px] font-bold text-gray-400 uppercase">Guadagno (Gain)</label>
+                                <input type="text" x-model="probe.gain" class="form-input text-xs py-1" placeholder="Es: 50 dB">
+                            </div>
+                            <div>
+                                <label class="block text-[9px] font-bold text-gray-400 uppercase">Potenza (Power)</label>
+                                <input type="text" x-model="probe.power" class="form-input text-xs py-1" placeholder="Es: 100% / 0 dB">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- I 10 Controlli di Qualità -->
+                    <div class="space-y-3 pt-1">
+                        <p class="text-[11px] uppercase font-bold text-blue-900 border-b border-gray-100 pb-1">I 10 Controlli Qualitativi</p>
+
+                        <!-- 1. Ispezione Visiva -->
+                        <div class="flex items-center justify-between text-xs py-1 border-b border-gray-50">
+                            <span class="text-gray-700 flex-1">1. Integrità sonda e cavo</span>
+                            <select x-model="probe.controls.c1.value" class="form-input text-xs w-28 py-1">
+                                <option value="BUONO">BUONO</option>
+                                <option value="SUFFICIENTE">SUFFICIENTE</option>
+                                <option value="INSUFFICIENTE">INSUFFICIENTE</option>
+                            </select>
+                        </div>
+
+                        <!-- 2. Uniformità -->
+                        <div class="flex items-center justify-between text-xs py-1 border-b border-gray-50">
+                            <span class="text-gray-700 flex-1">2. Uniformità campo / Dropout</span>
+                            <select x-model="probe.controls.c2.value" class="form-input text-xs w-28 py-1">
+                                <option value="BUONO">BUONO</option>
+                                <option value="SUFFICIENTE">SUFFICIENTE</option>
+                                <option value="INSUFFICIENTE">INSUFFICIENTE</option>
+                            </select>
+                        </div>
+
+                        <!-- 3. Profondità max penetrazione -->
+                        <div class="flex items-center justify-between text-xs py-1 border-b border-gray-50 gap-2">
+                            <span class="text-gray-700 flex-1">3. Profondità max penetrazione</span>
+                            <div class="flex items-center gap-1 flex-shrink-0">
+                                <input type="text" x-model="probe.controls.c3.value" class="form-input text-xs w-16 py-1 text-right" placeholder="cm">
+                                <span class="text-gray-400 text-[10px]">cm</span>
+                                <select x-model="probe.controls.c3.passed" class="text-xs py-1 px-1 rounded border border-gray-200">
+                                    <option :value="true">PASS</option>
+                                    <option :value="false">FAIL</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- 4. Misure verticali -->
+                        <div class="flex items-center justify-between text-xs py-1 border-b border-gray-50 gap-2">
+                            <span class="text-gray-700 flex-1">4. Precisione misure verticali</span>
+                            <div class="flex items-center gap-1 flex-shrink-0">
+                                <input type="text" x-model="probe.controls.c4.value" class="form-input text-xs w-16 py-1 text-right" placeholder="mm">
+                                <span class="text-gray-400 text-[10px]">mm</span>
+                                <select x-model="probe.controls.c4.passed" class="text-xs py-1 px-1 rounded border border-gray-200">
+                                    <option :value="true">PASS</option>
+                                    <option :value="false">FAIL</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- 5. Misure orizzontali -->
+                        <div class="flex items-center justify-between text-xs py-1 border-b border-gray-50 gap-2">
+                            <span class="text-gray-700 flex-1">5. Precisione misure orizzontali</span>
+                            <div class="flex items-center gap-1 flex-shrink-0">
+                                <input type="text" x-model="probe.controls.c5.value" class="form-input text-xs w-16 py-1 text-right" placeholder="mm">
+                                <span class="text-gray-400 text-[10px]">mm</span>
+                                <select x-model="probe.controls.c5.passed" class="text-xs py-1 px-1 rounded border border-gray-200">
+                                    <option :value="true">PASS</option>
+                                    <option :value="false">FAIL</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- 6. Zona morta -->
+                        <div class="flex items-center justify-between text-xs py-1 border-b border-gray-50 gap-2">
+                            <span class="text-gray-700 flex-1">6. Spessore zona morta</span>
+                            <div class="flex items-center gap-1 flex-shrink-0">
+                                <input type="text" x-model="probe.controls.c6.value" class="form-input text-xs w-16 py-1 text-right" placeholder="mm">
+                                <span class="text-gray-400 text-[10px]">mm</span>
+                                <select x-model="probe.controls.c6.passed" class="text-xs py-1 px-1 rounded border border-gray-200">
+                                    <option :value="true">PASS</option>
+                                    <option :value="false">FAIL</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- 7. Risoluzione 3 cm -->
+                        <div class="flex items-center justify-between text-xs py-1 border-b border-gray-50 gap-2">
+                            <span class="text-gray-700 flex-1">7. Risoluzione a 3 cm (Ass/Lat)</span>
+                            <div class="flex items-center gap-1 flex-shrink-0">
+                                <input type="text" x-model="probe.controls.c7.value" class="form-input text-xs w-16 py-1 text-right" placeholder="mm">
+                                <span class="text-gray-400 text-[10px]">mm</span>
+                                <select x-model="probe.controls.c7.passed" class="text-xs py-1 px-1 rounded border border-gray-200">
+                                    <option :value="true">PASS</option>
+                                    <option :value="false">FAIL</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- 8. Risoluzione 11 cm -->
+                        <div class="flex items-center justify-between text-xs py-1 border-b border-gray-50 gap-2">
+                            <span class="text-gray-700 flex-1">8. Risoluzione a 11 cm (Ass/Lat)</span>
+                            <div class="flex items-center gap-1 flex-shrink-0">
+                                <input type="text" x-model="probe.controls.c8.value" class="form-input text-xs w-16 py-1 text-right" placeholder="mm">
+                                <span class="text-gray-400 text-[10px]">mm</span>
+                                <select x-model="probe.controls.c8.passed" class="text-xs py-1 px-1 rounded border border-gray-200">
+                                    <option :value="true">PASS</option>
+                                    <option :value="false">FAIL</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <!-- 9. Masse anecoiche -->
+                        <div class="flex items-center justify-between text-xs py-1 border-b border-gray-50">
+                            <span class="text-gray-700 flex-1">9. Analisi masse anecoiche</span>
+                            <select x-model="probe.controls.c9.value" class="form-input text-xs w-28 py-1">
+                                <option value="PASS">CONFORME</option>
+                                <option value="FAIL">NON CONF.</option>
+                                <option value="NA">NON APPLICABILE</option>
+                            </select>
+                        </div>
+
+                        <!-- 10. Masse iperecogene -->
+                        <div class="flex items-center justify-between text-xs py-1">
+                            <span class="text-gray-700 flex-1">10. Analisi masse iperecogene</span>
+                            <select x-model="probe.controls.c10.value" class="form-input text-xs w-28 py-1">
+                                <option value="PASS">CONFORME</option>
+                                <option value="FAIL">NON CONF.</option>
+                                <option value="NA">NON APPLICABILE</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Note sonda -->
+                    <div>
+                        <input type="text" x-model="probe.notes" class="form-input text-xs" placeholder="Note specifiche per questa sonda...">
+                    </div>
+
+                </div>
+            </template>
+        </div>
+
+        <!-- Valutazione complessiva Ecografo -->
+        <div class="card p-4 space-y-4">
+            <h2 class="section-title" style="border-bottom:1px solid #f1f5f9;padding-bottom:.5rem;">Valutazione Complessiva Ecografo</h2>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Esito Globale <span class="text-red-500">*</span></label>
+                <select name="overall_status" class="form-input font-bold" required>
+                    <option value="CONFORME" selected class="text-green-700">CONFORME</option>
+                    <option value="CONFORME CON ANNOTAZIONE" class="text-amber-700">CONFORME CON ANNOTAZIONE</option>
+                    <option value="NON CONFORME" class="text-red-700">NON CONFORME</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1.5">Conclusioni e note finali</label>
+                <textarea name="notes" class="form-input" rows="3" placeholder="Conclusioni del controllo qualità sonde..."></textarea>
+            </div>
+        </div>
+
+        <!-- Pulsanti azione -->
+        <div class="space-y-2 pb-6">
+            <button type="submit" class="btn-primary" id="submit-btn">
+                <i class="ti ti-device-floppy" style="margin-right:.375rem;"></i>Salva Controllo Qualità
+            </button>
+            <a href="/mobile/devices/{{ device.uuid }}" class="btn-secondary block text-center">Annulla</a>
+        </div>
+
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function ecografoCqForm() {
+    return {
+        probes: [],
+        init() {
+            this.addProbe();
+        },
+        addProbe() {
+            this.probes.push({
+                _id: Date.now() + Math.random(),
+                model: '',
+                serial_number: '',
+                probe_type: 'Convex',
+                manufacturer: '{{ device.manufacturer or "" }}',
+                inventory: '',
+                control_stage: 'Baseline',
+                preset: '',
+                gain: '',
+                power: '',
+                overall_judgment: 'CONFORME',
+                notes: '',
+                controls: {
+                    c1: { key: 'ispezione_visiva', label: 'Ispezione visiva', value: 'BUONO', passed: true },
+                    c2: { key: 'uniformita', label: 'Uniformità', value: 'BUONO', passed: true },
+                    c3: { key: 'profondita_max', label: 'Profondità max', value: '', unit: 'cm', passed: true },
+                    c4: { key: 'misure_verticali', label: 'Misure verticali', value: '', unit: 'mm', passed: true },
+                    c5: { key: 'misure_orizzontali', label: 'Misure orizzontali', value: '', unit: 'mm', passed: true },
+                    c6: { key: 'zona_morta', label: 'Zona morta', value: '', unit: 'mm', passed: true },
+                    c7: { key: 'risoluzione_3cm', label: 'Risoluzione 3 cm', value: '', unit: 'mm', passed: true },
+                    c8: { key: 'risoluzione_11cm', label: 'Risoluzione 11 cm', value: '', unit: 'mm', passed: true },
+                    c9: { key: 'massa_anecoica', label: 'Massa anecoica', value: 'PASS', passed: true },
+                    c10: { key: 'massa_iperecogena', label: 'Massa iperecogena', value: 'PASS', passed: true }
+                }
+            });
+        },
+        removeProbe(idx) {
+            if (this.probes.length > 1) {
+                this.probes.splice(idx, 1);
+            }
+        }
+    };
+}
+
+document.getElementById('cq-form').addEventListener('submit', function(e) {
+    const btn = document.getElementById('submit-btn');
+    btn.textContent = 'Salvataggio...';
+    btn.disabled = true;
+});
+</script>
+{% endblock %}

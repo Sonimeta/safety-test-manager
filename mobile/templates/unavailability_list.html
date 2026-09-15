@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block title %}Non a Disposizione — STM Mobile{% endblock %}
+{% block header_title %}Non a disposizione{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">{{ reports|length }} segnalazion{% if reports|length != 1 %}i{% else %}e{% endif %}</p>{% endblock %}
+
+{% block content %}
+<div class="px-4 py-4 space-y-4">
+
+    {% if reports %}
+    <div class="card overflow-hidden">
+        {% for r in reports %}
+        <div class="list-item flex-col items-start gap-2 border-b border-gray-100 last:border-0 p-3">
+            <div class="flex items-center justify-between w-full">
+                <a href="/mobile/devices/{{ r.device_uuid }}" class="text-sm font-bold text-gray-900 truncate hover:text-blue-600">
+                    {{ r.device_description or r.device_model or 'Apparecchio' }}
+                </a>
+                <span style="font-size:.65rem;font-weight:700;background:#fef3c7;color:#b45309;border-radius:20px;padding:2px 8px;">
+                    {{ r.period_start | date_it }}
+                </span>
+            </div>
+
+            <div class="text-xs text-gray-600 w-full">
+                <div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-500 mb-1">
+                    {% if r.serial_number %}<span>S/N: <b>{{ r.serial_number }}</b></span>{% endif %}
+                    {% if r.ams_inventory %}<span>AMS: <b>{{ r.ams_inventory }}</b></span>{% endif %}
+                    {% if r.department %}<span>Rep: <b>{{ r.department }}</b></span>{% endif %}
+                    {% if r.destination_name %}<span>Dest: <b>{{ r.destination_name }}</b></span>{% endif %}
+                </div>
+                <p class="text-amber-800 font-semibold text-xs mt-1">
+                    <i class="ti ti-alert-triangle text-amber-600 mr-1"></i>{{ r.reason }}
+                </p>
+                {% if r.notes %}
+                <p class="text-[11px] text-gray-500 italic mt-0.5 bg-gray-50 p-1.5 rounded">"{{ r.notes }}"</p>
+                {% endif %}
+            </div>
+
+            <div class="flex items-center justify-between w-full pt-1 text-[11px] text-gray-400 border-t border-gray-50">
+                <span>Tecnico: {{ r.technician_name or 'N/D' }}</span>
+                <div class="flex gap-2">
+                    <a href="/mobile/devices/{{ r.device_uuid }}" class="text-blue-600 font-semibold hover:underline">Scheda</a>
+                    <span>·</span>
+                    <form method="POST" action="/mobile/unavailability/{{ r.uuid }}/delete" onsubmit="return confirm('Rimuovere questa segnalazione?');" style="display:inline;">
+                        <button type="submit" class="text-red-500 font-semibold hover:underline">Rimuovi</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div style="display:flex;flex-direction:column;align-items:center;padding:4rem 1rem;color:#94a3b8;">
+        <i class="ti ti-circle-check" style="font-size:3.5rem;margin-bottom:.75rem;color:#10b981;"></i>
+        <p class="text-sm font-semibold">Nessuna apparecchiatura segnalata</p>
+        <p class="text-xs mt-1">Tutti i dispositivi sono disponibili.</p>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

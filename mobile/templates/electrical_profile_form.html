@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+
+{% block title %}{% if mode == 'edit' %}Modifica Profilo Elettrico{% else %}Nuovo Profilo Elettrico{% endif %} — STM Mobile{% endblock %}
+{% block header_title %}{% if mode == 'edit' %}Modifica Profilo{% else %}Nuovo Profilo Elettrico{% endif %}{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">Norma CEI EN 62353 / CEI 62-5</p>{% endblock %}
+
+{% block content %}
+<div class="px-4 py-4" x-data="electricalProfileForm()" x-init="init()">
+
+    {% if error %}
+    <div style="background:#fef2f2;border:1.5px solid #fca5a5;color:#991b1b;border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.875rem;display:flex;align-items:center;gap:.5rem;">
+        <i class="ti ti-alert-circle" style="flex-shrink:0;"></i> {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="POST" @submit="submitForm($event)" class="space-y-4">
+        <input type="hidden" name="tests_json" :value="JSON.stringify(tests)">
+
+        <!-- 1. Dati Principali -->
+        <div class="card p-4 space-y-3">
+            <h2 class="section-title" style="border-bottom:1px solid #f1f5f9;padding-bottom:.5rem;">1. Informazioni Profilo</h2>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">Nome Profilo <span class="text-red-500">*</span></label>
+                <input type="text" name="name" x-model="name" @input="onNameInput()" required class="form-input text-xs"
+                       placeholder="es. CEI EN 62353 Diretto - Classe 1">
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">Chiave Univoca <span class="text-red-500">*</span></label>
+                <input type="text" name="profile_key" x-model="profileKey" required class="form-input text-xs"
+                       placeholder="es. cei_62353_diretto_cl1">
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">Norma di Riferimento</label>
+                <input type="text" name="norma" x-model="norma" class="form-input text-xs"
+                       placeholder="es. CEI EN 62353:2015">
+            </div>
+        </div>
+
+        <!-- 2. Prove e Limiti di Misura -->
+        <div class="card p-4 space-y-3">
+            <div class="flex items-center justify-between border-bottom pb-2 border-slate-100">
+                <h2 class="section-title" style="margin-bottom:0;">2. Prove di Misura (<span x-text="tests.length"></span>)</h2>
+                <button type="button" @click="addCustomTest()" class="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg">
+                    <i class="ti ti-plus"></i> Aggiungi Prova
+                </button>
+            </div>
+
+            <!-- Quick Preset Buttons -->
+            <div class="bg-slate-50 p-2.5 rounded-xl border border-slate-200/70 space-y-1.5">
+                <p class="text-[10px] font-bold text-gray-500 uppercase">Inserimento Rapido Prove Standard:</p>
+                <div class="flex flex-wrap gap-1">
+                    <button type="button" @click="addPreset('pe_res')" class="text-[10px] font-bold bg-white text-blue-800 border border-slate-200 px-2 py-1 rounded shadow-sm">+ Resistenza PE (0.3Ω)</button>
+                    <button type="button" @click="addPreset('ins_res')" class="text-[10px] font-bold bg-white text-blue-800 border border-slate-200 px-2 py-1 rounded shadow-sm">+ Isolamento (>2MΩ)</button>
+                    <button type="button" @click="addPreset('touch_leakage')" class="text-[10px] font-bold bg-white text-blue-800 border border-slate-200 px-2 py-1 rounded shadow-sm">+ Dispersione Involucro (100µA)</button>
+                    <button type="button" @click="addPreset('patient_leakage')" class="text-[10px] font-bold bg-white text-blue-800 border border-slate-200 px-2 py-1 rounded shadow-sm">+ Dispersione Paziente AP</button>
+                </div>
+            </div>
+
+            <!-- Tests Cards -->
+            <div class="space-y-3 pt-1">
+                <template x-for="(test, index) in tests" :key="index">
+                    <div class="p-3 bg-white border rounded-xl border-slate-200 space-y-2.5 shadow-sm">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                                <span class="w-5 h-5 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-[10px]" x-text="index + 1"></span>
+                                <span x-text="test.name || 'Nuova Prova'"></span>
+                            </span>
+                            <div class="flex items-center gap-1">
+                                <button type="button" @click="moveUp(index)" :disabled="index === 0" class="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30">
+                                    <i class="ti ti-chevron-up"></i>
+                                </button>
+                                <button type="button" @click="moveDown(index)" :disabled="index === tests.length - 1" class="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30">
+                                    <i class="ti ti-chevron-down"></i>
+                                </button>
+                                <button type="button" @click="removeTest(index)" class="p-1 text-red-500 hover:text-red-700">
+                                    <i class="ti ti-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-[10px] font-bold text-gray-500 uppercase mb-0.5">Nome Prova</label>
+                            <input type="text" x-model="test.name" required class="form-input text-xs" placeholder="es. Resistenza di terra">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase mb-0.5">Parametro</label>
+                                <select x-model="test.parameter" class="form-input text-xs">
+                                    <option value="pe_res">Resistenza PE (pe_res)</option>
+                                    <option value="ins_res">Isolamento (ins_res)</option>
+                                    <option value="touch_leakage">Dispersione Involucro (touch_leakage)</option>
+                                    <option value="earth_leakage">Dispersione Terra (earth_leakage)</option>
+                                    <option value="patient_leakage">Dispersione Paziente (patient_leakage)</option>
+                                    <option value="custom">Altro / Personalizzato</option>
+                                </select>
+                            </div>
+                            <div class="flex items-end pb-1.5">
+                                <label class="flex items-center gap-1.5 text-xs cursor-pointer">
+                                    <input type="checkbox" x-model="test.is_applied_part_test" class="rounded text-blue-600">
+                                    <span class="text-[11px] font-semibold text-gray-700">Prova su Parti Applicate</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Limiti standard (se NON è prova su parti applicate) -->
+                        <div x-show="!test.is_applied_part_test" class="grid grid-cols-3 gap-2 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                            <div>
+                                <label class="block text-[9px] font-bold text-gray-500 uppercase">Operatore</label>
+                                <select x-model="test.operator" class="form-input text-xs py-1">
+                                    <option value="<=">&le; Minore o uguale</option>
+                                    <option value=">=">&ge; Maggiore o uguale</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block text-[9px] font-bold text-gray-500 uppercase">Soglia Limite</label>
+                                <input type="text" x-model="test.limit_value" class="form-input text-xs py-1" placeholder="es. 0.3">
+                            </div>
+                            <div>
+                                <label class="block text-[9px] font-bold text-gray-500 uppercase">Unità Misura</label>
+                                <input type="text" x-model="test.unit" class="form-input text-xs py-1" placeholder="es. Ohm, mA, MΩ">
+                            </div>
+                        </div>
+
+                        <!-- Limiti differenziati AP (se è prova su parti applicate) -->
+                        <div x-show="test.is_applied_part_test" class="space-y-1.5 bg-blue-50/60 p-2 rounded-lg border border-blue-100">
+                            <p class="text-[10px] font-bold text-blue-900">Limiti per Tipo Parte Applicata (B, BF, CF):</p>
+                            <div class="grid grid-cols-3 gap-1.5">
+                                <div>
+                                    <label class="block text-[9px] font-bold text-gray-600">Tipo B</label>
+                                    <input type="text" x-model="test.limit_b" class="form-input text-xs py-1" placeholder="es. 0.1 mA">
+                                </div>
+                                <div>
+                                    <label class="block text-[9px] font-bold text-gray-600">Tipo BF</label>
+                                    <input type="text" x-model="test.limit_bf" class="form-input text-xs py-1" placeholder="es. 0.05 mA">
+                                </div>
+                                <div>
+                                    <label class="block text-[9px] font-bold text-gray-600">Tipo CF</label>
+                                    <input type="text" x-model="test.limit_cf" class="form-input text-xs py-1" placeholder="es. 0.01 mA">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Submit & Back -->
+        <div class="space-y-2 pb-6">
+            <button type="submit" class="btn-primary">
+                <i class="ti ti-device-floppy mr-1"></i>Salva Profilo Elettrico
+            </button>
+            <a href="/mobile/profiles" class="btn-secondary block text-center">Annulla</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const initialTests = {{ initial_tests_json|safe }};
+
+function electricalProfileForm() {
+    return {
+        name: '{{ profile.name or "" }}',
+        profileKey: '{{ profile.profile_key or "" }}',
+        norma: '{{ profile.norma or "CEI EN 62353" }}',
+        tests: initialTests || [],
+
+        init() {
+            if (this.tests.length === 0 && '{{ mode }}' === 'new') {
+                this.addPreset('pe_res');
+                this.addPreset('ins_res');
+                this.addPreset('touch_leakage');
+            }
+        },
+
+        onNameInput() {
+            if ('{{ mode }}' === 'new' && !this.profileKeyManuallyEdited) {
+                this.profileKey = this.name.toLowerCase()
+                    .replace(/[^a-z0-9]+/g, '_')
+                    .replace(/^_+|_+$/g, '');
+            }
+        },
+
+        addCustomTest() {
+            this.tests.push({
+                name: 'Nuova Prova',
+                parameter: 'custom',
+                is_applied_part_test: false,
+                operator: '<=',
+                limit_value: '',
+                unit: '',
+                limit_b: '',
+                limit_bf: '',
+                limit_cf: ''
+            });
+        },
+
+        addPreset(type) {
+            if (type === 'pe_res') {
+                this.tests.push({
+                    name: 'Resistenza conduttore di protezione (PE)',
+                    parameter: 'pe_res',
+                    is_applied_part_test: false,
+                    operator: '<=',
+                    limit_value: '0.30',
+                    unit: 'Ohm',
+                    limit_b: '', limit_bf: '', limit_cf: ''
+                });
+            } else if (type === 'ins_res') {
+                this.tests.push({
+                    name: 'Resistenza di isolamento',
+                    parameter: 'ins_res',
+                    is_applied_part_test: false,
+                    operator: '>=',
+                    limit_value: '2.0',
+                    unit: 'MOhm',
+                    limit_b: '', limit_bf: '', limit_cf: ''
+                });
+            } else if (type === 'touch_leakage') {
+                this.tests.push({
+                    name: 'Corrente di dispersione involucro (Touch Leakage)',
+                    parameter: 'touch_leakage',
+                    is_applied_part_test: false,
+                    operator: '<=',
+                    limit_value: '100',
+                    unit: 'uA',
+                    limit_b: '', limit_bf: '', limit_cf: ''
+                });
+            } else if (type === 'patient_leakage') {
+                this.tests.push({
+                    name: 'Corrente di dispersione nel paziente (Parti Applicate)',
+                    parameter: 'patient_leakage',
+                    is_applied_part_test: true,
+                    operator: '<=',
+                    limit_value: '',
+                    unit: 'uA',
+                    limit_b: '100 uA',
+                    limit_bf: '50 uA',
+                    limit_cf: '10 uA'
+                });
+            }
+        },
+
+        removeTest(index) {
+            this.tests.splice(index, 1);
+        },
+
+        moveUp(index) {
+            if (index > 0) {
+                const item = this.tests.splice(index, 1)[0];
+                this.tests.splice(index - 1, 0, item);
+            }
+        },
+
+        moveDown(index) {
+            if (index < this.tests.length - 1) {
+                const item = this.tests.splice(index, 1)[0];
+                this.tests.splice(index + 1, 0, item);
+            }
+        },
+
+        submitForm(e) {
+            if (this.tests.length === 0) {
+                alert('Inserisci almeno una prova di misura nel profilo.');
+                e.preventDefault();
+                return;
+            }
+        }
+    };
+}
+</script>
+{% endblock %}

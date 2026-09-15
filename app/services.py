@@ -1462,32 +1462,33 @@ def debug_verification_stats():
         logging.error(f"Debug verification stats error: {e}")
         return None
 
+def get_electrical_verification_stats():
+    """Recupera statistiche sulle verifiche elettriche (totale, conformi, non conformi)."""
+    return database.get_electrical_verification_stats()
+
 def get_verification_stats():
-    """Get verification statistics."""
-    try:
-        with database.DatabaseConnection() as conn:
-            electrical_total = conn.execute(
-                "SELECT COUNT(*) AS total FROM verifications WHERE is_deleted = 0"
-            ).fetchone()
-            functional_total = conn.execute(
-                "SELECT COUNT(*) AS total FROM functional_verifications WHERE is_deleted = 0"
-            ).fetchone()
-
-            electrical_count = int((electrical_total["total"] if electrical_total else 0) or 0)
-            functional_count = int((functional_total["total"] if functional_total else 0) or 0)
-
-            stats = {
-                'totale': electrical_count + functional_count,
-                'verifiche_elettriche': electrical_count,
-                'verifiche_funzionali': functional_count,
-            }
-
-            logging.info(f"Verification stats: {stats}")
-            return stats
-            
-    except Exception as e:
-        logging.error(f"Error getting verification stats: {e}", exc_info=True)
-        return {'totale': 0, 'verifiche_elettriche': 0, 'verifiche_funzionali': 0}
+    """Recupera statistiche complessive sulle verifiche (totali, elettriche, funzionali, conformi)."""
+    el = database.get_electrical_verification_stats() or {}
+    fn = database.get_functional_verification_stats() or {}
+    
+    total_el = int(el.get('totale', 0) or 0)
+    total_fn = int(fn.get('totale', 0) or 0)
+    conformi_el = int(el.get('conformi', 0) or 0)
+    conformi_fn = int(fn.get('conformi', 0) or 0)
+    non_conformi_el = int(el.get('non_conformi', 0) or 0)
+    non_conformi_fn = int(fn.get('non_conformi', 0) or 0)
+    
+    return {
+        'totale': total_el + total_fn,
+        'verifiche_elettriche': total_el,
+        'verifiche_funzionali': total_fn,
+        'conformi': conformi_el + conformi_fn,
+        'non_conformi': non_conformi_el + non_conformi_fn,
+        'conformi_elettriche': conformi_el,
+        'non_conformi_elettriche': non_conformi_el,
+        'conformi_funzionali': conformi_fn,
+        'non_conformi_funzionali': non_conformi_fn,
+    }
 
 # ==============================================================================
 # SERVIZI PER IMPORT / EXPORT
@@ -1605,15 +1606,13 @@ def get_all_instruments(instrument_type: str = None, apply_user_filter: bool = T
     
     Args:
         instrument_type: 'electrical' per strumenti elettrici, 'functional' per strumenti funzionali, None per tutti
-        apply_user_filter: Se True e l'utente corrente non è admin, applica automaticamente il filtro per sede dell'utente
+        apply_user_filter: Se True, applica automaticamente il filtro per sede dell'utente loggato (incluso admin se ha una sede assegnata)
         user_sede: Forza una specifica sede (se None e apply_user_filter=True, usa la sede dell'utente loggato)
     """
     effective_sede = user_sede
     if apply_user_filter and effective_sede is None:
         try:
-            role = auth_manager.get_current_role()
-            if role != 'admin':
-                effective_sede = auth_manager.get_current_sede()
+            effective_sede = auth_manager.get_current_sede()
         except Exception:
             effective_sede = None
 
@@ -1621,11 +1620,11 @@ def get_all_instruments(instrument_type: str = None, apply_user_filter: bool = T
 
 def add_instrument(instrument_name: str, serial_number: str, 
                    fw_version: str, calibration_date: str, instrument_type: str = 'electrical',
-                   sede: str = None):
-    """Add a new instrument to the database."""
+                   sede: str = None) -> int:
+    """Add a new instrument to the database and returns its new ID."""
     new_uuid = str(uuid.uuid4())
     timestamp = datetime.now(timezone.utc).isoformat()
-    database.add_instrument(
+    new_id = database.add_instrument(
         new_uuid, 
         instrument_name, 
         serial_number, 
@@ -1637,8 +1636,9 @@ def add_instrument(instrument_name: str, serial_number: str,
     )
     
     # Log audit
-    log_action('CREATE', 'instrument', entity_description=f"{instrument_name} (S/N: {serial_number})",
+    log_action('CREATE', 'instrument', entity_id=new_id, entity_description=f"{instrument_name} (S/N: {serial_number})",
                details={'fw_version': fw_version, 'calibration_date': calibration_date, 'instrument_type': instrument_type, 'sede': sede})
+    return new_id
 
 def update_instrument(inst_id: int, instrument_name: str, serial_number: str, 
                       fw_version: str, calibration_date: str, instrument_type: str = None,
@@ -1672,6 +1672,35 @@ def delete_instrument(inst_id: int):
     
     # Log audit
     log_action('DELETE', 'instrument', entity_id=inst_id, entity_description=inst_desc)
+
+def get_instrument_attachments(instrument_id: int) -> list[dict]:
+    """Restituisce la lista degli allegati/certificati per uno strumento."""
+    return database.get_instrument_attachments(instrument_id)
+
+def save_instrument_attachment(instrument_id: int, filename: str, file_data: bytes, description: str = "Certificato di calibrazione") -> int:
+    """Salva un certificato di calibrazione PDF per uno strumento."""
+    att_id = database.save_instrument_attachment(
+        instrument_id=instrument_id,
+        filename=filename,
+        file_data=file_data,
+        mime_type="application/pdf",
+        description=description
+    )
+    log_action('CREATE', 'instrument_attachment', entity_id=instrument_id,
+               entity_description=f"Certificato calibrazione: {filename}")
+    return att_id
+
+def delete_instrument_attachment(attachment_id: int) -> bool:
+    """Elimina un allegato/certificato di uno strumento."""
+    deleted = database.delete_verification_attachment(attachment_id)
+    if deleted:
+        log_action('DELETE', 'instrument_attachment', entity_id=attachment_id,
+                   entity_description=f"Allegato strumento ID {attachment_id}")
+    return deleted
+
+def get_instrument_attachments_count_map() -> dict[int, int]:
+    """Restituisce una mappa instrument_id -> conteggio certificati attivi."""
+    return database.get_instrument_attachments_count_map()
 
 def set_default_instrument(inst_id: int):
     timestamp = datetime.now(timezone.utc)
@@ -2439,3 +2468,33 @@ def download_attachment_bytes(att_uuid: str) -> bytes | None:
     except Exception as e:
         logging.error(f"Errore download allegato {att_uuid}: {e}")
         return None
+
+
+# ==============================================================================
+# SERVIZI PRESET PARTI APPLICATE
+# ==============================================================================
+
+def get_applied_parts_presets():
+    """Recupera tutti i preset delle parti applicate attivi."""
+    return database.get_applied_parts_presets()
+
+
+def get_applied_parts_preset_by_id(preset_id: int):
+    """Recupera un singolo preset per ID."""
+    return database.get_applied_parts_preset_by_id(preset_id)
+
+
+def save_applied_parts_preset(name: str, parts: list, description: str = "", preset_id: int | None = None) -> int:
+    """Crea o aggiorna un preset di parti applicate."""
+    return database.save_applied_parts_preset(name, parts, description, preset_id)
+
+
+def delete_applied_parts_preset(preset_id: int) -> bool:
+    """Elimina un preset di parti applicate."""
+    return database.delete_applied_parts_preset(preset_id)
+
+
+def get_device_last_verification_outcome(device_id: int) -> dict | None:
+    """Recupera la data e l'esito della verifica più recente (elettrica o funzionale)."""
+    return database.get_device_last_verification_outcome(device_id)
+

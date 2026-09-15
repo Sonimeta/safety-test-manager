@@ -5,6 +5,9 @@
 {% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">{{ customer_name }}</p>{% endblock %}
 
 {% block header_actions %}
+<a href="/mobile/dossier?destination_uuid={{ destination.uuid }}" class="btn-sm" style="background:#2563eb;color:#fff;" title="Genera Fascicolo PDF">
+    <i class="ti ti-file-text"></i>
+</a>
 <a href="/mobile/destinations/{{ destination.uuid }}/edit" class="btn-sm" style="background:rgba(255,255,255,.15);color:#fff;">
     <i class="ti ti-pencil"></i>
 </a>
@@ -14,7 +17,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="px-4 py-4 space-y-4">
+<div class="px-4 py-4 space-y-4" x-data="{ tab: 'devices' }">
 
     {% if destination.address %}
     <div class="card p-4 flex items-start gap-3">
@@ -23,26 +26,40 @@
     </div>
     {% endif %}
 
-    <!-- Devices -->
-    <div>
-        <div class="flex items-center justify-between mb-2 px-1">
-            <p class="section-title" style="margin-bottom:0;">Dispositivi ({{ devices|length }})</p>
-            <div class="flex items-center gap-2">
+    <!-- Tabs Dispositivi / Verifiche Sistema -->
+    <div class="flex bg-gray-200 rounded-xl p-1 gap-1">
+        <button @click="tab = 'devices'"
+                :class="tab === 'devices' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-500'"
+                class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all">
+            Dispositivi ({{ devices|length }})
+        </button>
+        <button @click="tab = 'sys_verifs'"
+                :class="tab === 'sys_verifs' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-500'"
+                class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all">
+            Verifiche Sistema ({{ system_verifications|length }})
+        </button>
+    </div>
+
+    <!-- Tab 1: Devices -->
+    <div x-show="tab === 'devices'" x-cloak class="space-y-2">
+        <div class="flex items-center justify-between mb-1 px-1">
+            <p class="text-xs text-gray-400">{{ devices|length }} dispositivo/i</p>
+            <div class="flex items-center gap-1.5">
                 {% if is_manager %}
                 <a href="/mobile/assignments/new?destination_uuid={{ destination.uuid }}"
-                   style="font-size:.75rem;font-weight:700;color:#1d4ed8;background:#eff6ff;padding:.25rem .75rem;border-radius:20px;text-decoration:none;display:flex;align-items:center;gap:3px;"
+                   style="font-size:.7rem;font-weight:700;color:#1d4ed8;background:#eff6ff;padding:.25rem .625rem;border-radius:20px;text-decoration:none;display:flex;align-items:center;gap:2px;"
                    title="Assegna verifica per tutta la sede">
-                    <i class="ti ti-clipboard-plus" style="font-size:.875rem;"></i> Assegna
+                    <i class="ti ti-clipboard-plus"></i> Assegna
                 </a>
                 {% endif %}
                 <a href="/mobile/destinations/{{ destination.uuid }}/verification-round"
-                   style="font-size:.75rem;font-weight:700;color:#7c3aed;background:#f5f3ff;padding:.25rem .75rem;border-radius:20px;text-decoration:none;display:flex;align-items:center;gap:3px;"
+                   style="font-size:.7rem;font-weight:700;color:#7c3aed;background:#f5f3ff;padding:.25rem .625rem;border-radius:20px;text-decoration:none;display:flex;align-items:center;gap:2px;"
                    title="Chiudi giro verifiche e segnala non disponibili">
-                    <i class="ti ti-checkbox" style="font-size:.875rem;"></i> Chiudi giro
+                    <i class="ti ti-checkbox"></i> Giro
                 </a>
                 <a href="/mobile/destinations/{{ destination.uuid }}/devices/new"
-                   style="font-size:.75rem;font-weight:700;color:#059669;background:#ecfdf5;padding:.25rem .75rem;border-radius:20px;text-decoration:none;display:flex;align-items:center;gap:3px;">
-                    <i class="ti ti-plus" style="font-size:.875rem;"></i> Nuovo dispositivo
+                   style="font-size:.7rem;font-weight:700;color:#059669;background:#ecfdf5;padding:.25rem .625rem;border-radius:20px;text-decoration:none;display:flex;align-items:center;gap:2px;">
+                    <i class="ti ti-plus"></i> Nuovo
                 </a>
             </div>
         </div>
@@ -71,7 +88,7 @@
                         {% elif dev.next_verification_date <= expiry_threshold %}text-amber-600 font-semibold
                         {% else %}text-gray-400{% endif %}">
                         <i class="ti ti-calendar-event" style="font-size:.8rem;"></i>
-                        Prossima: {{ dev.next_verification_date }}
+                        Prossima: {{ dev.next_verification_date | date_it }}
                     </p>
                     {% endif %}
                 </div>
@@ -83,6 +100,50 @@
         <div class="card" style="display:flex;flex-direction:column;align-items:center;padding:2rem 1rem;color:#94a3b8;">
             <i class="ti ti-device-heart-monitor-off" style="font-size:2.5rem;margin-bottom:.5rem;"></i>
             <p class="text-sm">Nessun dispositivo registrato</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Tab 2: System Verifications -->
+    <div x-show="tab === 'sys_verifs'" x-cloak class="space-y-2">
+        <div class="flex items-center justify-between mb-1 px-1">
+            <p class="text-xs text-gray-400">{{ system_verifications|length }} verifica/e di sistema</p>
+            <a href="/mobile/destinations/{{ destination.uuid }}/new-system-verification"
+               style="font-size:.7rem;font-weight:700;color:#2563eb;background:#eff6ff;padding:.25rem .75rem;border-radius:20px;text-decoration:none;display:flex;align-items:center;gap:3px;">
+                <i class="ti ti-plus"></i> Nuova Verifica Sistema
+            </a>
+        </div>
+
+        {% if system_verifications %}
+        <div class="card overflow-hidden">
+            {% for sv in system_verifications %}
+            <a href="/mobile/system-verifications/{{ sv.uuid }}" class="list-item">
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-semibold text-gray-800 truncate">{{ sv.system_name or 'Sistema' }}</p>
+                    <p class="text-xs text-gray-400">{{ sv.verification_date | date_it }} · {{ sv.device_count }} dispositivi
+                        {% if sv.verification_code %} · <span class="font-mono">{{ sv.verification_code }}</span>{% endif %}
+                    </p>
+                </div>
+                <div class="ml-3 flex-shrink-0">
+                    {% if sv.overall_status == 'CONFORME CON ANNOTAZIONE' %}
+                    <span class="badge-warn">C.C.A.</span>
+                    {% elif sv.overall_status in ('CONFORME', 'PASSATO', 'PASS', 'OK') %}
+                    <span class="badge-pass">CONF.</span>
+                    {% else %}
+                    <span class="badge-fail">N.CONF.</span>
+                    {% endif %}
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="card" style="display:flex;flex-direction:column;align-items:center;padding:2rem 1rem;color:#94a3b8;">
+            <i class="ti ti-link" style="font-size:2.5rem;margin-bottom:.5rem;"></i>
+            <p class="text-sm">Nessuna verifica di sistema</p>
+            <a href="/mobile/destinations/{{ destination.uuid }}/new-system-verification"
+               style="margin-top:.75rem;font-size:.75rem;font-weight:700;color:#2563eb;background:#eff6ff;padding:.375rem 1rem;border-radius:20px;text-decoration:none;">
+                + Avvia prima verifica sistema
+            </a>
         </div>
         {% endif %}
     </div>

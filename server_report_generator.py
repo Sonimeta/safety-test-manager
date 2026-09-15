@@ -614,3 +614,163 @@ def create_report(filename, device_info, customer_info, destination_info,
 
     doc.build(story)
     logging.info(f"[server_report_generator] PDF generato: {filename}")
+
+
+# ─── Report Verifica di Sistema (CEI 62353) ─────────────────────────────────
+
+def _add_system_devices_info(story, styles, devices_info, verification_data):
+    """Aggiunge la tabella con l'elenco dei dispositivi del sistema."""
+    story.append(_p("Dispositivi del Sistema", styles['SectionHeader']))
+
+    header_row = [
+        _p("N.", styles['TableHeaderBold']),
+        _p("Tipo Apparecchio", styles['TableHeaderBold']),
+        _p("Matricola", styles['TableHeaderBold']),
+        _p("Costruttore / Modello", styles['TableHeaderBold']),
+        _p("Inv. AMS", styles['TableHeaderBold']),
+    ]
+
+    table_data = [header_row]
+
+    for idx, dev in enumerate(devices_info, start=1):
+        desc = dev.get('description', 'N/D')
+        serial = dev.get('serial_number', '')
+        manufacturer = dev.get('manufacturer', '')
+        model = dev.get('model', '')
+        mfg_model = f"{manufacturer} {model}".strip() or 'N/D'
+        ams_inv = dev.get('ams_inventory', '')
+
+        row = [
+            _p(str(idx), styles['Normal']),
+            _p(desc, styles['Normal']),
+            _p(serial, styles['Normal']),
+            _p(mfg_model, styles['Normal']),
+            _p(ams_inv, styles['Normal']),
+        ]
+        table_data.append(row)
+
+    col_widths = [1*cm, 6*cm, 3.5*cm, 4.5*cm, 3*cm]
+    table = Table(table_data, colWidths=col_widths)
+    style_commands = [
+        ('GRID', (0, 0), (-1, -1), 0.5, COLOR_GRID),
+        ('BACKGROUND', (0, 0), (-1, 0), COLOR_HEADER_BG),
+        ('TEXTCOLOR', (0, 0), (-1, 0), COLOR_HEADER_TEXT),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ]
+    for i in range(1, len(table_data)):
+        if i % 2 == 0:
+            style_commands.append(('BACKGROUND', (0, i), (-1, i), COLOR_ROW_EVEN))
+
+    table.setStyle(TableStyle(style_commands))
+    story.append(table)
+    story.append(Spacer(1, SPACER_LARGE))
+
+
+def _add_system_final_evaluation(story, styles, verification_data):
+    """Aggiunge il riquadro con la valutazione finale per una verifica di sistema."""
+    story.append(_p("Esito Verifica di Sistema", styles['SectionHeader']))
+    story.append(Spacer(1, SPACER_MEDIUM))
+
+    overall_status = verification_data.get('overall_status', '')
+    is_pass = overall_status in ('PASSATO', 'CONFORME')
+    is_conforme_con_annotazione = overall_status == 'CONFORME CON ANNOTAZIONE'
+
+    if is_conforme_con_annotazione:
+        finale_text = "SISTEMA CONFORME CON ANNOTAZIONE"
+        finale_style = ParagraphStyle(name='FinaleDynamicSys', parent=styles['FinaleBase'])
+        finale_style.borderColor = colors.orange
+        finale_style.textColor = colors.orange
+    elif is_pass:
+        finale_text = "SISTEMA CONFORME"
+        finale_style = ParagraphStyle(name='FinaleDynamicSys', parent=styles['FinaleBase'])
+        finale_style.borderColor = colors.darkgreen
+        finale_style.textColor = colors.darkgreen
+    else:
+        finale_text = "SISTEMA NON CONFORME"
+        finale_style = ParagraphStyle(name='FinaleDynamicSys', parent=styles['FinaleBase'])
+        finale_style.borderColor = colors.red
+        finale_style.textColor = colors.red
+
+    story.append(_p(finale_text, finale_style))
+    story.append(Spacer(1, SPACER_LARGE))
+
+    visual_data = verification_data.get('visual_inspection_data', {})
+    notes_raw = visual_data.get('notes') if isinstance(visual_data, dict) else ''
+    notes = (notes_raw or '').strip()
+    if notes:
+        story.append(Spacer(1, 0.2*cm))
+        story.append(_p(f"<b>Note:</b> {html.escape(notes)}", styles['Normal']))
+
+    story.append(Spacer(1, SPACER_EXTRA_LARGE))
+
+
+def _add_system_footer(canvas, doc, devices_info, verification_data):
+    """Aggiunge il footer per il report di sistema."""
+    canvas.saveState()
+    canvas.setFont(FONT_NORMAL, 7)
+    canvas.setFillColor(COLOR_TEXT_SECONDARY)
+    canvas.setStrokeColor(COLOR_GRID)
+    page_width = canvas._pagesize[0]
+    canvas.line(doc.leftMargin, 1.4*cm, page_width - doc.rightMargin, 1.4*cm)
+    system_name = verification_data.get('system_name', 'Sistema')
+    code = verification_data.get('verification_code', '')
+    device_count = len(devices_info)
+    footer_text = f"Verifica di Sistema: {system_name}   |   Codice: {code} ({device_count} dispositivi)   |   Email: assistenza@amstrento.it"
+    canvas.drawString(doc.leftMargin, 1*cm, footer_text)
+    canvas.drawRightString(page_width - doc.rightMargin, 1*cm, f"Pagina {doc.page}")
+    canvas.restoreState()
+
+
+def create_system_report(filename, devices_info, customer_info, destination_info,
+                         mti_info, report_settings, verification_data,
+                         technician_name, signature_data):
+    """
+    Genera il report PDF per una verifica di sistema (CEI 62353).
+    Usa PIL invece di PySide6 per la gestione di logo e firma.
+    """
+    styles = _create_styles()
+    story = []
+    footer_cb = lambda canvas, doc: _add_system_footer(canvas, doc, devices_info, verification_data)
+    doc = _build_report_doc(filename, footer_cb)
+
+    # --- PAGINA 1: DATI, DISPOSITIVI, ESITO E FIRMA ---
+    _add_logo(story, report_settings)
+
+    story.append(_p("Report di Verifica di Sistema", styles['ReportTitle']))
+    story.append(_p("(Conforme a CEI EN 62353)", styles['ReportSubTitle']))
+
+    system_name = verification_data.get('system_name', '')
+    if system_name:
+        story.append(_p(f"<b>Sistema:</b> {html.escape(system_name)}", styles['Normal']))
+        story.append(Spacer(1, SPACER_MEDIUM))
+
+    right_aligned_style = ParagraphStyle(name='NormalRightSys', parent=styles['Normal'], alignment=2)
+    header_data = [[
+        _p(f"<b>Data Verifica:</b> {verification_data.get('date', 'N/A')}", styles['Normal']),
+        _p(f"<b>Codice Verifica:</b> {verification_data.get('verification_code', 'N/A')}", right_aligned_style)
+    ]]
+    header_table = Table(header_data, colWidths=[9*cm, 9*cm])
+    header_table.setStyle(TableStyle([
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+    ]))
+    story.append(header_table)
+    story.append(Spacer(1, SPACER_MEDIUM))
+
+    _add_customer_info(story, styles, customer_info, destination_info)
+    _add_system_devices_info(story, styles, devices_info, verification_data)
+    _add_instrument_info(story, styles, mti_info, verification_data)
+    _add_system_final_evaluation(story, styles, verification_data)
+    _add_signature(story, styles, technician_name, signature_data)
+
+    # --- PAGINA 2: DETTAGLI TECNICI ---
+    story.append(PageBreak())
+    _add_visual_inspection(story, styles, verification_data)
+    _add_electrical_measurements(story, styles, verification_data)
+
+    doc.build(story)
+    logging.info(f"[server_report_generator] Report verifica di sistema generato: {filename}")

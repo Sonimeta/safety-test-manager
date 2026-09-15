@@ -90,55 +90,6 @@
         </div>
     </div>
 
-    <!-- Quick actions -->
-    <div>
-        <p class="section-title">Azioni rapide</p>
-        <div class="card overflow-hidden">
-            <a href="/mobile/customers" class="list-item">
-                <div style="background:#eff6ff;border-radius:10px;padding:8px;margin-right:12px;flex-shrink:0;">
-                    <i class="ti ti-building" style="font-size:1.1rem;color:#3b82f6;display:block;"></i>
-                </div>
-                <div class="flex-1 min-w-0">
-                    <p class="text-sm font-semibold text-gray-800">Sfoglia clienti</p>
-                    <p class="text-xs text-gray-400">Clienti → Sedi → Dispositivi</p>
-                </div>
-                <i class="ti ti-chevron-right text-gray-300 flex-shrink-0"></i>
-            </a>
-            <a href="/mobile/search" class="list-item">
-                <div style="background:#f5f3ff;border-radius:10px;padding:8px;margin-right:12px;flex-shrink:0;">
-                    <i class="ti ti-search" style="font-size:1.1rem;color:#7c3aed;display:block;"></i>
-                </div>
-                <div class="flex-1 min-w-0">
-                    <p class="text-sm font-semibold text-gray-800">Cerca dispositivo</p>
-                    <p class="text-xs text-gray-400">Per S/N, inv. AMS, descrizione</p>
-                </div>
-                <i class="ti ti-chevron-right text-gray-300 flex-shrink-0"></i>
-            </a>
-            {% if overdue > 0 or expiring_soon > 0 %}
-            {% set qa_bg = '#fef2f2' if overdue > 0 else '#fffbeb' %}
-            {% set qa_color = '#ef4444' if overdue > 0 else '#f59e0b' %}
-            <a href="/mobile/expiring" class="list-item">
-                {% if overdue > 0 %}
-                <div style="background:#fef2f2;border-radius:10px;padding:8px;margin-right:12px;flex-shrink:0;">
-                    <i class="ti ti-clock-exclamation" style="font-size:1.1rem;color:#ef4444;display:block;"></i>
-                </div>
-                {% else %}
-                <div style="background:#fffbeb;border-radius:10px;padding:8px;margin-right:12px;flex-shrink:0;">
-                    <i class="ti ti-clock-exclamation" style="font-size:1.1rem;color:#f59e0b;display:block;"></i>
-                </div>
-                {% endif %}
-                <div class="flex-1 min-w-0">
-                    <p class="text-sm font-semibold {% if overdue > 0 %}text-red-700{% else %}text-amber-700{% endif %}">
-                        Verifiche {% if overdue > 0 %}scadute ({{ overdue }}){% else %}in scadenza ({{ expiring_soon }}){% endif %}
-                    </p>
-                    <p class="text-xs text-gray-400">Entro 30 giorni</p>
-                </div>
-                <i class="ti ti-chevron-right text-gray-300 flex-shrink-0"></i>
-            </a>
-            {% endif %}
-        </div>
-    </div>
-
     <!-- Lavori assegnati (card dedicata) -->
     {% if pending_assignments %}
     <div>
@@ -194,7 +145,7 @@
                         {{ v.description or v.model or 'Dispositivo' }}
                         {% if v.manufacturer %}<span class="font-normal text-gray-400"> · {{ v.manufacturer }}</span>{% endif %}
                     </p>
-                    <p class="text-xs text-gray-400 truncate">{{ v.profile_name }} · {{ v.verification_date }}</p>
+                    <p class="text-xs text-gray-400 truncate">{{ v.profile_name }} · {{ v.verification_date | date_it }}</p>
                 </div>
                 <div class="ml-3 flex-shrink-0">
                     {% if v.overall_status == 'CONFORME CON ANNOTAZIONE' %}
@@ -225,7 +176,7 @@
                         {{ fv.description or fv.model or 'Dispositivo' }}
                         {% if fv.manufacturer %}<span class="font-normal text-gray-400"> · {{ fv.manufacturer }}</span>{% endif %}
                     </p>
-                    <p class="text-xs text-gray-400 truncate">{{ fv.profile_key }} · {{ fv.verification_date }}</p>
+                    <p class="text-xs text-gray-400 truncate">{{ fv.profile_key }} · {{ fv.verification_date | date_it }}</p>
                 </div>
                 <div class="ml-3 flex-shrink-0">
                     {% if fv.overall_status == 'CONFORME CON ANNOTAZIONE' %}

@@ -19,7 +19,7 @@ from .detail_dialogs import CustomerDialog, DeviceDialog, InstrumentDetailDialog
 from .utility_dialogs import (VerificationStatusDialog,
                               MappingDialog, ImportReportDialog, VerificationViewerDialog, FunctionalVerificationViewerDialog,
                               DateSelectionDialog, DestinationDetailDialog, DestinationSelectionDialog, SingleCalendarRangeDialog,
-                              GlobalSearchDialog, ReportNamingFormatDialog, EditVerificationDialog)
+                              GlobalSearchDialog, ReportNamingFormatDialog, EditVerificationDialog, InstrumentAttachmentsDialog)
 from .system_verification_dialogs import SystemVerificationViewerDialog
 from app.workers.import_worker import ImportWorker
 from app.workers.stm_import_worker import StmImportWorker
@@ -1077,8 +1077,9 @@ class DbManagerDialog(QDialog):
         ]
 
         # Colori per le righe in base all'esito
-        color_pass = QColor("#0b5f1e")  # Verde chiaro
-        color_fail = QColor("#fc0217")  # Rosso chiaro
+        color_pass = QColor("#0b5f1e")     # Verde
+        color_warning = QColor("#d97706")  # Arancione per CONFORME CON ANNOTAZIONE
+        color_fail = QColor("#fc0217")     # Rosso
         
         for dev in devices_to_show:
             row = self.device_table.rowCount()
@@ -1120,13 +1121,15 @@ class DbManagerDialog(QDialog):
                         f"last_verification_outcome='{last_outcome_raw}' -> normalized='{last_outcome}'"
                     )
                 
-                # Controlla diverse possibili diciture per l'esito
-                # Solo "PASSATO" o "CONFORME" sono considerati positivi
-                # Tutti gli altri esiti (FALLITO, NON CONFORME, CONFORME CON ANNOTAZIONE) sono negativi
+                # Controlla diverse possibili diciture per l'esito:
+                # - PASSATO o CONFORME -> Verde (#0b5f1e)
+                # - CONFORME CON ANNOTAZIONE -> Arancione (#d97706)
+                # - FALLITO o NON CONFORME -> Rosso (#fc0217)
                 if last_outcome in ("PASSATO", "CONFORME"):
                     target_color = color_pass
+                elif last_outcome in ("CONFORME CON ANNOTAZIONE", "CONFORME CON NOTE", "CONFORME CON RISERVA"):
+                    target_color = color_warning
                 else:
-                    # FALLITO, NON CONFORME, CONFORME CON ANNOTAZIONE, o qualsiasi altro esito
                     target_color = color_fail
             
             # Applica il colore a tutte le celle della riga
@@ -2432,19 +2435,21 @@ class InstrumentManagerDialog(QDialog):
         # Applica il tema corrente
         self.setStyleSheet(config.get_current_stylesheet())
         layout = QVBoxLayout(self)
-        self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(["ID", "NOME STRUMENTO", "SERIALE", "NR CERTIFICATO CAL.", "DATA CAL.", "SEDE"])
+        self.table = QTableWidget(0, 7)
+        self.table.setHorizontalHeaderLabels(["ID", "NOME STRUMENTO", "SERIALE", "NR CERTIFICATO CAL.", "DATA CAL.", "SEDE", "CERTIFICATO"])
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSortingEnabled(True)
+        self.table.cellDoubleClicked.connect(self.on_cell_double_clicked)
         header = self.table.horizontalHeader(); header.setSectionResizeMode(0, QHeaderView.ResizeToContents); header.setSectionResizeMode(1, QHeaderView.Stretch); header.setSectionResizeMode(2, QHeaderView.Stretch)
         layout.addWidget(self.table)
         buttons_layout = QHBoxLayout()
         add_btn = QPushButton("AGGIUNGI"); add_btn.clicked.connect(self.add_instrument)
         edit_btn = QPushButton("MODIFICA"); edit_btn.clicked.connect(self.edit_instrument)
+        cert_btn = QPushButton("📎 CERTIFICATO (PDF)"); cert_btn.clicked.connect(self.open_certificates)
         delete_btn = QPushButton("ELIMINA"); delete_btn.clicked.connect(self.delete_instrument)
         default_btn = QPushButton("IMPOSTA COME PREDEFINITO"); default_btn.clicked.connect(self.set_default)
-        buttons_layout.addWidget(add_btn); buttons_layout.addWidget(edit_btn); buttons_layout.addWidget(delete_btn); buttons_layout.addStretch(); buttons_layout.addWidget(default_btn)
+        buttons_layout.addWidget(add_btn); buttons_layout.addWidget(edit_btn); buttons_layout.addWidget(cert_btn); buttons_layout.addWidget(delete_btn); buttons_layout.addStretch(); buttons_layout.addWidget(default_btn)
         layout.addLayout(buttons_layout)
         self.load_instruments()
 
@@ -2454,16 +2459,51 @@ class InstrumentManagerDialog(QDialog):
         try: return int(self.table.item(selected_rows[0].row(), 0).text())
         except (ValueError, AttributeError): return None
 
+    def get_selected_instrument_name(self) -> str:
+        selected_rows = self.table.selectionModel().selectedRows()
+        if not selected_rows: return ""
+        try: return self.table.item(selected_rows[0].row(), 1).text()
+        except (ValueError, AttributeError): return ""
+
+    def on_cell_double_clicked(self, row: int, column: int):
+        if column == 6:  # Colonna certificato
+            self.open_certificates()
+        else:
+            self.edit_instrument()
+
+    def open_certificates(self):
+        inst_id = self.get_selected_id()
+        if not inst_id:
+            QMessageBox.warning(self, "ATTENZIONE", "SELEZIONARE UNO STRUMENTO PER GESTIRE I CERTIFICATI.")
+            return
+        inst_name = self.get_selected_instrument_name()
+        dialog = InstrumentAttachmentsDialog(instrument_id=inst_id, instrument_name=inst_name, parent=self)
+        dialog.exec()
+        self.load_instruments()
+
     def load_instruments(self):
         self.table.setSortingEnabled(False)
         self.table.setRowCount(0)
         instruments_rows = services.get_all_instruments(apply_user_filter=False)
+        cert_counts = services.get_instrument_attachments_count_map()
         for inst_row in instruments_rows:
             instrument = dict(inst_row); row = self.table.rowCount(); self.table.insertRow(row)
-            id_item = QTableWidgetItem(str(instrument.get('id'))); id_item.setFlags(id_item.flags() & ~Qt.ItemIsEditable)
-            self.table.setItem(row, 0, id_item); self.table.setItem(row, 1, QTableWidgetItem(str(instrument.get('instrument_name', '')).upper())); self.table.setItem(row, 2, QTableWidgetItem(str(instrument.get('serial_number', '')).upper())); self.table.setItem(row, 3, QTableWidgetItem(str(instrument.get('fw_version', '')).upper())); self.table.setItem(row, 4, QTableWidgetItem(str(instrument.get('calibration_date', '')).upper())); self.table.setItem(row, 5, QTableWidgetItem(str(instrument.get('sede', '') or '').upper()))
+            inst_id = instrument.get('id')
+            id_item = QTableWidgetItem(str(inst_id)); id_item.setFlags(id_item.flags() & ~Qt.ItemIsEditable)
+            self.table.setItem(row, 0, id_item)
+            self.table.setItem(row, 1, QTableWidgetItem(str(instrument.get('instrument_name', '')).upper()))
+            self.table.setItem(row, 2, QTableWidgetItem(str(instrument.get('serial_number', '')).upper()))
+            self.table.setItem(row, 3, QTableWidgetItem(str(instrument.get('fw_version', '')).upper()))
+            self.table.setItem(row, 4, QTableWidgetItem(config.format_date_it(instrument.get('calibration_date', '')).upper()))
+            self.table.setItem(row, 5, QTableWidgetItem(str(instrument.get('sede', '') or '').upper()))
+            
+            cnt = cert_counts.get(inst_id, 0)
+            cert_item = QTableWidgetItem(f"📎 ({cnt})" if cnt > 0 else "—")
+            cert_item.setTextAlignment(Qt.AlignCenter)
+            self.table.setItem(row, 6, cert_item)
+
             if instrument.get('is_default'):
-                for col in range(6): self.table.item(row, col).setBackground(QColor("#E0F7FA"))
+                for col in range(7): self.table.item(row, col).setBackground(QColor("#E0F7FA"))
         self.table.setSortingEnabled(True)
 
     def add_instrument(self):
@@ -2471,7 +2511,7 @@ class InstrumentManagerDialog(QDialog):
         if dialog.exec():
             try: 
                 data = dialog.get_data()
-                services.add_instrument(
+                new_inst_id = services.add_instrument(
                     instrument_name=data['instrument_name'],
                     serial_number=data['serial_number'],
                     fw_version=data['fw_version'],
@@ -2479,6 +2519,18 @@ class InstrumentManagerDialog(QDialog):
                     instrument_type=data.get('instrument_type', 'electrical'),
                     sede=data.get('sede')
                 )
+                if data.get('pdf_path') and new_inst_id:
+                    try:
+                        with open(data['pdf_path'], 'rb') as f:
+                            file_data = f.read()
+                        services.save_instrument_attachment(
+                            instrument_id=new_inst_id,
+                            filename=os.path.basename(data['pdf_path']),
+                            file_data=file_data,
+                            description="Certificato di calibrazione PDF"
+                        )
+                    except Exception as err:
+                        logging.error(f"Errore salvataggio certificato PDF: {err}")
                 self.load_instruments()
             except ValueError as e: 
                 QMessageBox.warning(self, "DATI NON VALIDI", str(e).upper())
@@ -2502,6 +2554,18 @@ class InstrumentManagerDialog(QDialog):
                     instrument_type=data.get('instrument_type'),
                     sede=data.get('sede')
                 )
+                if data.get('pdf_path'):
+                    try:
+                        with open(data['pdf_path'], 'rb') as f:
+                            file_data = f.read()
+                        services.save_instrument_attachment(
+                            instrument_id=inst_id,
+                            filename=os.path.basename(data['pdf_path']),
+                            file_data=file_data,
+                            description="Certificato di calibrazione PDF"
+                        )
+                    except Exception as err:
+                        logging.error(f"Errore salvataggio certificato PDF: {err}")
                 self.load_instruments()
             except ValueError as e: 
                 QMessageBox.warning(self, "DATI NON VALIDI", str(e).upper())

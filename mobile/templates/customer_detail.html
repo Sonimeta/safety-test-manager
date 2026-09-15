@@ -5,6 +5,9 @@
 {% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">{{ destinations|length }} sede/i</p>{% endblock %}
 
 {% block header_actions %}
+<a href="/mobile/dossier?customer_uuid={{ customer.uuid }}" class="btn-sm" style="background:#2563eb;color:#fff;" title="Genera Fascicolo PDF">
+    <i class="ti ti-file-text"></i>
+</a>
 <a href="/mobile/customers/{{ customer.uuid }}/edit" class="btn-sm" style="background:rgba(255,255,255,.15);color:#fff;">
     <i class="ti ti-pencil"></i>
 </a>

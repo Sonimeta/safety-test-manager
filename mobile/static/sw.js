@@ -1,7 +1,7 @@
-// STM Mobile Service Worker — v1.4
+// STM Mobile Service Worker — v2.1
 // Minimal SW just for PWA installability (always-online app, no caching)
 
-const CACHE_NAME = 'stm-mobile-v3';
+const CACHE_NAME = 'stm-mobile-v5';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

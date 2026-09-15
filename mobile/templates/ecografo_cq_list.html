@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}CQ Sonde Ecografiche — STM Mobile{% endblock %}
+{% block header_title %}Controllo Qualità Sonde{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">{{ checks|length }} controlli registrati</p>{% endblock %}
+
+{% block content %}
+<div class="px-4 py-4 space-y-4">
+
+    {% if checks %}
+    <div class="card overflow-hidden">
+        {% for c in checks %}
+        <a href="/mobile/ecografo-cq/{{ c.uuid }}" class="list-item">
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-semibold text-gray-800 truncate">
+                    {{ c.device_description or c.device_model or 'Ecografo' }}
+                    {% if c.device_serial_number %}<span class="text-gray-400 font-normal">({{ c.device_serial_number }})</span>{% endif %}
+                </p>
+                <p class="text-xs text-gray-400 truncate">{{ c.customer_name }} · {{ c.destination_name }}</p>
+                <p class="text-xs text-gray-400 mt-0.5">{{ c.verification_date | date_it }} · {{ c.probe_count }} sonde
+                    {% if c.verification_code %} · <span class="font-mono">{{ c.verification_code }}</span>{% endif %}
+                </p>
+            </div>
+            <div class="ml-3 flex-shrink-0">
+                {% if c.overall_status == 'CONFORME CON ANNOTAZIONE' %}
+                <span class="badge-warn">C.C.A.</span>
+                {% elif c.overall_status in ('CONFORME', 'PASSATO', 'PASS', 'OK') %}
+                <span class="badge-pass">CONF.</span>
+                {% else %}
+                <span class="badge-fail">N.CONF.</span>
+                {% endif %}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div style="display:flex;flex-direction:column;align-items:center;padding:4rem 1rem;color:#94a3b8;">
+        <i class="ti ti-activity-heartbeat" style="font-size:3.5rem;margin-bottom:.75rem;color:#2563eb;"></i>
+        <p class="text-sm font-semibold">Nessun controllo qualità sonde registrato</p>
+        <p class="text-xs mt-1">Puoi avviarne uno dalla scheda di qualsiasi ecografo.</p>
+    </div>
+    {% endif %}
+
+</div>
+{% endblock %}

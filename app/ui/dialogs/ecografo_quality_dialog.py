@@ -40,6 +40,7 @@ from PySide6.QtWidgets import (
 )
 
 import database
+from app.ui.widgets import NoHoverFocusLineEdit, NoHoverFocusComboBox, fix_calendar_popup
 from app.ecografo_quality_logic import (
     CONTROL_ANECHOIC_MASS,
     CONTROL_DEAD_ZONE,
@@ -75,7 +76,7 @@ class InspectionControlWidget(QGroupBox):
         self.setStyleSheet("QGroupBox { font-weight: bold; color: #1e3a5f; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 6px; padding-top: 10px; } QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; }")
         layout = QVBoxLayout(self)
 
-        self.combo = QComboBox()
+        self.combo = NoHoverFocusComboBox()
         if control.control_key == CONTROL_INSPECTION:
             self.combo.addItem("BUONO (non vi sono crepe/tagli/altre non conformità né sulla sonda né sulla guaina)", "BUONO")
             self.combo.addItem("SUFFICIENTE (vi sono delle non conformità di lieve entità)", "SUFFICIENTE")
@@ -96,7 +97,7 @@ class InspectionControlWidget(QGroupBox):
         # Campo Note
         n_layout = QHBoxLayout()
         n_layout.addWidget(QLabel("Note:"))
-        self.notes_edit = QLineEdit(control.notes or "")
+        self.notes_edit = NoHoverFocusLineEdit(control.notes or "")
         self.notes_edit.setPlaceholderText("Note o osservazioni")
         n_layout.addWidget(self.notes_edit)
         layout.addLayout(n_layout)
@@ -125,7 +126,7 @@ class MaxDepthControlWidget(QGroupBox):
 
         f_layout = QHBoxLayout()
         f_layout.addWidget(QLabel("<b>DISTANZA DELL'ULTIMO BERSAGLIO VISIBILE (cm):</b>"))
-        self.val_edit = QLineEdit(control.value or "")
+        self.val_edit = NoHoverFocusLineEdit(control.value or "")
         self.val_edit.setPlaceholderText("Es. 14.5")
         f_layout.addWidget(self.val_edit)
         layout.addLayout(f_layout)
@@ -136,7 +137,7 @@ class MaxDepthControlWidget(QGroupBox):
 
         n_layout = QHBoxLayout()
         n_layout.addWidget(QLabel("Note:"))
-        self.notes_edit = QLineEdit(control.notes or "")
+        self.notes_edit = NoHoverFocusLineEdit(control.notes or "")
         n_layout.addWidget(self.notes_edit)
         layout.addLayout(n_layout)
 
@@ -157,7 +158,7 @@ class VerticalMeasuresWidget(QGroupBox):
         self.setStyleSheet("QGroupBox { font-weight: bold; color: #1e3a5f; border: 1px solid #cbd5e1; border-radius: 6px; margin-top: 6px; padding-top: 10px; } QGroupBox::title { subcontrol-origin: margin; left: 10px; padding: 0 4px; }")
         layout = QVBoxLayout(self)
 
-        self.rows_edits: List[Tuple[float, QLineEdit, QLabel]] = []
+        self.rows_edits: List[Tuple[float, NoHoverFocusLineEdit, QLabel]] = []
         grid = QFormLayout()
         grid.addRow(QLabel("<b>Effettivo (mm)</b>"), QLabel("<b>Misurato (mm)</b>"))
 
@@ -170,7 +171,7 @@ class VerticalMeasuresWidget(QGroupBox):
                 prev_vals[e] = p
 
         for eff in [20, 40, 60, 80, 100, 120, 140, 160]:
-            edit = QLineEdit(prev_vals.get(eff, ""))
+            edit = NoHoverFocusLineEdit(prev_vals.get(eff, ""))
             edit.setPlaceholderText(f"Misurato per {eff} mm")
             scarto_lbl = QLabel("Scarto: -")
             edit.textChanged.connect(lambda text, e=eff, l=scarto_lbl: self._calc_scarto(e, text, l))
@@ -215,7 +216,7 @@ class HorizontalMeasuresWidget(QGroupBox):
 
         self.form_widget = QWidget()
         form_layout = QFormLayout(self.form_widget)
-        self.rows_edits: List[Tuple[int, QLineEdit]] = []
+        self.rows_edits: List[Tuple[int, NoHoverFocusLineEdit]] = []
 
         effs = [-20, -40, -60, -80, 40, 20]
         prev_vals = {}
@@ -225,7 +226,7 @@ class HorizontalMeasuresWidget(QGroupBox):
                 prev_vals[e] = p
 
         for eff in effs:
-            edit = QLineEdit(prev_vals.get(eff, ""))
+            edit = NoHoverFocusLineEdit(prev_vals.get(eff, ""))
             edit.setPlaceholderText(f"Misurato per {eff} mm")
             form_layout.addRow(QLabel(f"<b>{eff} mm</b>"), edit)
             self.rows_edits.append((eff, edit))
@@ -268,12 +269,12 @@ class DeadZoneWidget(QGroupBox):
         self.form_widget = QWidget()
         f_layout = QHBoxLayout(self.form_widget)
         f_layout.addWidget(QLabel("NUMERO TOTALE BERSAGLI:"))
-        self.targets_edit = QLineEdit()
+        self.targets_edit = NoHoverFocusLineEdit()
         self.targets_edit.setPlaceholderText("Es. 6")
         f_layout.addWidget(self.targets_edit)
 
         f_layout.addWidget(QLabel("ZONA MORTA (mm):"))
-        self.dead_zone_edit = QLineEdit()
+        self.dead_zone_edit = NoHoverFocusLineEdit()
         self.dead_zone_edit.setPlaceholderText("Es. 1")
         f_layout.addWidget(self.dead_zone_edit)
 
@@ -313,12 +314,12 @@ class Resolution3cmWidget(QGroupBox):
 
         opts_3cm = ["1a (4 mm)", "2a (3 mm)", "3a (2 mm)", "4a (1 mm)", "5a (.5 mm)", "6a (.25 mm)", "N/A"]
 
-        self.axial_combo = QComboBox()
+        self.axial_combo = NoHoverFocusComboBox()
         self.axial_combo.addItems(opts_3cm)
         if axial_ctrl.value:
             self.axial_combo.setCurrentText(axial_ctrl.value)
 
-        self.lateral_combo = QComboBox()
+        self.lateral_combo = NoHoverFocusComboBox()
         self.lateral_combo.addItems(opts_3cm)
         if lateral_ctrl.value:
             self.lateral_combo.setCurrentText(lateral_ctrl.value)
@@ -348,12 +349,12 @@ class Resolution11cmWidget(QGroupBox):
 
         opts_11cm = ["1a (5 mm)", "2a (4 mm)", "3a (3 mm)", "4a (2 mm)", "5a (1 mm)", "Non Applicabile"]
 
-        self.axial_combo = QComboBox()
+        self.axial_combo = NoHoverFocusComboBox()
         self.axial_combo.addItems(opts_11cm)
         if axial_ctrl.value:
             self.axial_combo.setCurrentText(axial_ctrl.value)
 
-        self.lateral_combo = QComboBox()
+        self.lateral_combo = NoHoverFocusComboBox()
         self.lateral_combo.addItems(opts_11cm)
         if lateral_ctrl.value:
             self.lateral_combo.setCurrentText(lateral_ctrl.value)
@@ -387,9 +388,9 @@ class MassAnalysisWidget(QGroupBox):
         self.form_widget = QWidget()
         f_layout = QFormLayout(self.form_widget)
 
-        self.oriz_edit = QLineEdit()
+        self.oriz_edit = NoHoverFocusLineEdit()
         self.oriz_edit.setPlaceholderText("Es. 6.9")
-        self.vert_edit = QLineEdit()
+        self.vert_edit = NoHoverFocusLineEdit()
         self.vert_edit.setPlaceholderText("Es. 6.8")
 
         self.rapporto_lbl = QLabel("1.00")
@@ -520,14 +521,14 @@ class ProbeWidget(QWidget):
         ident_layout = QFormLayout(ident_group)
         ident_layout.setSpacing(8)
 
-        self.type_edit = QLineEdit(self.probe.probe_type or "")
+        self.type_edit = NoHoverFocusLineEdit(self.probe.probe_type or "")
         self.type_edit.setPlaceholderText("Es. Convex / Linear / Phased Array")
-        self.model_edit = QLineEdit(self.probe.model or "")
+        self.model_edit = NoHoverFocusLineEdit(self.probe.model or "")
         self.model_edit.setPlaceholderText("Es. C5-2 / L12-4")
-        self.serial_edit = QLineEdit(self.probe.serial_number or "")
+        self.serial_edit = NoHoverFocusLineEdit(self.probe.serial_number or "")
         self.serial_edit.setPlaceholderText("Numero di serie")
-        self.manufacturer_edit = QLineEdit(self.probe.manufacturer or "")
-        self.inventory_edit = QLineEdit(self.probe.inventory or "")
+        self.manufacturer_edit = NoHoverFocusLineEdit(self.probe.manufacturer or "")
+        self.inventory_edit = NoHoverFocusLineEdit(self.probe.inventory or "")
 
         ident_layout.addRow("Tipo Sonda:", self.type_edit)
         ident_layout.addRow("Modello:", self.model_edit)
@@ -543,23 +544,23 @@ class ProbeWidget(QWidget):
         test_layout = QFormLayout(test_group)
         test_layout.setSpacing(8)
 
-        self.stage_combo = QComboBox()
+        self.stage_combo = NoHoverFocusComboBox()
         self.stage_combo.setEditable(True)
         self.stage_combo.addItems(["Baseline", "Controllo 1", "Controllo 2", "Controllo 3", "Controllo 4"])
         if self.probe.control_stage:
             self.stage_combo.setCurrentText(self.probe.control_stage)
 
-        self.test_model_edit = QLineEdit(self.probe.test_model or "")
+        self.test_model_edit = NoHoverFocusLineEdit(self.probe.test_model or "")
         self.test_model_edit.setPlaceholderText("Es. GEN-M / RIS-B")
-        self.preset_edit = QLineEdit(self.probe.preset or "")
+        self.preset_edit = NoHoverFocusLineEdit(self.probe.preset or "")
         self.preset_edit.setPlaceholderText("Es. ADDOMINALE GENERALE")
-        self.gain_edit = QLineEdit(self.probe.gain or "")
-        self.power_edit = QLineEdit(self.probe.power or "")
-        self.baseline_edit = QLineEdit(self.probe.baseline or "")
+        self.gain_edit = NoHoverFocusLineEdit(self.probe.gain or "")
+        self.power_edit = NoHoverFocusLineEdit(self.probe.power or "")
+        self.baseline_edit = NoHoverFocusLineEdit(self.probe.baseline or "")
         self.baseline_edit.setPlaceholderText("Es. Valori di targa o riferimento iniziale")
         self.baseline_edit.setToolTip("Valore o riferimento iniziale (es. prima calibrazione) usato per confrontare il decadimento delle prestazioni nei controlli successivi.")
 
-        self.judgment_combo = QComboBox()
+        self.judgment_combo = NoHoverFocusComboBox()
         self.judgment_combo.addItems(["BUONO", "SUFFICIENTE", "NON SUFFICIENTE"])
         if self.probe.overall_judgment and self.probe.overall_judgment in ["BUONO", "SUFFICIENTE", "NON SUFFICIENTE"]:
             self.judgment_combo.setCurrentText(self.probe.overall_judgment)
@@ -729,6 +730,10 @@ class EcografoQualityDialog(QDialog):
         self.setMinimumSize(950, 680)
         self._build_ui()
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.setFocus()
+
     def _prefill_probes_from_last_check(self, device_id: int) -> List[EcografoQualityProbe]:
         """Precompila in automatico i dati identificativi e i parametri di test delle sonde dall'ultimo controllo registrato."""
         if not device_id:
@@ -813,6 +818,7 @@ class EcografoQualityDialog(QDialog):
 
         self.date_edit = QDateEdit()
         self.date_edit.setCalendarPopup(True)
+        fix_calendar_popup(self.date_edit)
         self.date_edit.setDate(
             QDate.fromString(self.check.verification_date, "yyyy-MM-dd")
             if self.check.verification_date
@@ -821,10 +827,10 @@ class EcografoQualityDialog(QDialog):
         self.date_edit.setDisplayFormat("dd/MM/yyyy")
         self.date_edit.setMinimumHeight(28)
 
-        self.technician_edit = QLineEdit(self.check.technician_name or self.technician_name or "")
+        self.technician_edit = NoHoverFocusLineEdit(self.check.technician_name or self.technician_name or "")
         self.technician_edit.setMinimumHeight(28)
 
-        self.notes_edit = QLineEdit(self.check.notes or "")
+        self.notes_edit = NoHoverFocusLineEdit(self.check.notes or "")
         self.notes_edit.setPlaceholderText("Note generali sulla verifica")
         self.notes_edit.setMinimumHeight(28)
 
@@ -852,6 +858,7 @@ class EcografoQualityDialog(QDialog):
         self.probes_tabs.setTabsClosable(True)
         self.probes_tabs.setStyleSheet("QTabBar::tab { font-size: 13px; font-weight: bold; padding: 8px 16px; border-top-left-radius: 6px; border-top-right-radius: 6px; } QTabBar::tab:selected { background: #1e3a5f; color: white; }")
         self.probes_tabs.tabCloseRequested.connect(self._on_tab_close)
+        self.probes_tabs.currentChanged.connect(lambda _: self.setFocus())
         main_layout.addWidget(self.probes_tabs, 1)
 
         # 3. Footer Bar (Pulsanti Salva/Annulla)

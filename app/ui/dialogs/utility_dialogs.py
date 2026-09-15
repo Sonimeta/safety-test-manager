@@ -1,5 +1,8 @@
 import json
 import os
+import logging
+import tempfile
+import shutil
 from datetime import datetime
 from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, 
                              QPushButton, QLabel, QComboBox, QTextEdit, QCalendarWidget, QDialogButtonBox, QFormLayout, QSpinBox,
@@ -7,7 +10,8 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout,
     QFileDialog, QCheckBox, QWidget, QDateEdit, QTabWidget)
 from PySide6.QtCore import Qt, QDate, QSettings, QLocale
 from PySide6.QtGui import QTextCharFormat, QBrush, QColor
-from app import services
+import database
+from app import services, config
 
 class SingleCalendarRangeDialog(QDialog):
     """
@@ -219,6 +223,9 @@ class AdvancedReportDialog(QDialog):
         self.keep_individual_check = QCheckBox("Genera anche i report singoli")
         self.keep_individual_check.setChecked(True)
         self.keep_individual_check.setEnabled(False)
+        self.include_calibration_certs_check = QCheckBox("Allega certificati di calibrazione strumenti")
+        self.include_calibration_certs_check.setChecked(True)
+        self.include_calibration_certs_check.setEnabled(False)
         self.merge_pdf_path = QLineEdit()
         self.merge_pdf_browse_btn = QPushButton("Sfoglia...")
         self.merge_pdf_browse_btn.clicked.connect(self._browse_merge_pdf)
@@ -237,6 +244,7 @@ class AdvancedReportDialog(QDialog):
         options_layout.addRow(self.export_cover_single_check)
         options_layout.addRow(self.export_table_single_check)
         options_layout.addRow(self.keep_individual_check)
+        options_layout.addRow(self.include_calibration_certs_check)
         # La colonna destra occupa righe 0-2 (stessa altezza totale della sinistra)
         grid.addWidget(options_group, 0, 1, 3, 1)
 
@@ -356,6 +364,7 @@ class AdvancedReportDialog(QDialog):
         # Il percorso del file viene generato automaticamente - non serve modificarlo
         self.merged_intro_combo.setEnabled(enabled)
         self.keep_individual_check.setEnabled(enabled)
+        self.include_calibration_certs_check.setEnabled(enabled)
         if not enabled:
             self.keep_individual_check.setChecked(True)
 
@@ -387,6 +396,9 @@ class AdvancedReportDialog(QDialog):
             "export_table_single": self.export_table_single_check.isChecked(),
             "keep_individual_reports": (
                 self.keep_individual_check.isChecked() if self.merge_pdf_check.isChecked() else True
+            ),
+            "include_calibration_certs": (
+                self.include_calibration_certs_check.isChecked() if self.merge_pdf_check.isChecked() else False
             ),
         }
 
@@ -961,6 +973,246 @@ class FunctionalVerificationViewerDialog(QDialog):
             return f"{size_bytes // 1024} KB"
         else:
             return f"{size_bytes / (1024 * 1024):.1f} MB"
+
+
+class InstrumentAttachmentsDialog(QDialog):
+    """Dialog per visualizzare, caricare (solo PDF), scaricare ed eliminare i certificati di calibrazione di uno strumento."""
+    def __init__(self, instrument_id: int, instrument_name: str = "", parent=None):
+        super().__init__(parent)
+        self.instrument_id = instrument_id
+        self.instrument_name = instrument_name
+        self.setWindowTitle(f"CERTIFICATO DI CALIBRAZIONE - {str(instrument_name).upper()}")
+        self.setMinimumSize(680, 360)
+        self.setStyleSheet(config.get_current_stylesheet())
+
+        layout = QVBoxLayout(self)
+
+        info_label = QLabel(f"<b>STRUMENTO:</b> {str(instrument_name).upper()} (ID: {instrument_id})")
+        layout.addWidget(info_label)
+
+        # Toolbar
+        toolbar = QHBoxLayout()
+        self.count_label = QLabel("Caricamento...")
+        self.count_label.setStyleSheet("font-weight: bold;")
+        toolbar.addWidget(self.count_label)
+        toolbar.addStretch()
+
+        self.btn_add = QPushButton("➕ AGGIUNGI CERTIFICATO (PDF)")
+        self.btn_add.setMinimumHeight(32)
+        self.btn_add.clicked.connect(self._add_certificate)
+        toolbar.addWidget(self.btn_add)
+
+        self.btn_view = QPushButton("👁 APRI PDF")
+        self.btn_view.setMinimumHeight(32)
+        self.btn_view.setEnabled(False)
+        self.btn_view.clicked.connect(self._view_selected)
+        toolbar.addWidget(self.btn_view)
+
+        self.btn_save = QPushButton("💾 SALVA SU DISCO")
+        self.btn_save.setMinimumHeight(32)
+        self.btn_save.setEnabled(False)
+        self.btn_save.clicked.connect(self._save_to_disk)
+        toolbar.addWidget(self.btn_save)
+
+        self.btn_delete = QPushButton("🗑 ELIMINA")
+        self.btn_delete.setMinimumHeight(32)
+        self.btn_delete.setEnabled(False)
+        self.btn_delete.clicked.connect(self._delete_selected)
+        toolbar.addWidget(self.btn_delete)
+
+        layout.addLayout(toolbar)
+
+        # Lista certificati
+        self.attachments_list = QListWidget()
+        self.attachments_list.setStyleSheet("font-family: monospace; font-size: 10pt;")
+        self.attachments_list.currentRowChanged.connect(self._on_selection_changed)
+        self.attachments_list.itemDoubleClicked.connect(self._view_selected)
+        layout.addWidget(self.attachments_list)
+
+        # Pulsante Chiudi in basso
+        btn_box = QHBoxLayout()
+        btn_box.addStretch()
+        close_btn = QPushButton("CHIUDI")
+        close_btn.setMinimumHeight(32)
+        close_btn.clicked.connect(self.accept)
+        btn_box.addWidget(close_btn)
+        layout.addLayout(btn_box)
+
+        self._load_attachments()
+
+    @staticmethod
+    def _format_file_size(size_bytes: int) -> str:
+        """Formatta dimensione file in formato leggibile."""
+        if size_bytes < 1024:
+            return f"{size_bytes} B"
+        elif size_bytes < 1024 * 1024:
+            return f"{size_bytes // 1024} KB"
+        else:
+            return f"{size_bytes / (1024 * 1024):.1f} MB"
+
+    def _load_attachments(self):
+        try:
+            import database
+            self.attachments_list.clear()
+            attachments = database.get_instrument_attachments(self.instrument_id)
+            self.count_label.setText(f"📄 Certificati allegati: {len(attachments)}")
+
+            for att in attachments:
+                size_str = self._format_file_size(att.get('file_size', 0))
+                created = att.get('created_at', '')[:19].replace('T', ' ')
+                desc = att.get('description', '')
+                fp = att.get('file_path') or ''
+                has_local = bool(fp) and os.path.exists(
+                    os.path.join(config.ATTACHMENTS_DIR, fp)
+                )
+                icon = "💾" if has_local else "☁️"
+                text = f"{icon} 📄 {att['filename']}  ({size_str})  [{created}]"
+                if desc:
+                    text += f" - {desc}"
+                item = QListWidgetItem(text)
+                item.setData(Qt.UserRole, {
+                    'id': att['id'],
+                    'uuid': att['uuid'],
+                    'filename': att['filename'],
+                    'has_local': has_local,
+                })
+                self.attachments_list.addItem(item)
+            self._on_selection_changed(self.attachments_list.currentRow())
+        except Exception as e:
+            logging.error(f"Errore caricamento certificati: {e}", exc_info=True)
+            self.count_label.setText("📄 Certificati: errore caricamento")
+
+    def _on_selection_changed(self, row):
+        has_sel = row >= 0
+        self.btn_view.setEnabled(has_sel)
+        self.btn_save.setEnabled(has_sel)
+        self.btn_delete.setEnabled(has_sel)
+
+    def _add_certificate(self):
+        file_path, _ = QFileDialog.getOpenFileName(
+            self, "Seleziona Certificato di Calibrazione", "",
+            "Documenti PDF (*.pdf);;Tutti i file (*.pdf)"
+        )
+        if not file_path:
+            return
+
+        if not file_path.lower().endswith('.pdf'):
+            QMessageBox.warning(self, "Formato non supportato", "È possibile allegare esclusivamente certificati in formato PDF.")
+            return
+
+        try:
+            with open(file_path, 'rb') as f:
+                file_data = f.read()
+
+            if len(file_data) > 25 * 1024 * 1024:
+                QMessageBox.warning(self, "File troppo grande", "Il file supera il limite consentito di 25MB.")
+                return
+
+            filename = os.path.basename(file_path)
+            services.save_instrument_attachment(
+                instrument_id=self.instrument_id,
+                filename=filename,
+                file_data=file_data,
+                description="Certificato di calibrazione PDF"
+            )
+            self._load_attachments()
+            QMessageBox.information(self, "Certificato Salvato", f"Certificato '{filename}' allegato con successo allo strumento.")
+        except Exception as e:
+            logging.error(f"Errore aggiunta certificato: {e}", exc_info=True)
+            QMessageBox.critical(self, "Errore", f"Impossibile allegare il certificato:\n{e}")
+
+    def _view_selected(self):
+        item = self.attachments_list.currentItem()
+        if not item:
+            return
+        data = item.data(Qt.UserRole)
+        att_id = data['id']
+        att_uuid = data['uuid']
+        filename = data['filename']
+
+        try:
+            file_path = database.get_attachment_file_path(att_id)
+            if file_path:
+                os.startfile(file_path)
+                return
+
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                file_bytes = services.download_attachment_bytes(att_uuid)
+            finally:
+                QApplication.restoreOverrideCursor()
+
+            if not file_bytes:
+                QMessageBox.warning(self, "File non disponibile",
+                    "Il certificato non è presente in locale e non è stato possibile scaricarlo dal server.\n"
+                    "Verificare la connessione di rete.")
+                return
+
+            ext = os.path.splitext(filename)[1] or '.pdf'
+            tmp_path = os.path.join(tempfile.gettempdir(), f"stm_cert_{att_uuid}{ext}")
+            with open(tmp_path, 'wb') as f:
+                f.write(file_bytes)
+            os.startfile(tmp_path)
+        except Exception as e:
+            logging.error(f"Errore apertura certificato: {e}", exc_info=True)
+            QMessageBox.critical(self, "Errore", f"Impossibile aprire il certificato:\n{e}")
+
+    def _save_to_disk(self):
+        item = self.attachments_list.currentItem()
+        if not item:
+            return
+        data = item.data(Qt.UserRole)
+        att_id = data['id']
+        att_uuid = data['uuid']
+        filename = data['filename']
+
+        try:
+            save_path, _ = QFileDialog.getSaveFileName(
+                self, "Salva Certificato PDF", filename, "Documenti PDF (*.pdf)"
+            )
+            if not save_path:
+                return
+
+            file_path = database.get_attachment_file_path(att_id)
+            if file_path:
+                import shutil
+                shutil.copy2(file_path, save_path)
+                QMessageBox.information(self, "Salvato", f"Certificato salvato in:\n{save_path}")
+                return
+
+            file_bytes = services.download_attachment_bytes(att_uuid)
+            if not file_bytes:
+                QMessageBox.warning(self, "Errore", "Impossibile scaricare il file dal server.")
+                return
+
+            with open(save_path, 'wb') as f:
+                f.write(file_bytes)
+            QMessageBox.information(self, "Salvato", f"Certificato salvato in:\n{save_path}")
+        except Exception as e:
+            logging.error(f"Errore salvataggio certificato: {e}", exc_info=True)
+            QMessageBox.critical(self, "Errore", f"Impossibile salvare il certificato:\n{e}")
+
+    def _delete_selected(self):
+        item = self.attachments_list.currentItem()
+        if not item:
+            return
+        data = item.data(Qt.UserRole)
+        att_id = data['id']
+        reply = QMessageBox.question(
+            self, "Conferma Eliminazione",
+            "Vuoi davvero eliminare questo certificato di calibrazione?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+        )
+        if reply != QMessageBox.Yes:
+            return
+
+        try:
+            services.delete_instrument_attachment(att_id)
+            self._load_attachments()
+        except Exception as e:
+            logging.error(f"Errore eliminazione certificato: {e}", exc_info=True)
+            QMessageBox.critical(self, "Errore", f"Impossibile eliminare il certificato:\n{e}")
+
 
 class InstrumentSelectionDialog(QDialog):
     def __init__(self, parent=None, instrument_type: str = None):

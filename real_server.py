@@ -1,7 +1,7 @@
 # real_server.py (Versione Robusta con Validazione, Logging e Transazioni Atomiche)
 
 from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Body, Request, Cookie, Response as FastAPIResponse
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response, JSONResponse, FileResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -19,7 +19,9 @@ import json
 import hashlib
 import time
 import re
+import uuid
 import collections
+import database
 from dotenv import load_dotenv
 # Sicurezza
 from argon2 import PasswordHasher
@@ -272,9 +274,13 @@ class CloudflareZeroTrustMiddleware(BaseHTTPMiddleware):
     bypassando il tunnel.
     Path esclusi: /health (per il monitoring interno di cloudflared).
     """
-    EXCLUDED_PATHS = {"/health"}
+    EXCLUDED_PATHS = {"/health", "/mobile/sw.js", "/mobile/pwa-manifest"}
+    
 
     async def dispatch(self, request: Request, call_next):
+        if request.url.path.startswith("/mobile/static/"):
+            return await call_next(request)
+        
         if not CLOUDFLARE_TUNNEL:
             return await call_next(request)
 
@@ -413,7 +419,10 @@ class SecurityMiddleware(BaseHTTPMiddleware):
             "style-src 'self' 'unsafe-inline'; "
             "img-src 'self' data: blob:; "
             "font-src 'self'; "
-            "connect-src 'self'; "
+            "connect-src 'self' https://*.cloudflareaccess.com; "
+            "manifest-src 'self' blob:; "
+            "worker-src 'self' blob:; "
+            "media-src 'self' blob: data:; "
             "object-src 'none'; "
             "base-uri 'self'; "
             "form-action 'self'; "
@@ -602,6 +611,7 @@ BOOL_FIELDS_BY_TABLE = {
     "customers": ["is_deleted", "is_synced"],
     "profiles": ["is_deleted", "is_synced"],
     "functional_profiles": ["is_deleted", "is_synced"],
+    "applied_parts_presets": ["is_deleted", "is_synced"],
     "destinations": ["is_deleted", "is_synced"],
     "devices": ["is_deleted", "is_synced"],
     "profile_tests": ["is_deleted", "is_synced", "is_applied_part_test"],
@@ -610,6 +620,13 @@ BOOL_FIELDS_BY_TABLE = {
     "mti_instruments": ["is_deleted", "is_synced", "is_default"],
     "signatures": ["is_synced"],
     "audit_log": ["is_deleted", "is_synced"],
+    "device_unavailability_reports": ["is_deleted", "is_synced"],
+    "verification_assignments": ["is_deleted"],
+    "system_verifications": ["is_deleted", "is_synced"],
+    "system_verification_devices": ["is_deleted", "is_synced"],
+    "ecografo_quality_checks": ["is_deleted", "is_synced"],
+    "ecografo_quality_probes": ["is_deleted", "is_synced"],
+    "ecografo_quality_controls": ["is_deleted", "is_synced"],
 }
 
 def _to_bool(v):
@@ -632,10 +649,6 @@ def _normalize_incoming_value(table_name: str, key: str, value):
     from datetime import datetime, date
     if isinstance(value, (datetime, date)):
         return value.isoformat()
-    # device_unavailability_reports usa INTEGER per is_deleted/is_synced (non BOOLEAN)
-    # Pydantic li deserializza come bool → convertiamo in 0/1
-    if table_name == "device_unavailability_reports" and key in ("is_deleted", "is_synced") and isinstance(value, bool):
-        return int(value)
     if table_name == "signatures" and key == "signature_data" and isinstance(value, str):
         try:
             return base64.b64decode(value)
@@ -768,6 +781,7 @@ class SyncChanges(BaseModel):
     profiles: List[SyncRecord] = []
     profile_tests: List[SyncRecord] = []
     functional_profiles: List[SyncRecord] = []
+    applied_parts_presets: List[SyncRecord] = []
     destinations: List[SyncRecord] = []
     verification_attachments: List[SyncRecord] = []
     system_verifications: List[SyncRecord] = []
@@ -887,9 +901,55 @@ def _ensure_hard_deletes_table():
         # Colonne aggiuntive (migrazioni idempotenti)
         cursor.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS sede TEXT")
         cursor.execute("ALTER TABLE mti_instruments ADD COLUMN IF NOT EXISTS sede TEXT")
+        cursor.execute("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS norma VARCHAR(255) NOT NULL DEFAULT ''")
+        cursor.execute("ALTER TABLE functional_profiles ADD COLUMN IF NOT EXISTS device_type TEXT")
+        cursor.execute("ALTER TABLE functional_profiles ADD COLUMN IF NOT EXISTS instrument_id INTEGER")
+        cursor.execute("ALTER TABLE functional_profiles ADD COLUMN IF NOT EXISTS instrument_ids TEXT")
+
+        # Rimuove il vincolo di unicità sui seriali (duplicati permessi) e crea indice di ricerca normale
+        cursor.execute("DROP INDEX IF EXISTS idx_devices_serial_unique")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_devices_serial_number ON devices(serial_number)")
+
+        # Migrazione tipi colonna device_unavailability_reports a BOOLEAN
+        cursor.execute("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'device_unavailability_reports' 
+                      AND column_name = 'is_deleted' 
+                      AND data_type IN ('smallint', 'integer', 'bigint')
+                ) THEN
+                    ALTER TABLE device_unavailability_reports ALTER COLUMN is_deleted DROP DEFAULT;
+                    ALTER TABLE device_unavailability_reports ALTER COLUMN is_deleted TYPE BOOLEAN USING (is_deleted <> 0);
+                    ALTER TABLE device_unavailability_reports ALTER COLUMN is_deleted SET DEFAULT FALSE;
+
+                    ALTER TABLE device_unavailability_reports ALTER COLUMN is_synced DROP DEFAULT;
+                    ALTER TABLE device_unavailability_reports ALTER COLUMN is_synced TYPE BOOLEAN USING (is_synced <> 0);
+                    ALTER TABLE device_unavailability_reports ALTER COLUMN is_synced SET DEFAULT FALSE;
+                END IF;
+            END $$;
+        """)
+
+        # Tabella applied_parts_presets
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS applied_parts_presets (
+                id SERIAL PRIMARY KEY,
+                uuid TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL,
+                description TEXT,
+                parts_json TEXT NOT NULL,
+                last_modified TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                is_deleted BOOLEAN NOT NULL DEFAULT FALSE,
+                is_synced BOOLEAN NOT NULL DEFAULT TRUE
+            );
+            CREATE INDEX IF NOT EXISTS idx_applied_parts_presets_uuid ON applied_parts_presets(uuid);
+            CREATE INDEX IF NOT EXISTS idx_applied_parts_presets_name ON applied_parts_presets(name);
+            CREATE INDEX IF NOT EXISTS idx_applied_parts_presets_deleted ON applied_parts_presets(is_deleted);
+        """)
 
         conn.commit()
-        logger.info("✓ Tabelle server e colonne sede verificate con successo")
+        logger.info("✓ Tabelle server e colonne verificate con successo")
     except Exception as e:
         logger.error(f"Errore nella verifica schema/tabelle: {e}")
         if conn: conn.rollback()
@@ -1034,17 +1094,19 @@ def process_client_changes(conn_or_cursor, table_name: str, records: list[dict],
                 r["device_id"] = row["id"]
 
         elif table_name == "verification_attachments":
-            # Risolvi verification_id tramite UUID della verifica padre
+            # Risolvi verification_id tramite UUID della verifica padre o dello strumento
             ver_uuid = r.pop("verification_uuid", None)
             ver_type = r.get("verification_type", "functional")
             if ver_uuid:
                 if ver_type == "functional":
                     cursor.execute("SELECT id FROM functional_verifications WHERE uuid=%s AND is_deleted=FALSE", (ver_uuid,))
+                elif ver_type == "instrument":
+                    cursor.execute("SELECT id FROM mti_instruments WHERE uuid=%s AND is_deleted=FALSE", (ver_uuid,))
                 else:
                     cursor.execute("SELECT id FROM verifications WHERE uuid=%s AND is_deleted=FALSE", (ver_uuid,))
                 row = cursor.fetchone()
                 if not row:
-                    logging.warning(f"Salto attachment: verifica {ver_uuid} (tipo={ver_type}) assente sul server.")
+                    logging.warning(f"Salto attachment: genitore {ver_uuid} (tipo={ver_type}) assente sul server.")
                     continue
                 r["verification_id"] = row["id"]
             # Decodifica file_data da base64
@@ -1438,10 +1500,10 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
 
                 changes_dict = payload.changes.model_dump()
                 tables_order = ["customers", "mti_instruments", "profiles", "profile_tests", "functional_profiles",
-                                "destinations", "devices", "verifications", "functional_verifications", "verification_attachments",
-                                "system_verifications", "system_verification_devices", "verification_assignments",
-                                "device_unavailability_reports", "ecografo_quality_checks", "ecografo_quality_probes",
-                                "ecografo_quality_controls", "signatures", "audit_log"]
+                                "applied_parts_presets", "destinations", "devices", "verifications", "functional_verifications",
+                                "verification_attachments", "system_verifications", "system_verification_devices",
+                                "verification_assignments", "device_unavailability_reports", "ecografo_quality_checks",
+                                "ecografo_quality_probes", "ecografo_quality_controls", "signatures", "audit_log"]
 
                 for table in tables_order:
                     records = changes_dict.get(table, [])
@@ -1499,7 +1561,7 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                 logging.info("Fase PUSH completata con successo.")
                 logging.info("Fase PULL: Invio aggiornamenti al client...")
 
-                simple_tables = ["customers", "mti_instruments", "profiles", "profile_tests", "functional_profiles", "destinations"]
+                simple_tables = ["customers", "mti_instruments", "profiles", "profile_tests", "functional_profiles", "applied_parts_presets", "destinations"]
                 is_first_sync = payload.last_sync_timestamp is None
 
                 cursor.execute("SELECT * FROM signatures")
@@ -1568,15 +1630,17 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                     """)
                     changes_to_send["functional_verifications"] = cursor.fetchall()
 
-                    # Verification attachments: join con verifica padre per ottenere UUID
+                    # Verification attachments: join con verifica padre o strumento per ottenere UUID
                     cursor.execute("""
                         SELECT va.*,
-                               COALESCE(fv.uuid, v.uuid) as verification_uuid
+                               COALESCE(fv.uuid, v.uuid, mi.uuid) as verification_uuid
                         FROM verification_attachments va
                         LEFT JOIN functional_verifications fv 
                             ON va.verification_id = fv.id AND va.verification_type = 'functional'
                         LEFT JOIN verifications v 
                             ON va.verification_id = v.id AND va.verification_type = 'electrical'
+                        LEFT JOIN mti_instruments mi 
+                            ON va.verification_id = mi.id AND va.verification_type = 'instrument'
                         WHERE va.is_deleted = FALSE
                     """)
                     changes_to_send["verification_attachments"] = cursor.fetchall()
@@ -1616,7 +1680,7 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                         FROM device_unavailability_reports r
                         JOIN devices d ON d.id = r.device_id
                         JOIN destinations dest ON dest.id = r.destination_id
-                        WHERE r.is_deleted = 0
+                        WHERE r.is_deleted = FALSE
                     """)
                     changes_to_send["device_unavailability_reports"] = cursor.fetchall()
 
@@ -1704,15 +1768,17 @@ def handle_sync(payload_raw: dict = Body(...), current_user: User = Depends(get_
                     """, (last_sync_dt, new_sync_timestamp))
                     changes_to_send["functional_verifications"] = cursor.fetchall()
 
-                    # Verification attachments: join con verifica padre per ottenere UUID
+                    # Verification attachments: join con verifica padre o strumento per ottenere UUID
                     cursor.execute("""
                         SELECT va.*,
-                               COALESCE(fv.uuid, v.uuid) as verification_uuid
+                               COALESCE(fv.uuid, v.uuid, mi.uuid) as verification_uuid
                         FROM verification_attachments va
                         LEFT JOIN functional_verifications fv 
                             ON va.verification_id = fv.id AND va.verification_type = 'functional'
                         LEFT JOIN verifications v 
                             ON va.verification_id = v.id AND va.verification_type = 'electrical'
+                        LEFT JOIN mti_instruments mi 
+                            ON va.verification_id = mi.id AND va.verification_type = 'instrument'
                         WHERE va.last_modified > %s AND va.last_modified <= %s
                     """, (last_sync_dt, new_sync_timestamp))
                     changes_to_send["verification_attachments"] = cursor.fetchall()
@@ -2359,11 +2425,50 @@ _THIS_DIR = sys._MEIPASS if getattr(sys, 'frozen', False) else os.path.dirname(o
 _MOBILE_TEMPLATES = os.path.join(_THIS_DIR, "mobile", "templates")
 _MOBILE_STATIC    = os.path.join(_THIS_DIR, "mobile", "static")
 
-mobile_templates = Jinja2Templates(directory=_MOBILE_TEMPLATES)
+class CompatibleJinja2Templates(Jinja2Templates):
+    """Garantisce la compatibilità di TemplateResponse con Starlette sia < 0.36 che >= 0.36."""
+    def TemplateResponse(self, *args, **kwargs):
+        if args and isinstance(args[0], str):
+            name = args[0]
+            context = args[1] if len(args) > 1 else kwargs.pop("context", {})
+            request = context.get("request") if isinstance(context, dict) else kwargs.pop("request", None)
+            rest_args = args[2:]
+            return super().TemplateResponse(request=request, name=name, context=context, *rest_args, **kwargs)
+        return super().TemplateResponse(*args, **kwargs)
+
+def format_date_it(val: Any) -> str:
+    """Formatta qualsiasi data o stringa data nel formato italiano DD/MM/YYYY."""
+    if not val:
+        return ""
+    if isinstance(val, (datetime, date)):
+        return val.strftime("%d/%m/%Y")
+    s = str(val).strip()
+    if not s:
+        return ""
+    if re.match(r"^\d{2}/\d{2}/\d{4}", s):
+        return s[:10]
+    m = re.match(r"^(\d{4})-(\d{1,2})-(\d{1,2})", s)
+    if m:
+        y, mth, d = m.groups()
+        return f"{int(d):02d}/{int(mth):02d}/{y}"
+    m = re.match(r"^(\d{1,2})-(\d{1,2})-(\d{4})", s)
+    if m:
+        d, mth, y = m.groups()
+        return f"{int(d):02d}/{int(mth):02d}/{y}"
+    m = re.match(r"^(\d{1,2})\.(\d{1,2})\.(\d{4})", s)
+    if m:
+        d, mth, y = m.groups()
+        return f"{int(d):02d}/{int(mth):02d}/{y}"
+    return s
+
+mobile_templates = CompatibleJinja2Templates(directory=_MOBILE_TEMPLATES)
 
 # Aggiunge la data odierna come globale Jinja2 (usata nei template che chiamano today())
 from datetime import date as _date_cls
 mobile_templates.env.globals["today"] = _date_cls.today  # callable: usare today() nei template
+mobile_templates.env.globals["format_date_it"] = format_date_it
+mobile_templates.env.filters["date_it"] = format_date_it
+mobile_templates.env.filters["fmt_date"] = format_date_it
 
 
 def _get_pending_assignments_count(username: str, role: str) -> int:
@@ -2461,6 +2566,7 @@ def _mobile_user_from_cookie(mobile_session: Optional[str] = Cookie(None)) -> Op
             role=role,
             first_name=payload.get("first_name"),
             last_name=payload.get("last_name"),
+            sede=payload.get("sede"),
         )
     except Exception:
         return None
@@ -2518,7 +2624,8 @@ def mobile_login(request: Request, form_data: OAuth2PasswordRequestForm = Depend
     token = create_access_token(
         data={"sub": user_row["username"], "role": user_row["role"],
               "first_name": first_name, "last_name": last_name,
-              "full_name": f"{first_name} {last_name}".strip() or user_row["username"]},
+              "full_name": f"{first_name} {last_name}".strip() or user_row["username"],
+              "sede": user_row.get("sede") or ""},
         expires_delta=timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES),
     )
     resp = RedirectResponse(url="/mobile/dashboard", status_code=302)
@@ -3529,6 +3636,16 @@ def mobile_destination_detail(uuid: str, request: Request, mobile_session: Optio
             WHERE destination_id = %s AND is_deleted = FALSE ORDER BY description
         """, (destination["id"],))
         raw_devices = cur.fetchall()
+
+        cur.execute("""
+            SELECT sv.*,
+                   (SELECT COUNT(*) FROM system_verification_devices svd
+                    WHERE svd.system_verification_id = sv.id AND svd.is_deleted = FALSE) AS device_count
+            FROM system_verifications sv
+            WHERE sv.destination_id = %s AND sv.is_deleted = FALSE
+            ORDER BY sv.verification_date DESC, sv.last_modified DESC
+        """, (destination["id"],))
+        system_verifications = cur.fetchall()
         conn.close()
     except HTTPException:
         raise
@@ -3545,9 +3662,513 @@ def mobile_destination_detail(uuid: str, request: Request, mobile_session: Optio
     return mobile_templates.TemplateResponse("destination_detail.html", {
         "request": request, "user": user, "active_nav": "customers",
         "destination": destination, "customer_name": destination["customer_name"],
-        "devices": devices, "back_url": f"/mobile/customers/{destination['customer_uuid']}",
+        "devices": devices, "system_verifications": system_verifications,
+        "back_url": f"/mobile/customers/{destination['customer_uuid']}",
         "today": today_str, "expiry_threshold": threshold_str,
         "is_manager": user.role in ("admin", "moderator"),
+    })
+
+
+# ─── System Verifications (mobile) ───────────────────────────────────────────
+
+def _get_instruments_for_verification(cur, user, instrument_type: str = 'electrical'):
+    """
+    Recupera gli strumenti disponibili per una verifica, filtrandoli sempre per la sede dell'utente
+    (inclusi gli utenti admin se hanno una sede assegnata).
+    """
+    user_sede = None
+    if user:
+        if isinstance(user, dict):
+            user_sede = user.get("sede")
+        elif hasattr(user, "sede"):
+            user_sede = user.sede
+    
+    clean_sede = str(user_sede).strip().upper() if user_sede and str(user_sede).strip() else None
+
+    if instrument_type == 'electrical':
+        type_clause = "(instrument_type IS NULL OR instrument_type = '' OR instrument_type = 'electrical')"
+    elif instrument_type == 'functional':
+        type_clause = "instrument_type = 'functional'"
+    else:
+        type_clause = "1=1"
+
+    if clean_sede and clean_sede not in ("TUTTE", "ALL"):
+        cur.execute(f"""
+            SELECT uuid, instrument_name, serial_number, calibration_date, sede, is_default
+            FROM mti_instruments
+            WHERE is_deleted = FALSE 
+              AND {type_clause}
+              AND (UPPER(TRIM(sede)) = %s OR sede IS NULL OR TRIM(sede) = '')
+            ORDER BY is_default DESC, instrument_name ASC
+        """, (clean_sede,))
+    else:
+        cur.execute(f"""
+            SELECT uuid, instrument_name, serial_number, calibration_date, sede, is_default
+            FROM mti_instruments
+            WHERE is_deleted = FALSE AND {type_clause}
+            ORDER BY is_default DESC, instrument_name ASC
+        """)
+    return cur.fetchall()
+
+@app.get("/mobile/destinations/{dest_uuid}/new-system-verification", response_class=HTMLResponse)
+def mobile_new_system_verification(dest_uuid: str, request: Request,
+                                   device_uuid: Optional[str] = None,
+                                   mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT d.*, c.name AS customer_name, c.uuid AS customer_uuid
+            FROM destinations d
+            JOIN customers c ON c.id = d.customer_id
+            WHERE d.uuid = %s AND d.is_deleted = FALSE
+        """, (dest_uuid,))
+        dest = cur.fetchone()
+        if not dest:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Destinazione non trovata")
+
+        cur.execute("""
+            SELECT uuid, description, manufacturer, model, serial_number, ams_inventory, department
+            FROM devices
+            WHERE destination_id = %s AND is_deleted = FALSE
+            ORDER BY description, model
+        """, (dest["id"],))
+        devices = cur.fetchall()
+
+        cur.execute("""
+            SELECT DISTINCT ON (p.profile_key) p.profile_key, p.name
+            FROM profiles p
+            WHERE p.is_deleted = FALSE
+            ORDER BY p.profile_key, p.last_modified DESC
+        """)
+        profiles = cur.fetchall()
+
+        # Strumenti di misura (con filtro sede per tutti gli utenti, inclusi admin)
+        instruments = _get_instruments_for_verification(cur, user, 'electrical')
+        conn.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[mobile] new system verification form error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    today_str = date.today().isoformat()
+
+    return mobile_templates.TemplateResponse("new_system_verification.html", {
+        "request": request, "user": user,
+        "destination": dest,
+        "customer_name": dest["customer_name"],
+        "devices": devices,
+        "profiles": profiles,
+        "instruments": instruments,
+        "today": today_str,
+        "preselected_uuid": device_uuid,
+        "back_url": f"/mobile/destinations/{dest_uuid}",
+    })
+
+
+@app.post("/mobile/destinations/{dest_uuid}/new-system-verification", response_class=HTMLResponse)
+async def mobile_save_system_verification(dest_uuid: str, request: Request,
+                                          mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    form = await request.form()
+    system_name = (form.get("system_name") or "").strip()
+    verification_date = form.get("verification_date") or date.today().isoformat()
+    profile_key = form.get("profile_key", "").strip()
+    instrument_uuid = form.get("instrument_uuid", "").strip()
+    overall_status = form.get("overall_status", "CONFORME")
+    _PASS_NORM = {"PASS", "PASSATO", "OK", "CONFORME"}
+    _ANNOT_NORM = {"CONFORME CON ANNOTAZIONE"}
+    if overall_status.upper() in _ANNOT_NORM or overall_status == "CONFORME CON ANNOTAZIONE":
+        overall_status = "CONFORME CON ANNOTAZIONE"
+    elif overall_status.upper() in _PASS_NORM:
+        overall_status = "CONFORME"
+    else:
+        overall_status = "NON CONFORME"
+
+    notes = (form.get("notes") or "").strip() or None
+    device_uuids = form.getlist("device_uuids")
+
+    # Visual inspection
+    VI_ITEMS = [
+        "Involucri e parti meccaniche dei dispositivi integri.",
+        "Cavi di alimentazione, spine e multiprese conformi e senza danni.",
+        "Cavi di interconnessione e accessori del sistema integri.",
+        "Marcature CE, etichette e dati di targa leggibili.",
+        "Assenza di liquidi, sporcizia o surriscaldamenti anomali.",
+        "Accensione e operatività simultanea corretta."
+    ]
+    vi_checklist = [{"item": item, "result": form.get(f"vi_{i}", "OK")} for i, item in enumerate(VI_ITEMS)]
+    vi_notes = (form.get("vi_notes") or "").strip()
+    visual_inspection_json = json.dumps({"checklist": vi_checklist, "notes": vi_notes})
+
+    # Electrical test results
+    test_count = int(form.get("test_count", 0) or 0)
+    _PASS_VALUES = {"PASS", "PASSATO", "OK", "CONFORME"}
+    results_list = []
+    for i in range(test_count):
+        t_name = form.get(f"test_name_{i}", "").strip()
+        t_status = form.get(f"test_status_{i}", "PASS")
+        t_val = form.get(f"test_value_{i}", "").strip()
+        t_lim = form.get(f"test_limit_{i}", "").strip()
+        t_unit = form.get(f"test_unit_{i}", "").strip()
+        if t_name:
+            results_list.append({
+                "name": t_name,
+                "passed": t_status.upper() in _PASS_VALUES,
+                "value": t_val or None,
+                "unit": t_unit or None,
+                "limit_value": t_lim or None,
+                "status": t_status,
+            })
+    results_json = json.dumps(results_list)
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("SELECT id FROM destinations WHERE uuid = %s AND is_deleted = FALSE", (dest_uuid,))
+        dest_row = cur.fetchone()
+        if not dest_row:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Destinazione non trovata")
+
+        # Resolve device IDs
+        device_ids = []
+        if device_uuids:
+            cur.execute("SELECT id FROM devices WHERE uuid = ANY(%s) AND is_deleted = FALSE", (device_uuids,))
+            device_ids = [r["id"] for r in cur.fetchall()]
+
+        # Profile name
+        cur.execute("SELECT name FROM profiles WHERE profile_key = %s AND is_deleted = FALSE LIMIT 1", (profile_key,))
+        prof_row = cur.fetchone()
+        profile_name = prof_row["name"] if prof_row else profile_key
+
+        # MTI instrument
+        cur.execute("SELECT instrument_name, serial_number, calibration_date FROM mti_instruments WHERE uuid = %s AND is_deleted = FALSE", (instrument_uuid,))
+        instr_row = cur.fetchone()
+        mti_instrument = instr_row["instrument_name"] if instr_row else None
+        mti_serial = instr_row["serial_number"] if instr_row else None
+        mti_cal_date = instr_row["calibration_date"] if instr_row else None
+
+        # Verification code: INIZIALI-AAMMGG-NNNN-VS
+        tech_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or user.username
+        def _initials(name):
+            parts = name.split()
+            if len(parts) >= 2:
+                return (parts[0][0] + parts[1][0]).upper()
+            return name[:2].upper() if len(name) >= 2 else "XX"
+        initials = _initials(tech_name)
+        try:
+            date_prefix = datetime.strptime(verification_date, '%Y-%m-%d').strftime('%y%m%d')
+        except Exception:
+            date_prefix = datetime.now().strftime('%y%m%d')
+        full_prefix = f"{initials}-{date_prefix}-"
+        cur.execute(
+            "SELECT verification_code FROM system_verifications WHERE verification_code LIKE %s ORDER BY verification_code DESC LIMIT 1",
+            (f"{full_prefix}%-VS",)
+        )
+        last_code_row = cur.fetchone()
+        if last_code_row and last_code_row.get("verification_code"):
+            try:
+                core = last_code_row["verification_code"][len(full_prefix):]
+                num = int(core.split("-")[0]) + 1
+            except Exception:
+                num = 1
+        else:
+            num = 1
+        verification_code = f"{full_prefix}{num:04d}-VS"
+
+        new_sv_uuid = str(__import__("uuid").uuid4())
+        now_ts = datetime.now(timezone.utc)
+
+        cur.execute("""
+            INSERT INTO system_verifications (
+                uuid, system_name, destination_id, verification_date, profile_name,
+                results_json, overall_status, visual_inspection_json,
+                mti_instrument, mti_serial, mti_cal_date,
+                technician_name, technician_username, verification_code, notes,
+                last_modified, is_deleted, is_synced
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, 1)
+            RETURNING id
+        """, (new_sv_uuid, system_name, dest_row["id"], verification_date, profile_name,
+              results_json, overall_status, visual_inspection_json,
+              mti_instrument, mti_serial, mti_cal_date,
+              tech_name, user.username, verification_code, notes,
+              now_ts))
+        sv_id = cur.fetchone()["id"]
+
+        for idx, d_id in enumerate(device_ids):
+            svd_uuid = str(__import__("uuid").uuid4())
+            cur.execute("""
+                INSERT INTO system_verification_devices (
+                    uuid, system_verification_id, device_id, device_order,
+                    last_modified, is_deleted, is_synced
+                ) VALUES (%s, %s, %s, %s, %s, 0, 1)
+            """, (svd_uuid, sv_id, d_id, idx, now_ts))
+
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] save system verification error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    return RedirectResponse(url=f"/mobile/system-verifications/{new_sv_uuid}", status_code=303)
+
+
+@app.get("/mobile/system-verifications/{uuid}", response_class=HTMLResponse)
+def mobile_system_verification_detail(uuid: str, request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT sv.*, dest.name AS destination_name, dest.uuid AS destination_uuid,
+                   c.name AS customer_name
+            FROM system_verifications sv
+            JOIN destinations dest ON dest.id = sv.destination_id
+            JOIN customers c ON c.id = dest.customer_id
+            WHERE sv.uuid = %s AND sv.is_deleted = FALSE
+        """, (uuid,))
+        sv = cur.fetchone()
+        if not sv:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Verifica di sistema non trovata")
+
+        cur.execute("""
+            SELECT d.*, svd.device_order
+            FROM system_verification_devices svd
+            JOIN devices d ON d.id = svd.device_id
+            WHERE svd.system_verification_id = %s AND svd.is_deleted = FALSE
+            ORDER BY svd.device_order, d.description
+        """, (sv["id"],))
+        devices = cur.fetchall()
+        conn.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[mobile] system verification detail error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    # Parse JSON
+    visual_inspection = {}
+    if sv.get("visual_inspection_json"):
+        try:
+            visual_inspection = json.loads(sv["visual_inspection_json"])
+        except Exception:
+            pass
+
+    results = []
+    if sv.get("results_json"):
+        try:
+            results = json.loads(sv["results_json"])
+        except Exception:
+            pass
+
+    return mobile_templates.TemplateResponse("system_verification_detail.html", {
+        "request": request, "user": user,
+        "sv": sv,
+        "devices": devices,
+        "visual_inspection": visual_inspection,
+        "results": results,
+        "customer_name": sv["customer_name"],
+        "destination_name": sv["destination_name"],
+        "destination_uuid": sv["destination_uuid"],
+        "back_url": f"/mobile/destinations/{sv['destination_uuid']}",
+    })
+
+
+@app.get("/mobile/system-verifications/{uuid}/report")
+def mobile_system_verification_report(uuid: str, request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT sv.*, dest.name AS dest_name, dest.address AS dest_address,
+                   c.name AS cust_name, c.address AS cust_address
+            FROM system_verifications sv
+            JOIN destinations dest ON dest.id = sv.destination_id
+            JOIN customers c ON c.id = dest.customer_id
+            WHERE sv.uuid = %s AND sv.is_deleted = FALSE
+        """, (uuid,))
+        sv = cur.fetchone()
+        if not sv:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Verifica di sistema non trovata")
+
+        cur.execute("""
+            SELECT d.*, svd.device_order
+            FROM system_verification_devices svd
+            JOIN devices d ON d.id = svd.device_id
+            WHERE svd.system_verification_id = %s AND svd.is_deleted = FALSE
+            ORDER BY svd.device_order, d.description
+        """, (sv["id"],))
+        devices = cur.fetchall()
+
+        # Signature
+        tech_username = sv.get("technician_username") or user.get("username")
+        cur.execute("SELECT signature_data FROM signatures WHERE username = %s LIMIT 1", (tech_username,))
+        sig_row = cur.fetchone()
+        signature_data = bytes(sig_row["signature_data"]) if (sig_row and sig_row.get("signature_data")) else None
+        conn.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[mobile] system report error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    import server_report_generator as _srg
+    import tempfile
+
+    devices_info = [dict(d) for d in devices]
+    customer_info = {"name": sv["cust_name"], "address": sv.get("cust_address", "")}
+    destination_info = {"name": sv["dest_name"], "address": sv.get("dest_address", "")}
+    mti_info = {
+        "instrument": sv.get("mti_instrument", ""),
+        "serial": sv.get("mti_serial", ""),
+        "version": sv.get("mti_version", ""),
+        "cal_date": sv.get("mti_cal_date", ""),
+    }
+
+    results = []
+    if sv.get("results_json"):
+        try:
+            results = json.loads(sv["results_json"])
+        except Exception:
+            pass
+
+    visual_data = {}
+    if sv.get("visual_inspection_json"):
+        try:
+            visual_data = json.loads(sv["visual_inspection_json"])
+        except Exception:
+            pass
+
+    verification_data = {
+        "date": sv.get("verification_date", ""),
+        "profile_name": sv.get("profile_name", ""),
+        "overall_status": sv.get("overall_status", ""),
+        "results": results,
+        "visual_inspection_data": visual_data,
+        "verification_code": sv.get("verification_code", "N/A"),
+        "system_name": sv.get("system_name", ""),
+    }
+
+    report_settings = {"logo_path": getattr(app.state, "logo_path", None)}
+
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        _srg.create_system_report(
+            filename=tmp_path,
+            devices_info=devices_info,
+            customer_info=customer_info,
+            destination_info=destination_info,
+            mti_info=mti_info,
+            report_settings=report_settings,
+            verification_data=verification_data,
+            technician_name=sv.get("technician_name", "N/D"),
+            signature_data=signature_data,
+        )
+        with open(tmp_path, "rb") as f:
+            pdf_bytes = f.read()
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+    clean_sys_name = re.sub(r'[\\/*?:"<>|]', '_', sv.get("system_name") or "Sistema")
+    pdf_filename = f"{sv.get('verification_date', '')}_Report_Sistema_{clean_sys_name}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{pdf_filename}"'}
+    )
+
+
+@app.post("/mobile/system-verifications/{uuid}/delete")
+def mobile_system_verification_delete(uuid: str, request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        now_ts = datetime.now(timezone.utc)
+        cur.execute("""
+            UPDATE system_verifications
+            SET is_deleted = TRUE, is_synced = TRUE, last_modified = %s
+            WHERE uuid = %s
+            RETURNING id, destination_id
+        """, (now_ts, uuid))
+        sv_row = cur.fetchone()
+        dest_uuid = None
+        if sv_row:
+            cur.execute("""
+                UPDATE system_verification_devices
+                SET is_deleted = TRUE, is_synced = TRUE, last_modified = %s
+                WHERE system_verification_id = %s
+            """, (now_ts, sv_row["id"]))
+            cur.execute("SELECT uuid FROM destinations WHERE id = %s", (sv_row["destination_id"],))
+            dest_row = cur.fetchone()
+            if dest_row:
+                dest_uuid = dest_row["uuid"]
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] system verification delete error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    if dest_uuid:
+        return RedirectResponse(url=f"/mobile/destinations/{dest_uuid}", status_code=303)
+    return RedirectResponse(url="/mobile/dashboard", status_code=303)
+
+
+@app.get("/mobile/system-verifications", response_class=HTMLResponse)
+def mobile_system_verifications_list(request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT sv.*, dest.name AS destination_name, c.name AS customer_name,
+                   (SELECT COUNT(*) FROM system_verification_devices svd
+                    WHERE svd.system_verification_id = sv.id AND svd.is_deleted = FALSE) AS device_count
+            FROM system_verifications sv
+            JOIN destinations dest ON dest.id = sv.destination_id
+            JOIN customers c ON c.id = dest.customer_id
+            WHERE sv.is_deleted = FALSE
+            ORDER BY sv.verification_date DESC, sv.last_modified DESC
+        """)
+        verifications = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] system verifications list error: {e}", exc_info=True)
+        verifications = []
+
+    return mobile_templates.TemplateResponse("system_verifications_list.html", {
+        "request": request, "user": user, "active_nav": "verifications",
+        "verifications": verifications,
+        "back_url": "/mobile/dashboard",
     })
 
 
@@ -3647,7 +4268,7 @@ async def mobile_verification_round_post(
             report_uuid = (form.get("report_uuid") or "").strip()
             if report_uuid:
                 cur.execute(
-                    "UPDATE device_unavailability_reports SET is_deleted = 1, last_modified = %s WHERE uuid = %s",
+                    "UPDATE device_unavailability_reports SET is_deleted = TRUE, last_modified = %s WHERE uuid = %s",
                     (datetime.utcnow().isoformat(), report_uuid),
                 )
                 conn.commit()
@@ -3673,7 +4294,7 @@ async def mobile_verification_round_post(
             SELECT r.*, d.description, d.serial_number
             FROM device_unavailability_reports r
             JOIN devices d ON d.id = r.device_id
-            WHERE r.destination_id = %s AND r.period_start = %s AND r.period_end = %s AND r.is_deleted = 0
+            WHERE r.destination_id = %s AND r.period_start = %s AND r.period_end = %s AND r.is_deleted = FALSE
         """, (dest_id, period_start, period_end))
         unavailable_reports = [dict(r) for r in cur.fetchall()]
         unavailable_device_ids = {r["device_id"] for r in unavailable_reports}
@@ -3716,6 +4337,8 @@ def mobile_device_detail(uuid: str, request: Request, mobile_session: Optional[s
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_unavailability_table(cur)
+        conn.commit()
 
         cur.execute("""
             SELECT d.*, dest.name AS destination_name, dest.uuid AS destination_uuid,
@@ -3747,6 +4370,23 @@ def mobile_device_detail(uuid: str, request: Request, mobile_session: Optional[s
             ORDER BY verification_date DESC, last_modified DESC
         """, (device["id"],))
         func_verifications = cur.fetchall()
+
+        cur.execute("""
+            SELECT uuid, period_start, period_end, reason, technician_name, created_at
+            FROM device_unavailability_reports
+            WHERE device_id = %s AND is_deleted = FALSE
+            ORDER BY period_start DESC, created_at DESC
+        """, (device["id"],))
+        unavailability_reports = cur.fetchall()
+
+        cur.execute("""
+            SELECT eq.*,
+                   (SELECT COUNT(*) FROM ecografo_quality_probes eqp WHERE eqp.check_id = eq.id AND eqp.is_deleted = FALSE) AS probe_count
+            FROM ecografo_quality_checks eq
+            WHERE eq.device_id = %s AND eq.is_deleted = FALSE
+            ORDER BY eq.verification_date DESC, eq.id DESC
+        """, (device["id"],))
+        ecografo_checks = cur.fetchall()
         conn.close()
     except HTTPException:
         raise
@@ -3772,10 +4412,1657 @@ def mobile_device_detail(uuid: str, request: Request, mobile_session: Optional[s
         "request": request, "user": user,
         "device": device_dict, "verifications": verifications,
         "func_verifications": func_verifications,
+        "unavailability_reports": unavailability_reports,
+        "ecografo_checks": ecografo_checks,
         "customer_name": device["customer_name"],
         "destination_name": device["destination_name"],
         "today": today_str, "expiry_threshold": threshold_str,
         "back_url": f"/mobile/destinations/{device['destination_uuid']}",
+    })
+
+
+# ─── Ultrasound Probe Quality Checks (CQ Sonde mobile) ───────────────────────
+
+@app.get("/mobile/devices/{device_uuid}/new-ecografo-cq", response_class=HTMLResponse)
+def mobile_new_ecografo_cq(device_uuid: str, request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT d.*, dest.name AS destination_name, dest.uuid AS destination_uuid,
+                   c.name AS customer_name, c.uuid AS customer_uuid
+            FROM devices d
+            JOIN destinations dest ON dest.id = d.destination_id
+            JOIN customers c ON c.id = dest.customer_id
+            WHERE d.uuid = %s AND d.is_deleted = FALSE
+        """, (device_uuid,))
+        device = cur.fetchone()
+        conn.close()
+        if not device:
+            raise HTTPException(status_code=404, detail="Dispositivo non trovato")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[mobile] new ecografo cq form error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    today_str = date.today().isoformat()
+
+    return mobile_templates.TemplateResponse("new_ecografo_cq.html", {
+        "request": request, "user": user,
+        "device": device,
+        "customer_name": device["customer_name"],
+        "destination_name": device["destination_name"],
+        "today": today_str,
+        "back_url": f"/mobile/devices/{device_uuid}",
+    })
+
+
+@app.post("/mobile/devices/{device_uuid}/new-ecografo-cq", response_class=HTMLResponse)
+async def mobile_save_ecografo_cq(device_uuid: str, request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    form = await request.form()
+    verification_date = form.get("verification_date") or date.today().isoformat()
+    overall_status = form.get("overall_status", "CONFORME")
+    _PASS_NORM = {"PASS", "PASSATO", "OK", "CONFORME"}
+    _ANNOT_NORM = {"CONFORME CON ANNOTAZIONE"}
+    if overall_status.upper() in _ANNOT_NORM or overall_status == "CONFORME CON ANNOTAZIONE":
+        overall_status = "CONFORME CON ANNOTAZIONE"
+    elif overall_status.upper() in _PASS_NORM:
+        overall_status = "CONFORME"
+    else:
+        overall_status = "NON CONFORME"
+
+    notes = (form.get("notes") or "").strip() or None
+    probes_raw = form.get("probes_json", "[]")
+    try:
+        probes_data = json.loads(probes_raw) if probes_raw else []
+    except Exception:
+        probes_data = []
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("SELECT id FROM devices WHERE uuid = %s AND is_deleted = FALSE", (device_uuid,))
+        dev_row = cur.fetchone()
+        if not dev_row:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Dispositivo non trovato")
+        dev_id = dev_row["id"]
+
+        tech_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or user.username
+        def _initials(name):
+            parts = name.split()
+            if len(parts) >= 2:
+                return (parts[0][0] + parts[1][0]).upper()
+            return name[:2].upper() if len(name) >= 2 else "XX"
+        initials = _initials(tech_name)
+        try:
+            date_prefix = datetime.strptime(verification_date, '%Y-%m-%d').strftime('%y%m%d')
+        except Exception:
+            date_prefix = datetime.now().strftime('%y%m%d')
+        full_prefix = f"{initials}-{date_prefix}-"
+        cur.execute(
+            "SELECT verification_code FROM ecografo_quality_checks WHERE verification_code LIKE %s ORDER BY verification_code DESC LIMIT 1",
+            (f"{full_prefix}%-EQ",)
+        )
+        last_code_row = cur.fetchone()
+        if last_code_row and last_code_row.get("verification_code"):
+            try:
+                core = last_code_row["verification_code"][len(full_prefix):]
+                num = int(core.split("-")[0]) + 1
+            except Exception:
+                num = 1
+        else:
+            num = 1
+        verification_code = f"{full_prefix}{num:04d}-EQ"
+
+        new_cq_uuid = str(__import__("uuid").uuid4())
+        now_ts = datetime.now(timezone.utc)
+
+        cur.execute("""
+            INSERT INTO ecografo_quality_checks (
+                uuid, device_id, verification_date,
+                technician_name, technician_username,
+                verification_code, overall_status, notes,
+                last_modified, is_deleted, is_synced
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 0, 1)
+            RETURNING id
+        """, (new_cq_uuid, dev_id, verification_date,
+              tech_name, user.username, verification_code, overall_status, notes,
+              now_ts))
+        check_id = cur.fetchone()["id"]
+
+        for idx, probe in enumerate(probes_data):
+            probe_uuid = str(__import__("uuid").uuid4())
+            cur.execute("""
+                INSERT INTO ecografo_quality_probes (
+                    uuid, check_id, probe_order,
+                    inventory, manufacturer, probe_type, serial_number, model,
+                    preset, gain, power, control_stage,
+                    overall_judgment, notes,
+                    last_modified, is_deleted, is_synced
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, 1)
+                RETURNING id
+            """, (probe_uuid, check_id, idx,
+                  probe.get("inventory"), probe.get("manufacturer"), probe.get("probe_type", "Convex"),
+                  probe.get("serial_number", ""), probe.get("model", ""),
+                  probe.get("preset"), probe.get("gain"), probe.get("power"),
+                  probe.get("control_stage", "Baseline"),
+                  probe.get("overall_judgment", "CONFORME"), probe.get("notes"),
+                  now_ts))
+            probe_id = cur.fetchone()["id"]
+
+            controls_dict = probe.get("controls") or {}
+            for c_key, c_val in controls_dict.items():
+                ctrl_uuid = str(__import__("uuid").uuid4())
+                ctrl_passed = c_val.get("passed")
+                passed_int = 1 if ctrl_passed is True else (0 if ctrl_passed is False else None)
+                cur.execute("""
+                    INSERT INTO ecografo_quality_controls (
+                        uuid, probe_id, control_key, control_label,
+                        value, unit, passed, notes,
+                        last_modified, is_deleted, is_synced
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 0, 1)
+                """, (ctrl_uuid, probe_id, c_val.get("key", c_key), c_val.get("label", c_key),
+                      str(c_val.get("value", "")) if c_val.get("value") is not None else None,
+                      c_val.get("unit"), passed_int, c_val.get("notes"),
+                      now_ts))
+
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] save ecografo cq error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    return RedirectResponse(url=f"/mobile/ecografo-cq/{new_cq_uuid}", status_code=303)
+
+
+@app.get("/mobile/ecografo-cq/{uuid}", response_class=HTMLResponse)
+def mobile_ecografo_cq_detail(uuid: str, request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT eq.*, d.description AS device_description, d.model AS device_model,
+                   d.serial_number AS device_serial_number, d.manufacturer AS device_manufacturer,
+                   d.uuid AS device_uuid,
+                   dest.name AS destination_name, c.name AS customer_name
+            FROM ecografo_quality_checks eq
+            JOIN devices d ON d.id = eq.device_id
+            JOIN destinations dest ON dest.id = d.destination_id
+            JOIN customers c ON c.id = dest.customer_id
+            WHERE eq.uuid = %s AND eq.is_deleted = FALSE
+        """, (uuid,))
+        check = cur.fetchone()
+        if not check:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Controllo qualità sonde non trovato")
+
+        cur.execute("""
+            SELECT * FROM ecografo_quality_probes
+            WHERE check_id = %s AND is_deleted = FALSE
+            ORDER BY probe_order, id
+        """, (check["id"],))
+        probes = cur.fetchall()
+
+        for probe in probes:
+            cur.execute("""
+                SELECT * FROM ecografo_quality_controls
+                WHERE probe_id = %s AND is_deleted = FALSE
+                ORDER BY id
+            """, (probe["id"],))
+            probe["controls"] = cur.fetchall()
+
+        check["probes"] = probes
+        conn.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[mobile] ecografo cq detail error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    return mobile_templates.TemplateResponse("ecografo_cq_detail.html", {
+        "request": request, "user": user,
+        "check": check,
+        "device": check,
+        "customer_name": check["customer_name"],
+        "destination_name": check["destination_name"],
+        "back_url": f"/mobile/devices/{check['device_uuid']}",
+    })
+
+
+@app.get("/mobile/ecografo-cq/{uuid}/report")
+def mobile_ecografo_cq_report(uuid: str, request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT eq.*, d.id AS device_id, d.description, d.model, d.serial_number, d.manufacturer,
+                   d.ams_inventory, d.customer_inventory, d.department,
+                   dest.name AS dest_name, dest.address AS dest_address,
+                   c.name AS cust_name, c.address AS cust_address
+            FROM ecografo_quality_checks eq
+            JOIN devices d ON d.id = eq.device_id
+            JOIN destinations dest ON dest.id = d.destination_id
+            JOIN customers c ON c.id = dest.customer_id
+            WHERE eq.uuid = %s AND eq.is_deleted = FALSE
+        """, (uuid,))
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Controllo qualità non trovato")
+
+        from app.ecografo_quality_models import EcografoQualityCheck, EcografoQualityProbe, EcografoQualityControl
+        check_obj = EcografoQualityCheck(
+            id=row["id"],
+            uuid=row["uuid"],
+            device_id=row["device_id"],
+            verification_date=row["verification_date"],
+            technician_name=row["technician_name"],
+            technician_username=row["technician_username"],
+            verification_code=row["verification_code"],
+            overall_status=row["overall_status"],
+            notes=row["notes"],
+        )
+
+        cur.execute("""
+            SELECT * FROM ecografo_quality_probes
+            WHERE check_id = %s AND is_deleted = FALSE
+            ORDER BY probe_order, id
+        """, (row["id"],))
+        probe_rows = cur.fetchall()
+
+        for pr in probe_rows:
+            probe_obj = EcografoQualityProbe(
+                id=pr["id"],
+                uuid=pr["uuid"],
+                check_id=pr["check_id"],
+                probe_order=pr["probe_order"],
+                inventory=pr.get("inventory"),
+                manufacturer=pr.get("manufacturer"),
+                probe_type=pr.get("probe_type"),
+                serial_number=pr.get("serial_number"),
+                model=pr.get("model"),
+                preset=pr.get("preset"),
+                gain=pr.get("gain"),
+                power=pr.get("power"),
+                control_stage=pr.get("control_stage") or "Baseline",
+                overall_judgment=pr.get("overall_judgment"),
+                notes=pr.get("notes"),
+            )
+            cur.execute("""
+                SELECT * FROM ecografo_quality_controls
+                WHERE probe_id = %s AND is_deleted = FALSE
+                ORDER BY id
+            """, (pr["id"],))
+            ctrl_rows = cur.fetchall()
+            for cr in ctrl_rows:
+                passed_val = True if cr["passed"] == 1 else (False if cr["passed"] == 0 else None)
+                probe_obj.controls.append(EcografoQualityControl(
+                    id=cr["id"],
+                    uuid=cr["uuid"],
+                    control_key=cr["control_key"],
+                    control_label=cr.get("control_label") or cr["control_key"],
+                    value=cr.get("value"),
+                    unit=cr.get("unit"),
+                    passed=passed_val,
+                    notes=cr.get("notes"),
+                ))
+            check_obj.probes.append(probe_obj)
+
+        tech_username = row.get("technician_username") or user.get("username")
+        cur.execute("SELECT signature_data FROM signatures WHERE username = %s LIMIT 1", (tech_username,))
+        sig_row = cur.fetchone()
+        signature_data = bytes(sig_row["signature_data"]) if (sig_row and sig_row.get("signature_data")) else None
+        conn.close()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[mobile] ecografo cq report error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    import report_generator
+    import tempfile
+
+    device_info = {
+        "description": row.get("description", ""),
+        "model": row.get("model", ""),
+        "serial_number": row.get("serial_number", ""),
+        "manufacturer": row.get("manufacturer", ""),
+        "ams_inventory": row.get("ams_inventory", ""),
+        "customer_inventory": row.get("customer_inventory", ""),
+        "department": row.get("department", ""),
+    }
+    customer_info = {"name": row["cust_name"], "address": row.get("cust_address", "")}
+    destination_info = {"name": row["dest_name"], "address": row.get("dest_address", "")}
+    report_settings = {"logo_path": getattr(app.state, "logo_path", None)}
+
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    try:
+        report_generator.create_ecografo_quality_report(
+            filename=tmp_path,
+            device_info=device_info,
+            customer_info=customer_info,
+            destination_info=destination_info,
+            check=check_obj,
+            technician_name=row.get("technician_name", "N/D"),
+            signature_data=signature_data,
+            report_settings=report_settings,
+        )
+        with open(tmp_path, "rb") as f:
+            pdf_bytes = f.read()
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+    pdf_filename = f"{row.get('verification_date', '')}_Report_CQ_Sonde_{row.get('verification_code', 'EQ')}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{pdf_filename}"'}
+    )
+
+
+@app.post("/mobile/ecografo-cq/{uuid}/delete")
+def mobile_ecografo_cq_delete(uuid: str, request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        now_ts = datetime.now(timezone.utc)
+        cur.execute("""
+            UPDATE ecografo_quality_checks
+            SET is_deleted = TRUE, is_synced = TRUE, last_modified = %s
+            WHERE uuid = %s
+            RETURNING id, device_id
+        """, (now_ts, uuid))
+        cq_row = cur.fetchone()
+        dev_uuid = None
+        if cq_row:
+            cur.execute("""
+                UPDATE ecografo_quality_probes
+                SET is_deleted = TRUE, is_synced = TRUE, last_modified = %s
+                WHERE check_id = %s
+                RETURNING id
+            """, (now_ts, cq_row["id"]))
+            probe_rows = cur.fetchall()
+            probe_ids = [p["id"] for p in probe_rows]
+            if probe_ids:
+                cur.execute("""
+                    UPDATE ecografo_quality_controls
+                    SET is_deleted = TRUE, is_synced = TRUE, last_modified = %s
+                    WHERE probe_id = ANY(%s)
+                """, (now_ts, probe_ids))
+            cur.execute("SELECT uuid FROM devices WHERE id = %s", (cq_row["device_id"],))
+            dev_row = cur.fetchone()
+            if dev_row:
+                dev_uuid = dev_row["uuid"]
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] ecografo cq delete error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    if dev_uuid:
+        return RedirectResponse(url=f"/mobile/devices/{dev_uuid}", status_code=303)
+    return RedirectResponse(url="/mobile/dashboard", status_code=303)
+
+
+@app.get("/mobile/ecografo-cq", response_class=HTMLResponse)
+def mobile_ecografo_cq_list(request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT eq.*, d.description AS device_description, d.model AS device_model,
+                   d.serial_number AS device_serial_number,
+                   dest.name AS destination_name, c.name AS customer_name,
+                   (SELECT COUNT(*) FROM ecografo_quality_probes eqp WHERE eqp.check_id = eq.id AND eqp.is_deleted = FALSE) AS probe_count
+            FROM ecografo_quality_checks eq
+            JOIN devices d ON d.id = eq.device_id
+            JOIN destinations dest ON dest.id = d.destination_id
+            JOIN customers c ON c.id = dest.customer_id
+            WHERE eq.is_deleted = FALSE
+            ORDER BY eq.verification_date DESC, eq.id DESC
+        """)
+        checks = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] ecografo cq list error: {e}", exc_info=True)
+        checks = []
+
+    return mobile_templates.TemplateResponse("ecografo_cq_list.html", {
+        "request": request, "user": user, "active_nav": "verifications",
+        "checks": checks,
+        "back_url": "/mobile/dashboard",
+    })
+
+
+# ─── Unified Dossier / Fascicolo PDF (mobile) ────────────────────────────────
+
+def _collect_dossier_verifications(
+    scope: str,
+    customer_id: Optional[int],
+    destination_id: Optional[int],
+    start_date: str,
+    end_date: str,
+    include_electrical: bool = True,
+    include_functional: bool = True,
+    include_system: bool = True,
+    include_ecografo_cq: bool = True,
+    latest_only: bool = True,
+) -> list:
+    all_verifications = []
+
+    def _dest_ids_for_cust(c_id):
+        if not c_id:
+            return []
+        dests = database.get_destinations_for_customer(c_id)
+        return [d["id"] for d in dests]
+
+    if include_electrical:
+        if scope == "all":
+            rows = database.get_verifications_by_date_range(start_date, end_date)
+            el_verifs = [dict(r) for r in rows]
+        elif scope == "customer":
+            el_verifs = []
+            for did in _dest_ids_for_cust(customer_id):
+                el_verifs += [dict(r) for r in database.get_verifications_for_destination_by_date_range(did, start_date, end_date)]
+        else:
+            el_verifs = [dict(r) for r in database.get_verifications_for_destination_by_date_range(destination_id, start_date, end_date)]
+
+        if latest_only:
+            el_verifs = _filter_latest_dossier(el_verifs)
+        for v in el_verifs:
+            v["verification_type"] = "ELETTRICA"
+            all_verifications.append(v)
+
+    if include_functional:
+        if scope == "all":
+            rows = database.get_functional_verifications_by_date_range(start_date, end_date)
+            fun_verifs = [dict(r) for r in rows]
+        elif scope == "customer":
+            fun_verifs = []
+            for did in _dest_ids_for_cust(customer_id):
+                fun_verifs += [dict(r) for r in database.get_functional_verifications_for_destination_by_date_range(did, start_date, end_date)]
+        else:
+            fun_verifs = [dict(r) for r in database.get_functional_verifications_for_destination_by_date_range(destination_id, start_date, end_date)]
+
+        if latest_only:
+            fun_verifs = _filter_latest_dossier(fun_verifs)
+        for v in fun_verifs:
+            v["verification_type"] = "FUNZIONALE"
+            all_verifications.append(v)
+
+    if include_system:
+        if scope == "all":
+            rows = database.get_system_verifications_by_date_range(start_date, end_date)
+            sys_verifs = [dict(r) for r in rows]
+        elif scope == "customer":
+            sys_verifs = []
+            for did in _dest_ids_for_cust(customer_id):
+                sys_verifs += [dict(r) for r in database.get_system_verifications_for_destination_by_date_range(did, start_date, end_date)]
+        else:
+            sys_verifs = [dict(r) for r in database.get_system_verifications_for_destination_by_date_range(destination_id, start_date, end_date)]
+        for v in sys_verifs:
+            v["verification_type"] = "SISTEMA"
+            all_verifications.append(v)
+
+    if include_ecografo_cq:
+        if scope == "all":
+            cq_rows = database.get_ecografo_quality_checks_by_date_range(start_date, end_date)
+        elif scope == "customer":
+            cq_rows = database.get_ecografo_quality_checks_by_date_range(start_date, end_date, customer_id=customer_id)
+        else:
+            cq_rows = database.get_ecografo_quality_checks_by_date_range(start_date, end_date, destination_id=destination_id)
+        for r in cq_rows:
+            r_dict = dict(r)
+            all_verifications.append({
+                "verification_type": "ECOGRAFO_CQ",
+                "id": r_dict.get("id"),
+                "device_id": r_dict.get("device_id"),
+                "verification_date": r_dict.get("verification_date"),
+                "overall_status": r_dict.get("overall_judgment", ""),
+                "description": r_dict.get("description"),
+                "manufacturer": r_dict.get("manufacturer"),
+                "model": r_dict.get("model"),
+                "serial_number": r_dict.get("serial_number"),
+                "ams_inventory": r_dict.get("ams_inventory"),
+                "customer_inventory": r_dict.get("customer_inventory"),
+                "department": r_dict.get("department"),
+                "destination_name": r_dict.get("destination_name"),
+                "technician_name": r_dict.get("technician_name"),
+            })
+
+    # Unavailability reports
+    try:
+        if scope == "all":
+            unavail_rows = database.get_unavailability_reports_by_date_range(start_date, end_date)
+        elif scope == "customer":
+            unavail_rows = database.get_unavailability_reports_by_date_range(start_date, end_date, customer_id=customer_id)
+        else:
+            unavail_rows = database.get_unavailability_reports_by_date_range(start_date, end_date, destination_id=destination_id)
+        for r in unavail_rows:
+            all_verifications.append({
+                "verification_type": "NON_DISPONIBILE",
+                "id": None,
+                "device_id": r.get("device_id"),
+                "verification_date": r.get("period_start"),
+                "overall_status": "NON MESSO A DISPOSIZIONE",
+                "notes": r.get("reason", ""),
+                "description": r.get("description"),
+                "manufacturer": r.get("manufacturer"),
+                "model": r.get("model"),
+                "serial_number": r.get("serial_number"),
+                "ams_inventory": r.get("ams_inventory"),
+                "customer_inventory": r.get("customer_inventory"),
+                "department": r.get("department"),
+                "destination_name": r.get("destination_name"),
+                "technician_name": r.get("technician_name"),
+                "unavail_report_uuid": r.get("uuid"),
+            })
+    except Exception as _e:
+        logger.warning(f"[mobile] error loading unavail reports for dossier: {_e}")
+
+    return all_verifications
+
+
+def _filter_latest_dossier(verifications: list) -> list:
+    latest_by_device = {}
+    for verif in verifications:
+        device_id = verif.get("device_id")
+        if not device_id:
+            continue
+        if device_id not in latest_by_device:
+            latest_by_device[device_id] = verif
+            continue
+        current_date = latest_by_device[device_id].get("verification_date", "")
+        new_date = verif.get("verification_date", "")
+        if new_date > current_date:
+            latest_by_device[device_id] = verif
+    return list(latest_by_device.values())
+
+
+def _build_dossier_cover_info(scope: str, customer_id: Optional[int], destination_id: Optional[int],
+                              start_date: str, end_date: str, verifications: list,
+                              technician_name: str = "") -> dict:
+    customer_name = "TUTTI I CLIENTI"
+    destination_name = "TUTTE LE DESTINAZIONI"
+    dest_address = ""
+
+    try:
+        if scope == "customer" and customer_id:
+            cust = database.get_customer_by_id(customer_id)
+            if cust:
+                customer_name = str(cust["name"]).upper()
+            destination_name = "TUTTE LE DESTINAZIONI"
+        elif scope == "destination" and destination_id:
+            dest = database.get_destination_by_id(destination_id)
+            if dest:
+                destination_name = str(dest["name"]).upper()
+                dest_address = dest.get("address", "") or ""
+                cust = database.get_customer_by_id(dest["customer_id"])
+                if cust:
+                    customer_name = str(cust["name"]).upper()
+    except Exception as e:
+        logger.warning(f"[mobile] error resolving cover names: {e}")
+
+    electrical_count = sum(1 for v in verifications if v.get("verification_type") == "ELETTRICA")
+    functional_count = sum(1 for v in verifications if v.get("verification_type") == "FUNZIONALE")
+    system_count = sum(1 for v in verifications if v.get("verification_type") == "SISTEMA")
+    ecografo_cq_count = sum(1 for v in verifications if v.get("verification_type") == "ECOGRAFO_CQ")
+    non_disponibili_count = sum(1 for v in verifications if v.get("verification_type") == "NON_DISPONIBILE")
+
+    unique_devices = set(
+        v.get("device_id")
+        for v in verifications
+        if v.get("device_id") and v.get("verification_type") not in ("SISTEMA", "NON_DISPONIBILE")
+    )
+
+    def _norm(val):
+        return str(val or "").strip().upper()
+
+    conformi_count = sum(1 for v in verifications if _norm(v.get("overall_status")) in ("PASSATO", "CONFORME", "IDONEO"))
+    cca_count = sum(1 for v in verifications if _norm(v.get("overall_status")) == "CONFORME CON ANNOTAZIONE")
+    non_conformi_count = sum(1 for v in verifications if _norm(v.get("overall_status")) in ("FALLITO", "NON CONFORME", "NON IDONEO"))
+
+    el_verifs  = [v for v in verifications if v.get("verification_type") == "ELETTRICA"]
+    fun_verifs = [v for v in verifications if v.get("verification_type") == "FUNZIONALE"]
+    sys_verifs = [v for v in verifications if v.get("verification_type") == "SISTEMA"]
+
+    el_conformi_count  = sum(1 for v in el_verifs if _norm(v.get("overall_status")) in ("PASSATO", "CONFORME"))
+    el_cca_count       = sum(1 for v in el_verifs if _norm(v.get("overall_status")) == "CONFORME CON ANNOTAZIONE")
+    el_nc_count        = sum(1 for v in el_verifs if _norm(v.get("overall_status")) in ("FALLITO", "NON CONFORME"))
+    fun_conformi_count = sum(1 for v in fun_verifs if _norm(v.get("overall_status")) in ("PASSATO", "CONFORME"))
+    fun_cca_count      = sum(1 for v in fun_verifs if _norm(v.get("overall_status")) == "CONFORME CON ANNOTAZIONE")
+    fun_nc_count       = sum(1 for v in fun_verifs if _norm(v.get("overall_status")) in ("FALLITO", "NON CONFORME"))
+    sys_conformi_count = sum(1 for v in sys_verifs if _norm(v.get("overall_status")) in ("PASSATO", "CONFORME"))
+    sys_cca_count      = sum(1 for v in sys_verifs if _norm(v.get("overall_status")) == "CONFORME CON ANNOTAZIONE")
+    sys_nc_count       = sum(1 for v in sys_verifs if _norm(v.get("overall_status")) in ("FALLITO", "NON CONFORME"))
+
+    return {
+        "customer_name": customer_name,
+        "destination_name": destination_name,
+        "destination_address": dest_address,
+        "start_date": start_date,
+        "end_date": end_date,
+        "total_count": len(verifications),
+        "devices_count": len(unique_devices),
+        "electrical_count": electrical_count,
+        "functional_count": functional_count,
+        "system_count": system_count,
+        "ecografo_cq_count": ecografo_cq_count,
+        "conformi_count": conformi_count,
+        "conformi_con_annotazione_count": cca_count,
+        "non_conformi_count": non_conformi_count,
+        "non_disponibili_count": non_disponibili_count,
+        "el_conformi_count": el_conformi_count,
+        "el_cca_count": el_cca_count,
+        "el_nc_count": el_nc_count,
+        "fun_conformi_count": fun_conformi_count,
+        "fun_cca_count": fun_cca_count,
+        "fun_nc_count": fun_nc_count,
+        "sys_conformi_count": sys_conformi_count,
+        "sys_cca_count": sys_cca_count,
+        "sys_nc_count": sys_nc_count,
+        "logo_path": getattr(app.state, "logo_path", None),
+        "created_by": technician_name or "",
+    }
+
+
+@app.get("/mobile/dossier", response_class=HTMLResponse)
+def mobile_dossier_form(request: Request,
+                        customer_uuid: Optional[str] = None,
+                        destination_uuid: Optional[str] = None,
+                        mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("SELECT uuid, name FROM customers WHERE is_deleted = FALSE ORDER BY name")
+        customers = cur.fetchall()
+
+        cur.execute("""
+            SELECT d.uuid, d.name, c.uuid AS customer_uuid
+            FROM destinations d
+            JOIN customers c ON c.id = d.customer_id
+            WHERE d.is_deleted = FALSE AND c.is_deleted = FALSE
+            ORDER BY d.name
+        """)
+        all_dests = cur.fetchall()
+        conn.close()
+
+        destinations_map = {}
+        for d in all_dests:
+            c_uuid = d["customer_uuid"]
+            if c_uuid not in destinations_map:
+                destinations_map[c_uuid] = []
+            destinations_map[c_uuid].append({"uuid": d["uuid"], "name": d["name"]})
+
+    except Exception as e:
+        logger.error(f"[mobile] dossier form error: {e}", exc_info=True)
+        customers = []
+        destinations_map = {}
+
+    today_dt = date.today()
+    today_str = today_dt.isoformat()
+    default_start_date = f"{today_dt.year}-01-01"
+
+    preselected_scope = "destination"
+    if destination_uuid:
+        preselected_scope = "destination"
+    elif customer_uuid:
+        preselected_scope = "customer"
+
+    back_url = "/mobile/dashboard"
+    if destination_uuid:
+        back_url = f"/mobile/destinations/{destination_uuid}"
+    elif customer_uuid:
+        back_url = f"/mobile/customers/{customer_uuid}"
+
+    return mobile_templates.TemplateResponse("dossier_form.html", {
+        "request": request, "user": user,
+        "customers": customers,
+        "destinations_map_json": json.dumps(destinations_map),
+        "preselected_scope": preselected_scope,
+        "preselected_customer_uuid": customer_uuid or "",
+        "preselected_destination_uuid": destination_uuid or "",
+        "today": today_str,
+        "default_start_date": default_start_date,
+        "back_url": back_url,
+    })
+
+
+@app.post("/mobile/dossier/generate")
+async def mobile_dossier_generate(request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    form = await request.form()
+    scope = form.get("scope", "destination")
+    customer_uuid = form.get("customer_uuid", "").strip()
+    destination_uuid = form.get("destination_uuid", "").strip()
+    start_date = form.get("start_date") or f"{date.today().year}-01-01"
+    end_date = form.get("end_date") or date.today().isoformat()
+
+    include_electrical = bool(form.get("include_electrical"))
+    include_functional = bool(form.get("include_functional"))
+    include_system = bool(form.get("include_system"))
+    include_ecografo_cq = bool(form.get("include_ecografo_cq"))
+    latest_only = bool(form.get("latest_only"))
+    merged_intro_mode = form.get("merged_intro_mode", "cover_and_table")
+    naming_format = form.get("naming_format", "ams_inventory")
+    include_calibration_certs = bool(form.get("include_calibration_certs"))
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+
+        customer_id = None
+        if customer_uuid:
+            cur.execute("SELECT id FROM customers WHERE uuid = %s AND is_deleted = FALSE", (customer_uuid,))
+            c_row = cur.fetchone()
+            if c_row:
+                customer_id = c_row["id"]
+
+        destination_id = None
+        if destination_uuid:
+            cur.execute("SELECT id, customer_id FROM destinations WHERE uuid = %s AND is_deleted = FALSE", (destination_uuid,))
+            d_row = cur.fetchone()
+            if d_row:
+                destination_id = d_row["id"]
+                if not customer_id:
+                    customer_id = d_row["customer_id"]
+
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] dossier resolve ids error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    # 1. Collect all verifications
+    all_verifs = _collect_dossier_verifications(
+        scope=scope,
+        customer_id=customer_id,
+        destination_id=destination_id,
+        start_date=start_date,
+        end_date=end_date,
+        include_electrical=include_electrical,
+        include_functional=include_functional,
+        include_system=include_system,
+        include_ecografo_cq=include_ecografo_cq,
+        latest_only=latest_only,
+    )
+
+    if not all_verifs:
+        return HTMLResponse(
+            "<html><body style='font-family:sans-serif;padding:2rem;text-align:center;color:#475569;'>"
+            "<h2>Nessuna verifica trovata</h2>"
+            "<p>Nessuna verifica corrisponde ai filtri e al periodo selezionati.</p>"
+            "<p><a href='javascript:history.back()' style='color:#2563eb;font-weight:bold;'>← Torna indietro</a></p>"
+            "</body></html>"
+        )
+
+    # 2. Build Cover info
+    tech_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or user.username
+    cover_info = _build_dossier_cover_info(
+        scope=scope,
+        customer_id=customer_id,
+        destination_id=destination_id,
+        start_date=start_date,
+        end_date=end_date,
+        verifications=all_verifs,
+        technician_name=tech_name,
+    )
+
+    # 3. Generate merged PDF using BulkReportWorker
+    from app.workers.bulk_report_worker import BulkReportWorker
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+        merged_pdf_path = tmp.name
+
+    report_settings = {"logo_path": getattr(app.state, "logo_path", None)}
+
+    try:
+        worker = BulkReportWorker(
+            verifications_to_process=all_verifs,
+            output_folder=None,
+            report_settings=report_settings,
+            naming_format=naming_format,
+            merge_into_one=True,
+            merged_output_path=merged_pdf_path,
+            merged_intro_mode=merged_intro_mode,
+            export_cover_single=False,
+            export_table_single=False,
+            keep_individual_reports=False,
+            cover_info=cover_info,
+            include_calibration_certs=include_calibration_certs,
+        )
+        worker.run()
+
+        with open(merged_pdf_path, "rb") as f:
+            pdf_bytes = f.read()
+    finally:
+        if os.path.exists(merged_pdf_path):
+            os.remove(merged_pdf_path)
+
+    clean_cust = re.sub(r'[\\/*?:"<>|]', '_', cover_info.get("customer_name") or "Fascicolo")
+    clean_dest = re.sub(r'[\\/*?:"<>|]', '_', cover_info.get("destination_name") or "")
+    filename = f"Fascicolo_Verifiche_{clean_cust}_{clean_dest}_{end_date}.pdf".replace("__", "_").replace(" _", "")
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+# ─── Profile Management Hub (mobile v2.0) ────────────────────────────────────
+
+def _ensure_profiles_table(cur):
+    """Assicura l'esistenza delle colonne necessarie per i profili."""
+    try:
+        cur.execute("ALTER TABLE profiles ADD COLUMN IF NOT EXISTS norma VARCHAR(255) NOT NULL DEFAULT ''")
+    except Exception as e:
+        logger.warning(f"[db] profiles norma check: {e}")
+    try:
+        cur.execute("ALTER TABLE functional_profiles ADD COLUMN IF NOT EXISTS device_type TEXT")
+        cur.execute("ALTER TABLE functional_profiles ADD COLUMN IF NOT EXISTS instrument_id INTEGER")
+        cur.execute("ALTER TABLE functional_profiles ADD COLUMN IF NOT EXISTS instrument_ids TEXT")
+    except Exception as e:
+        logger.warning(f"[db] functional_profiles columns check: {e}")
+
+
+@app.get("/mobile/profiles", response_class=HTMLResponse)
+def mobile_profiles_list(request: Request, tab: Optional[str] = "electrical",
+                         mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_profiles_table(cur)
+        conn.commit()
+
+        cur.execute("""
+            SELECT p.id, p.uuid, p.profile_key, p.name, p.norma,
+                   (SELECT COUNT(*) FROM profile_tests pt WHERE pt.profile_id = p.id AND pt.is_deleted = FALSE) AS test_count
+            FROM profiles p
+            WHERE p.is_deleted = FALSE
+            ORDER BY p.name
+        """)
+        electrical_profiles = cur.fetchall()
+
+        cur.execute("""
+            SELECT fp.id, fp.uuid, fp.profile_key, fp.name, fp.device_type, fp.schema_json
+            FROM functional_profiles fp
+            WHERE fp.is_deleted = FALSE
+            ORDER BY fp.name
+        """)
+        raw_func = cur.fetchall()
+        conn.close()
+
+        functional_profiles = []
+        for fp in raw_func:
+            sec_count = 0
+            try:
+                sj = json.loads(fp["schema_json"] or "{}")
+                if isinstance(sj, dict):
+                    sec_count = len(sj.get("sections", []))
+                elif isinstance(sj, list):
+                    sec_count = len(sj)
+            except Exception:
+                pass
+            fp_dict = dict(fp)
+            fp_dict["sections_count"] = sec_count
+            functional_profiles.append(fp_dict)
+
+    except Exception as e:
+        logger.error(f"[mobile] profiles list error: {e}", exc_info=True)
+        electrical_profiles = []
+        functional_profiles = []
+
+    return mobile_templates.TemplateResponse("profiles_list.html", {
+        "request": request, "user": user, "active_nav": "profiles",
+        "initial_tab": tab,
+        "electrical_profiles": electrical_profiles,
+        "functional_profiles": functional_profiles,
+        "back_url": "/mobile/dashboard",
+    })
+
+
+# ─── Electrical Profiles (mobile) ────────────────────────────────────────────
+
+@app.get("/mobile/profiles/electrical/new", response_class=HTMLResponse)
+def mobile_electrical_profile_new(request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    return mobile_templates.TemplateResponse("electrical_profile_form.html", {
+        "request": request, "user": user, "active_nav": "profiles",
+        "mode": "new",
+        "profile": {},
+        "initial_tests_json": "[]",
+        "back_url": "/mobile/profiles?tab=electrical",
+    })
+
+
+@app.post("/mobile/profiles/electrical/new")
+async def mobile_electrical_profile_create(request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    form = await request.form()
+    name = (form.get("name") or "").strip()
+    profile_key = (form.get("profile_key") or "").strip()
+    norma = (form.get("norma") or "CEI EN 62353").strip()
+    tests_json = form.get("tests_json") or "[]"
+
+    if not name or not profile_key:
+        return mobile_templates.TemplateResponse("electrical_profile_form.html", {
+            "request": request, "user": user, "active_nav": "profiles",
+            "mode": "new",
+            "error": "Nome e chiave profilo sono obbligatori.",
+            "profile": {"name": name, "profile_key": profile_key, "norma": norma},
+            "initial_tests_json": tests_json,
+            "back_url": "/mobile/profiles?tab=electrical",
+        })
+
+    try:
+        tests = json.loads(tests_json)
+    except Exception:
+        tests = []
+
+    ts_now = datetime.now(timezone.utc).isoformat()
+    prof_uuid = str(uuid.uuid4())
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_profiles_table(cur)
+        conn.commit()
+
+        cur.execute("SELECT id FROM profiles WHERE profile_key = %s AND is_deleted = FALSE", (profile_key,))
+        if cur.fetchone():
+            conn.close()
+            return mobile_templates.TemplateResponse("electrical_profile_form.html", {
+                "request": request, "user": user, "active_nav": "profiles",
+                "mode": "new",
+                "error": f"Un profilo con la chiave '{profile_key}' esiste già.",
+                "profile": {"name": name, "profile_key": profile_key, "norma": norma},
+                "initial_tests_json": tests_json,
+                "back_url": "/mobile/profiles?tab=electrical",
+            })
+
+        cur.execute("""
+            INSERT INTO profiles (uuid, profile_key, name, norma, last_modified, is_synced, is_deleted)
+            VALUES (%s, %s, %s, %s, %s, TRUE, FALSE)
+            RETURNING id
+        """, (prof_uuid, profile_key, name, norma, ts_now))
+        profile_id = cur.fetchone()["id"]
+
+        for t in tests:
+            t_uuid = str(uuid.uuid4())
+            is_ap = bool(t.get("is_applied_part_test"))
+            if is_ap:
+                limits_obj = {
+                    "::B": {"limit_value": t.get("limit_b", "100"), "unit": "uA", "operator": "<="},
+                    "::BF": {"limit_value": t.get("limit_bf", "50"), "unit": "uA", "operator": "<="},
+                    "::CF": {"limit_value": t.get("limit_cf", "10"), "unit": "uA", "operator": "<="},
+                }
+            else:
+                limits_obj = {
+                    "default": {
+                        "limit_value": t.get("limit_value", ""),
+                        "unit": t.get("unit", ""),
+                        "operator": t.get("operator", "<=")
+                    }
+                }
+
+            cur.execute("""
+                INSERT INTO profile_tests (uuid, profile_id, name, parameter, limits_json, is_applied_part_test, last_modified, is_synced, is_deleted)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, FALSE)
+            """, (t_uuid, profile_id, t.get("name", "Prova"), t.get("parameter", "custom"), json.dumps(limits_obj), is_ap, ts_now))
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"[mobile] error creating electrical profile: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Errore nel salvataggio del profilo elettrico")
+
+    return RedirectResponse(url="/mobile/profiles?tab=electrical", status_code=303)
+
+
+@app.get("/mobile/profiles/electrical/{profile_uuid}/edit", response_class=HTMLResponse)
+def mobile_electrical_profile_edit(profile_uuid: str, request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("SELECT * FROM profiles WHERE uuid = %s AND is_deleted = FALSE", (profile_uuid,))
+        prof = cur.fetchone()
+        if not prof:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Profilo non trovato")
+
+        cur.execute("SELECT * FROM profile_tests WHERE profile_id = %s AND is_deleted = FALSE ORDER BY id", (prof["id"],))
+        raw_tests = cur.fetchall()
+        conn.close()
+
+        tests_formatted = []
+        for t in raw_tests:
+            limits = {}
+            try:
+                limits = json.loads(t["limits_json"] or "{}")
+            except Exception:
+                pass
+
+            is_ap = bool(t["is_applied_part_test"])
+            def_lim = limits.get("default", {})
+            b_lim = limits.get("::B", {})
+            bf_lim = limits.get("::BF", {})
+            cf_lim = limits.get("::CF", {})
+
+            tests_formatted.append({
+                "name": t["name"],
+                "parameter": t["parameter"],
+                "is_applied_part_test": is_ap,
+                "operator": def_lim.get("operator", "<="),
+                "limit_value": def_lim.get("limit_value", ""),
+                "unit": def_lim.get("unit", ""),
+                "limit_b": b_lim.get("limit_value", ""),
+                "limit_bf": bf_lim.get("limit_value", ""),
+                "limit_cf": cf_lim.get("limit_value", ""),
+            })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[mobile] error loading electrical profile: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    return mobile_templates.TemplateResponse("electrical_profile_form.html", {
+        "request": request, "user": user, "active_nav": "profiles",
+        "mode": "edit",
+        "profile": prof,
+        "initial_tests_json": json.dumps(tests_formatted),
+        "back_url": "/mobile/profiles?tab=electrical",
+    })
+
+
+@app.post("/mobile/profiles/electrical/{profile_uuid}/edit")
+async def mobile_electrical_profile_update(profile_uuid: str, request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    form = await request.form()
+    name = (form.get("name") or "").strip()
+    profile_key = (form.get("profile_key") or "").strip()
+    norma = (form.get("norma") or "CEI EN 62353").strip()
+    tests_json = form.get("tests_json") or "[]"
+
+    try:
+        tests = json.loads(tests_json)
+    except Exception:
+        tests = []
+
+    ts_now = datetime.now(timezone.utc).isoformat()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_profiles_table(cur)
+        conn.commit()
+
+        cur.execute("SELECT id, profile_key FROM profiles WHERE uuid = %s AND is_deleted = FALSE", (profile_uuid,))
+        prof = cur.fetchone()
+        if not prof:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Profilo non trovato")
+
+        profile_id = prof["id"]
+
+        cur.execute("""
+            UPDATE profiles
+            SET profile_key = %s, name = %s, norma = %s, last_modified = %s, is_synced = TRUE
+            WHERE id = %s
+        """, (profile_key, name, norma, ts_now, profile_id))
+
+        cur.execute("UPDATE profile_tests SET is_deleted = TRUE, last_modified = %s, is_synced = TRUE WHERE profile_id = %s", (ts_now, profile_id))
+
+        for t in tests:
+            t_uuid = str(uuid.uuid4())
+            is_ap = bool(t.get("is_applied_part_test"))
+            if is_ap:
+                limits_obj = {
+                    "::B": {"limit_value": t.get("limit_b", "100"), "unit": "uA", "operator": "<="},
+                    "::BF": {"limit_value": t.get("limit_bf", "50"), "unit": "uA", "operator": "<="},
+                    "::CF": {"limit_value": t.get("limit_cf", "10"), "unit": "uA", "operator": "<="},
+                }
+            else:
+                limits_obj = {
+                    "default": {
+                        "limit_value": t.get("limit_value", ""),
+                        "unit": t.get("unit", ""),
+                        "operator": t.get("operator", "<=")
+                    }
+                }
+
+            cur.execute("""
+                INSERT INTO profile_tests (uuid, profile_id, name, parameter, limits_json, is_applied_part_test, last_modified, is_synced, is_deleted)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, FALSE)
+            """, (t_uuid, profile_id, t.get("name", "Prova"), t.get("parameter", "custom"), json.dumps(limits_obj), is_ap, ts_now))
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"[mobile] error updating electrical profile: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    return RedirectResponse(url="/mobile/profiles?tab=electrical", status_code=303)
+
+
+@app.post("/mobile/profiles/electrical/{profile_uuid}/duplicate")
+def mobile_electrical_profile_duplicate(profile_uuid: str, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("SELECT * FROM profiles WHERE uuid = %s AND is_deleted = FALSE", (profile_uuid,))
+        prof = cur.fetchone()
+        if not prof:
+            conn.close()
+            raise HTTPException(status_code=404)
+
+        cur.execute("SELECT * FROM profile_tests WHERE profile_id = %s AND is_deleted = FALSE", (prof["id"],))
+        tests = cur.fetchall()
+
+        ts_now = datetime.now(timezone.utc).isoformat()
+        new_key = f"{prof['profile_key']}_copia"
+        new_name = f"{prof['name']} (Copia)"
+        new_prof_uuid = str(uuid.uuid4())
+
+        cur.execute("""
+            INSERT INTO profiles (uuid, profile_key, name, norma, last_modified, is_synced, is_deleted)
+            VALUES (%s, %s, %s, %s, %s, TRUE, FALSE)
+            RETURNING id
+        """, (new_prof_uuid, new_key, new_name, prof.get("norma", "CEI EN 62353"), ts_now))
+        new_id = cur.fetchone()["id"]
+
+        for t in tests:
+            t_uuid = str(uuid.uuid4())
+            cur.execute("""
+                INSERT INTO profile_tests (uuid, profile_id, name, parameter, limits_json, is_applied_part_test, last_modified, is_synced, is_deleted)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, TRUE, FALSE)
+            """, (t_uuid, new_id, t["name"], t["parameter"], t["limits_json"], t["is_applied_part_test"], ts_now))
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"[mobile] error duplicating electrical profile: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    return RedirectResponse(url="/mobile/profiles?tab=electrical", status_code=303)
+
+
+@app.post("/mobile/profiles/electrical/{profile_uuid}/delete")
+def mobile_electrical_profile_delete(profile_uuid: str, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        ts_now = datetime.now(timezone.utc).isoformat()
+
+        cur.execute("SELECT id FROM profiles WHERE uuid = %s AND is_deleted = FALSE", (profile_uuid,))
+        p_row = cur.fetchone()
+        if p_row:
+            p_id = p_row["id"]
+            cur.execute("UPDATE profiles SET is_deleted = TRUE, last_modified = %s, is_synced = TRUE WHERE id = %s", (ts_now, p_id))
+            cur.execute("UPDATE profile_tests SET is_deleted = TRUE, last_modified = %s, is_synced = TRUE WHERE profile_id = %s", (ts_now, p_id))
+            conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] error deleting electrical profile: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    return RedirectResponse(url="/mobile/profiles?tab=electrical", status_code=303)
+
+
+# ─── Functional Profiles (mobile) ────────────────────────────────────────────
+
+@app.get("/mobile/profiles/functional/new", response_class=HTMLResponse)
+def mobile_functional_profile_new(request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    return mobile_templates.TemplateResponse("functional_profile_form.html", {
+        "request": request, "user": user, "active_nav": "profiles",
+        "mode": "new",
+        "profile": {},
+        "initial_sections_json": "[]",
+        "back_url": "/mobile/profiles?tab=functional",
+    })
+
+
+@app.post("/mobile/profiles/functional/new")
+async def mobile_functional_profile_create(request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    form = await request.form()
+    name = (form.get("name") or "").strip()
+    profile_key = (form.get("profile_key") or "").strip().upper()
+    device_type = (form.get("device_type") or "").strip()
+    schema_json = form.get("schema_json") or "[]"
+
+    if not name or not profile_key:
+        return mobile_templates.TemplateResponse("functional_profile_form.html", {
+            "request": request, "user": user, "active_nav": "profiles",
+            "mode": "new",
+            "error": "Nome e chiave profilo sono obbligatori.",
+            "profile": {"name": name, "profile_key": profile_key, "device_type": device_type},
+            "initial_sections_json": schema_json,
+            "back_url": "/mobile/profiles?tab=functional",
+        })
+
+    try:
+        sections = json.loads(schema_json)
+    except Exception:
+        sections = []
+
+    schema_dict = {"sections": sections}
+    final_schema_json = json.dumps(schema_dict)
+    ts_now = datetime.now(timezone.utc).isoformat()
+    prof_uuid = str(uuid.uuid4())
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_profiles_table(cur)
+        conn.commit()
+
+        cur.execute("SELECT id FROM functional_profiles WHERE profile_key = %s AND is_deleted = FALSE", (profile_key,))
+        if cur.fetchone():
+            conn.close()
+            return mobile_templates.TemplateResponse("functional_profile_form.html", {
+                "request": request, "user": user, "active_nav": "profiles",
+                "mode": "new",
+                "error": f"Un profilo funzionale con la chiave '{profile_key}' esiste già.",
+                "profile": {"name": name, "profile_key": profile_key, "device_type": device_type},
+                "initial_sections_json": schema_json,
+                "back_url": "/mobile/profiles?tab=functional",
+            })
+
+        cur.execute("""
+            INSERT INTO functional_profiles (uuid, profile_key, name, device_type, schema_json, last_modified, is_synced, is_deleted)
+            VALUES (%s, %s, %s, %s, %s, %s, TRUE, FALSE)
+        """, (prof_uuid, profile_key, name, device_type, final_schema_json, ts_now))
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"[mobile] error creating functional profile: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    return RedirectResponse(url="/mobile/profiles?tab=functional", status_code=303)
+
+
+@app.get("/mobile/profiles/functional/{profile_uuid}/edit", response_class=HTMLResponse)
+def mobile_functional_profile_edit(profile_uuid: str, request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("SELECT * FROM functional_profiles WHERE uuid = %s AND is_deleted = FALSE", (profile_uuid,))
+        prof = cur.fetchone()
+        conn.close()
+
+        if not prof:
+            raise HTTPException(status_code=404, detail="Profilo funzionale non trovato")
+
+        sections = []
+        try:
+            sj = json.loads(prof["schema_json"] or "{}")
+            if isinstance(sj, dict):
+                sections = sj.get("sections", [])
+            elif isinstance(sj, list):
+                sections = sj
+        except Exception:
+            pass
+
+        for s in sections:
+            for f in s.get("fields", []):
+                if f.get("options") and isinstance(f["options"], list):
+                    f["options_str"] = ", ".join(f["options"])
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[mobile] error loading functional profile: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    return mobile_templates.TemplateResponse("functional_profile_form.html", {
+        "request": request, "user": user, "active_nav": "profiles",
+        "mode": "edit",
+        "profile": prof,
+        "initial_sections_json": json.dumps(sections),
+        "back_url": "/mobile/profiles?tab=functional",
+    })
+
+
+@app.post("/mobile/profiles/functional/{profile_uuid}/edit")
+async def mobile_functional_profile_update(profile_uuid: str, request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    form = await request.form()
+    name = (form.get("name") or "").strip()
+    profile_key = (form.get("profile_key") or "").strip().upper()
+    device_type = (form.get("device_type") or "").strip()
+    schema_json = form.get("schema_json") or "[]"
+
+    try:
+        sections = json.loads(schema_json)
+    except Exception:
+        sections = []
+
+    schema_dict = {"sections": sections}
+    final_schema_json = json.dumps(schema_dict)
+    ts_now = datetime.now(timezone.utc).isoformat()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("SELECT id FROM functional_profiles WHERE uuid = %s AND is_deleted = FALSE", (profile_uuid,))
+        prof = cur.fetchone()
+        if not prof:
+            conn.close()
+            raise HTTPException(status_code=404)
+
+        cur.execute("""
+            UPDATE functional_profiles
+            SET profile_key = %s, name = %s, device_type = %s, schema_json = %s, last_modified = %s, is_synced = TRUE
+            WHERE id = %s
+        """, (profile_key, name, device_type, final_schema_json, ts_now, prof["id"]))
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"[mobile] error updating functional profile: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    return RedirectResponse(url="/mobile/profiles?tab=functional", status_code=303)
+
+
+@app.post("/mobile/profiles/functional/{profile_uuid}/duplicate")
+def mobile_functional_profile_duplicate(profile_uuid: str, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute("SELECT * FROM functional_profiles WHERE uuid = %s AND is_deleted = FALSE", (profile_uuid,))
+        prof = cur.fetchone()
+        if not prof:
+            conn.close()
+            raise HTTPException(status_code=404)
+
+        ts_now = datetime.now(timezone.utc).isoformat()
+        new_key = f"{prof['profile_key']}_COPIA"
+        new_name = f"{prof['name']} (Copia)"
+        new_prof_uuid = str(uuid.uuid4())
+
+        cur.execute("""
+            INSERT INTO functional_profiles (uuid, profile_key, name, device_type, schema_json, last_modified, is_synced, is_deleted)
+            VALUES (%s, %s, %s, %s, %s, %s, TRUE, FALSE)
+        """, (new_prof_uuid, new_key, new_name, prof.get("device_type", ""), prof.get("schema_json", "{}"), ts_now))
+
+        conn.commit()
+        conn.close()
+
+    except Exception as e:
+        logger.error(f"[mobile] error duplicating functional profile: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    return RedirectResponse(url="/mobile/profiles?tab=functional", status_code=303)
+
+
+@app.post("/mobile/profiles/functional/{profile_uuid}/delete")
+def mobile_functional_profile_delete(profile_uuid: str, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        ts_now = datetime.now(timezone.utc).isoformat()
+
+        cur.execute("UPDATE functional_profiles SET is_deleted = TRUE, last_modified = %s, is_synced = TRUE WHERE uuid = %s", (ts_now, profile_uuid))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] error deleting functional profile: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    return RedirectResponse(url="/mobile/profiles?tab=functional", status_code=303)
+
+
+@app.get("/mobile/devices/{uuid}/unavailable", response_class=HTMLResponse)
+def mobile_device_unavailable_form(uuid: str, request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT d.*, dest.name AS destination_name, c.name AS customer_name
+            FROM devices d
+            JOIN destinations dest ON dest.id = d.destination_id
+            JOIN customers c ON c.id = dest.customer_id
+            WHERE d.uuid = %s AND d.is_deleted = FALSE
+        """, (uuid,))
+        device = cur.fetchone()
+        conn.close()
+        if not device:
+            raise HTTPException(status_code=404, detail="Dispositivo non trovato")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[mobile] unavailable form error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    today_str = date.today().isoformat()
+
+    return mobile_templates.TemplateResponse("device_unavailable_form.html", {
+        "request": request, "user": user,
+        "device": device,
+        "destination_name": device.get("destination_name"),
+        "customer_name": device.get("customer_name"),
+        "today_date": today_str,
+        "back_url": f"/mobile/devices/{uuid}",
+    })
+
+
+@app.post("/mobile/devices/{uuid}/unavailable", response_class=HTMLResponse)
+async def mobile_device_unavailable_submit(uuid: str, request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    form = await request.form()
+    period_start = form.get("period_start") or date.today().isoformat()
+    period_end = period_start
+    report_date = date.today().isoformat()
+    reason_preset = form.get("reason_preset") or "Apparecchio non disponibile"
+    custom_reason = (form.get("custom_reason") or "").strip()
+    reason = custom_reason if reason_preset == "custom" and custom_reason else reason_preset
+    notes = (form.get("notes") or "").strip()
+    if notes:
+        full_reason = f"{reason} ({notes})"
+    else:
+        full_reason = reason
+    technician_name = (form.get("technician_name") or (user.full_name if hasattr(user, 'full_name') else None) or user.username or "").strip()
+    technician_username = user.username or ""
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT id, destination_id FROM devices WHERE uuid = %s AND is_deleted = FALSE", (uuid,))
+        dev = cur.fetchone()
+        if not dev:
+            conn.close()
+            raise HTTPException(status_code=404, detail="Dispositivo non trovato")
+
+        new_uuid = str(__import__("uuid").uuid4())
+        now_ts   = datetime.now(timezone.utc)
+        cur.execute("""
+            INSERT INTO device_unavailability_reports
+                (uuid, device_id, destination_id, period_start, period_end, report_date,
+                 reason, technician_name, technician_username, created_at, last_modified, is_synced, is_deleted)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1, 0)
+        """, (new_uuid, dev["id"], dev["destination_id"], period_start, period_end, report_date,
+              full_reason, technician_name, technician_username, now_ts, now_ts))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] unavailable submit error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    return RedirectResponse(url=f"/mobile/devices/{uuid}", status_code=303)
+
+
+@app.post("/mobile/unavailability/{uuid}/delete", response_class=HTMLResponse)
+def mobile_unavailability_delete(uuid: str, request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        now_ts = datetime.now(timezone.utc)
+        cur.execute("""
+            UPDATE device_unavailability_reports
+            SET is_deleted = TRUE, is_synced = TRUE, last_modified = %s
+            WHERE uuid = %s
+            RETURNING device_id
+        """, (now_ts, uuid))
+        row = cur.fetchone()
+        dev_uuid = None
+        if row and row.get("device_id"):
+            cur.execute("SELECT uuid FROM devices WHERE id = %s", (row["device_id"],))
+            dev_row = cur.fetchone()
+            if dev_row:
+                dev_uuid = dev_row["uuid"]
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] unavailability delete error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    if dev_uuid:
+        return RedirectResponse(url=f"/mobile/devices/{dev_uuid}", status_code=303)
+    return RedirectResponse(url="/mobile/unavailability", status_code=303)
+
+
+@app.get("/mobile/unavailability", response_class=HTMLResponse)
+def mobile_unavailability_list(request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        _ensure_unavailability_table(cur)
+        conn.commit()
+
+        cur.execute("""
+            SELECT r.*, d.uuid AS device_uuid, d.description AS device_description,
+                   d.model AS device_model, d.serial_number, d.ams_inventory, d.department,
+                   dest.name AS destination_name, c.name AS customer_name
+            FROM device_unavailability_reports r
+            JOIN devices d ON d.id = r.device_id
+            JOIN destinations dest ON dest.id = r.destination_id
+            JOIN customers c ON c.id = dest.customer_id
+            WHERE r.is_deleted = FALSE AND d.is_deleted = FALSE
+            ORDER BY r.period_start DESC, r.created_at DESC
+        """)
+        reports = cur.fetchall()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] unavailability list error: {e}", exc_info=True)
+        reports = []
+
+    return mobile_templates.TemplateResponse("unavailability_list.html", {
+        "request": request, "user": user, "active_nav": "dashboard",
+        "reports": reports,
+        "back_url": "/mobile/dashboard",
     })
 
 
@@ -4401,7 +6688,6 @@ def mobile_func_verification_report(uuid: str, request: Request, mobile_session:
             except Exception:
                 pass
 
-    from app import config as _app_cfg
     logo_path = None
     # 1. Immagine di intestazione specifica per il mobile (in mobile/static/)
     for _ln in ("report_header.png", "report_header.jpg", "report_header.jpeg"):
@@ -4411,8 +6697,9 @@ def mobile_func_verification_report(uuid: str, request: Request, mobile_session:
             break
     # 2. Fallback: logo desktop nella cartella del programma
     if not logo_path:
+        _srv_base = os.path.dirname(os.path.abspath(__file__))
         for _ln in ("logo.png", "logo.jpg"):
-            _lp = os.path.join(_app_cfg.BASE_DIR, _ln)
+            _lp = os.path.join(_srv_base, _ln)
             if os.path.exists(_lp):
                 logo_path = _lp
                 break
@@ -4556,7 +6843,6 @@ def mobile_verification_report(uuid: str, request: Request, mobile_session: Opti
                 pass
 
     # Logo
-    from app import config as _app_cfg
     logo_path = None
     # 1. Immagine di intestazione specifica per il mobile (in mobile/static/)
     for _ln in ("report_header.png", "report_header.jpg", "report_header.jpeg"):
@@ -4566,8 +6852,9 @@ def mobile_verification_report(uuid: str, request: Request, mobile_session: Opti
             break
     # 2. Fallback: logo desktop nella cartella del programma
     if not logo_path:
+        _srv_base = os.path.dirname(os.path.abspath(__file__))
         for _ln in ("logo.png", "logo.jpg"):
-            _lp = os.path.join(_app_cfg.BASE_DIR, _ln)
+            _lp = os.path.join(_srv_base, _ln)
             if os.path.exists(_lp):
                 logo_path = _lp
                 break
@@ -4602,6 +6889,49 @@ def mobile_verification_report(uuid: str, request: Request, mobile_session: Opti
     )
 
 
+def _parse_and_normalize_date(val: Any) -> tuple[Optional[date], str]:
+    """
+    Parses a date from various formats (date, datetime, ISO 'YYYY-MM-DD', 'DD/MM/YYYY', 'DD-MM-YYYY', 'DD.MM.YYYY')
+    Returns: (parsed_date_obj_or_None, iso_string_or_empty)
+    """
+    if not val:
+        return None, ""
+    if isinstance(val, datetime):
+        d = val.date()
+        return d, d.isoformat()
+    if isinstance(val, date):
+        return val, val.isoformat()
+    s = str(val).strip()
+    if not s:
+        return None, ""
+    # Try ISO YYYY-MM-DD
+    if re.match(r"^\d{4}-\d{2}-\d{2}", s):
+        try:
+            d = date.fromisoformat(s[:10])
+            return d, d.isoformat()
+        except Exception:
+            pass
+    # Try DD/MM/YYYY or DD-MM-YYYY or DD.MM.YYYY
+    m = re.match(r"^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})", s)
+    if m:
+        day, month, year = m.groups()
+        try:
+            d = date(int(year), int(month), int(day))
+            return d, d.isoformat()
+        except Exception:
+            pass
+    # Try DD/MM/YY
+    m = re.match(r"^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2})$", s)
+    if m:
+        day, month, yy = m.groups()
+        try:
+            d = date(int(f"20{yy}"), int(month), int(day))
+            return d, d.isoformat()
+        except Exception:
+            pass
+    return None, s
+
+
 @app.get("/mobile/instruments", response_class=HTMLResponse)
 def mobile_instruments_list(request: Request, mobile_session: Optional[str] = Cookie(None)):
     user = _mobile_user_from_cookie(mobile_session)
@@ -4611,12 +6941,34 @@ def mobile_instruments_list(request: Request, mobile_session: Optional[str] = Co
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT uuid, instrument_name, serial_number, calibration_date,
-                   fw_version, instrument_type, sede, is_default
-            FROM mti_instruments WHERE is_deleted = FALSE
-            ORDER BY is_default DESC, instrument_name ASC
-        """)
+        user_sede = (user.sede or "").strip().upper() if user.role != "admin" else None
+        if user_sede:
+            cur.execute("""
+                SELECT inst.id, inst.uuid, inst.instrument_name, inst.serial_number, inst.calibration_date,
+                       inst.fw_version, inst.instrument_type, inst.sede, inst.is_default,
+                       COUNT(va.id) as cert_count
+                FROM mti_instruments inst
+                LEFT JOIN verification_attachments va 
+                    ON va.verification_id = inst.id AND va.verification_type = 'instrument' AND va.is_deleted = FALSE
+                WHERE inst.is_deleted = FALSE 
+                  AND (UPPER(TRIM(inst.sede)) = %s OR inst.sede IS NULL OR TRIM(inst.sede) = '')
+                GROUP BY inst.id, inst.uuid, inst.instrument_name, inst.serial_number, inst.calibration_date,
+                         inst.fw_version, inst.instrument_type, inst.sede, inst.is_default
+                ORDER BY inst.is_default DESC, inst.instrument_name ASC
+            """, (user_sede,))
+        else:
+            cur.execute("""
+                SELECT inst.id, inst.uuid, inst.instrument_name, inst.serial_number, inst.calibration_date,
+                       inst.fw_version, inst.instrument_type, inst.sede, inst.is_default,
+                       COUNT(va.id) as cert_count
+                FROM mti_instruments inst
+                LEFT JOIN verification_attachments va 
+                    ON va.verification_id = inst.id AND va.verification_type = 'instrument' AND va.is_deleted = FALSE
+                WHERE inst.is_deleted = FALSE
+                GROUP BY inst.id, inst.uuid, inst.instrument_name, inst.serial_number, inst.calibration_date,
+                         inst.fw_version, inst.instrument_type, inst.sede, inst.is_default
+                ORDER BY inst.is_default DESC, inst.instrument_name ASC
+            """)
         instruments = cur.fetchall()
         conn.close()
     except Exception as e:
@@ -4630,9 +6982,10 @@ def mobile_instruments_list(request: Request, mobile_session: Optional[str] = Co
     for instr in instruments:
         d = dict(instr)
         cal = d.get("calibration_date")
-        if cal:
+        cal_d, cal_iso = _parse_and_normalize_date(cal)
+        d["calibration_date"] = cal_iso if cal_iso else (str(cal) if cal else "")
+        if cal_d:
             try:
-                cal_d = cal if isinstance(cal, date) else date.fromisoformat(str(cal)[:10])
                 exp_d = cal_d.replace(year=cal_d.year + 1)
                 d["expiry_date"] = exp_d.isoformat()
             except Exception:
@@ -4671,7 +7024,9 @@ async def mobile_instrument_create(request: Request, mobile_session: Optional[st
     form = await request.form()
     instrument_name = (form.get("instrument_name") or "").strip()
     serial_number   = (form.get("serial_number") or "").strip() or None
-    calibration_date = form.get("calibration_date") or None
+    cal_raw         = form.get("calibration_date") or None
+    _, cal_iso      = _parse_and_normalize_date(cal_raw)
+    calibration_date = cal_iso or (cal_raw.strip() if cal_raw else None)
     fw_version      = (form.get("fw_version") or "").strip() or None
     instrument_type = (form.get("instrument_type") or "").strip() or None
     sede            = (form.get("sede") or "").strip().upper() or None
@@ -4694,9 +7049,26 @@ async def mobile_instrument_create(request: Request, mobile_session: Optional[st
                 (uuid, instrument_name, serial_number, calibration_date,
                  fw_version, instrument_type, sede, is_default,
                  is_deleted, is_synced, last_modified)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,FALSE,FALSE,%s)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,FALSE,TRUE,%s)
+            RETURNING id
         """, (new_uuid, instrument_name, serial_number, calibration_date or None,
               fw_version, instrument_type, sede, is_default, now_ts))
+        inst_id = cur.fetchone()["id"]
+
+        # Gestione upload certificato PDF opzionale
+        cert_file = form.get("certificate_pdf")
+        if cert_file and hasattr(cert_file, "filename") and cert_file.filename:
+            cert_bytes = await cert_file.read()
+            if cert_bytes and len(cert_bytes) > 0:
+                cert_uuid = str(__import__("uuid").uuid4())
+                cur.execute("""
+                    INSERT INTO verification_attachments
+                        (uuid, verification_id, verification_type, filename, file_data,
+                         mime_type, file_size, description, created_at, last_modified,
+                         is_synced, is_deleted)
+                    VALUES (%s, %s, 'instrument', %s, %s, 'application/pdf', %s, 'Certificato di calibrazione PDF', %s, %s, TRUE, FALSE)
+                """, (cert_uuid, inst_id, cert_file.filename, cert_bytes, len(cert_bytes), now_ts, now_ts))
+
         conn.commit()
         conn.close()
     except Exception as e:
@@ -4721,24 +7093,44 @@ def mobile_instrument_edit_form(uuid: str, request: Request, mobile_session: Opt
         cur  = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("SELECT * FROM mti_instruments WHERE uuid = %s AND is_deleted = FALSE", (uuid,))
         instr = cur.fetchone()
-        conn.close()
         if not instr:
+            conn.close()
             raise HTTPException(status_code=404)
+
+        cur.execute("""
+            SELECT id, uuid, filename, file_size, created_at, description
+            FROM verification_attachments
+            WHERE verification_id = %s AND verification_type = 'instrument' AND is_deleted = FALSE
+            ORDER BY created_at DESC LIMIT 1
+        """, (instr["id"],))
+        cert = cur.fetchone()
+        conn.close()
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"[mobile] instrument edit form error: {e}", exc_info=True)
         raise HTTPException(status_code=500)
 
-    # Convert date to string if needed
+    # Convert date to standard ISO (YYYY-MM-DD) for HTML5 date input
     cd = instr.get("calibration_date")
     form_data = dict(instr)
-    if cd and not isinstance(cd, str):
-        form_data["calibration_date"] = cd.isoformat()
+    _, cal_iso = _parse_and_normalize_date(cd)
+    form_data["calibration_date"] = cal_iso
+
+    cert_data = None
+    if cert:
+        cert_data = dict(cert)
+        sz = cert_data.get("file_size") or 0
+        if sz < 1024:
+            cert_data["file_size_str"] = f"{sz} B"
+        elif sz < 1024*1024:
+            cert_data["file_size_str"] = f"{sz // 1024} KB"
+        else:
+            cert_data["file_size_str"] = f"{sz / (1024*1024):.1f} MB"
 
     return mobile_templates.TemplateResponse("instrument_form.html", {
         "request": request, "user": user, "mode": "edit",
-        "instrument": instr, "form": form_data,
+        "instrument": instr, "form": form_data, "certificate": cert_data,
         "back_url": "/mobile/instruments",
     })
 
@@ -4752,7 +7144,9 @@ async def mobile_instrument_update(uuid: str, request: Request, mobile_session: 
     form = await request.form()
     instrument_name = (form.get("instrument_name") or "").strip()
     serial_number   = (form.get("serial_number") or "").strip() or None
-    calibration_date = form.get("calibration_date") or None
+    cal_raw         = form.get("calibration_date") or None
+    _, cal_iso      = _parse_and_normalize_date(cal_raw)
+    calibration_date = cal_iso or (cal_raw.strip() if cal_raw else None)
     fw_version      = (form.get("fw_version") or "").strip() or None
     instrument_type = (form.get("instrument_type") or "").strip() or None
     sede            = (form.get("sede") or "").strip().upper() or None
@@ -4777,15 +7171,42 @@ async def mobile_instrument_update(uuid: str, request: Request, mobile_session: 
     try:
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT id FROM mti_instruments WHERE uuid = %s AND is_deleted = FALSE", (uuid,))
+        row = cur.fetchone()
+        if not row:
+            conn.close()
+            raise HTTPException(status_code=404)
+        inst_id = row["id"]
+
         now_ts = datetime.now(timezone.utc)
         cur.execute("""
             UPDATE mti_instruments SET
                 instrument_name=%s, serial_number=%s, calibration_date=%s,
                 fw_version=%s, instrument_type=%s, sede=%s, is_default=%s,
-                is_synced=FALSE, last_modified=%s
-            WHERE uuid=%s AND is_deleted=FALSE
+                is_synced=TRUE, last_modified=%s
+            WHERE id=%s AND is_deleted=FALSE
         """, (instrument_name, serial_number, calibration_date or None,
-              fw_version, instrument_type, sede, is_default, now_ts, uuid))
+              fw_version, instrument_type, sede, is_default, now_ts, inst_id))
+
+        # Gestione eventuale nuovo certificato PDF caricato
+        cert_file = form.get("certificate_pdf")
+        if cert_file and hasattr(cert_file, "filename") and cert_file.filename:
+            cert_bytes = await cert_file.read()
+            if cert_bytes and len(cert_bytes) > 0:
+                cur.execute("""
+                    UPDATE verification_attachments 
+                    SET is_deleted = TRUE, is_synced = TRUE, last_modified = %s
+                    WHERE verification_id = %s AND verification_type = 'instrument'
+                """, (now_ts, inst_id))
+                cert_uuid = str(__import__("uuid").uuid4())
+                cur.execute("""
+                    INSERT INTO verification_attachments
+                        (uuid, verification_id, verification_type, filename, file_data,
+                         mime_type, file_size, description, created_at, last_modified,
+                         is_synced, is_deleted)
+                    VALUES (%s, %s, 'instrument', %s, %s, 'application/pdf', %s, 'Certificato di calibrazione PDF', %s, %s, TRUE, FALSE)
+                """, (cert_uuid, inst_id, cert_file.filename, cert_bytes, len(cert_bytes), now_ts, now_ts))
+
         conn.commit()
         conn.close()
     except Exception as e:
@@ -4805,7 +7226,7 @@ def mobile_instrument_delete(uuid: str, mobile_session: Optional[str] = Cookie(N
         conn = get_db_connection()
         cur  = conn.cursor(cursor_factory=RealDictCursor)
         now_ts = datetime.now(timezone.utc)
-        cur.execute("UPDATE mti_instruments SET is_deleted=TRUE, is_synced=FALSE, last_modified=%s WHERE uuid=%s",
+        cur.execute("UPDATE mti_instruments SET is_deleted=TRUE, is_synced=TRUE, last_modified=%s WHERE uuid=%s",
                     (now_ts, uuid))
         conn.commit()
         conn.close()
@@ -4814,6 +7235,64 @@ def mobile_instrument_delete(uuid: str, mobile_session: Optional[str] = Cookie(N
         raise HTTPException(status_code=500)
 
     return RedirectResponse(url="/mobile/instruments", status_code=303)
+
+
+@app.get("/mobile/instruments/{uuid}/certificate")
+def mobile_instrument_certificate_download(uuid: str, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("""
+            SELECT va.filename, va.file_data
+            FROM verification_attachments va
+            JOIN mti_instruments inst ON va.verification_id = inst.id
+            WHERE inst.uuid = %s AND va.verification_type = 'instrument' AND va.is_deleted = FALSE
+            ORDER BY va.created_at DESC LIMIT 1
+        """, (uuid,))
+        row = cur.fetchone()
+        conn.close()
+        if not row or not row["file_data"]:
+            raise HTTPException(status_code=404, detail="Certificato non trovato.")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[mobile] certificate download error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    return FastAPIResponse(
+        content=bytes(row["file_data"]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{row["filename"]}"'},
+    )
+
+
+@app.post("/mobile/instruments/{uuid}/certificate/delete", response_class=HTMLResponse)
+def mobile_instrument_certificate_delete(uuid: str, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        now_ts = datetime.now(timezone.utc)
+        cur.execute("""
+            UPDATE verification_attachments SET is_deleted=TRUE, is_synced=TRUE, last_modified=%s
+            WHERE verification_type='instrument' AND verification_id IN (
+                SELECT id FROM mti_instruments WHERE uuid=%s
+            )
+        """, (now_ts, uuid))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] certificate delete error: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+    return RedirectResponse(url=f"/mobile/instruments/{uuid}/edit", status_code=303)
 
 
 # ─── Delete Verifications ────────────────────────────────────────────────────
@@ -4898,14 +7377,7 @@ def mobile_new_verification_form(device_uuid: str, request: Request,
             WHERE p.is_deleted = FALSE ORDER BY p.profile_key, p.last_modified DESC
         """)
         profiles = cur.fetchall()
-        cur.execute("""
-            SELECT uuid, instrument_name, serial_number, calibration_date
-            FROM mti_instruments
-            WHERE is_deleted = FALSE
-              AND (instrument_type IS NULL OR instrument_type = '' OR instrument_type = 'electrical')
-            ORDER BY is_default DESC, instrument_name ASC
-        """)
-        instruments = cur.fetchall()
+        instruments = _get_instruments_for_verification(cur, user, 'electrical')
         conn.close()
     except HTTPException:
         raise
@@ -4953,8 +7425,7 @@ async def mobile_save_verification(device_uuid: str, request: Request,
         dev_ = cur_.fetchone()
         cur_.execute("SELECT DISTINCT ON (p.profile_key) p.profile_key, p.name FROM profiles p WHERE p.is_deleted = FALSE ORDER BY p.profile_key, p.last_modified DESC")
         prof_ = cur_.fetchall()
-        cur_.execute("SELECT uuid, instrument_name, serial_number, calibration_date FROM mti_instruments WHERE is_deleted = FALSE AND (instrument_type IS NULL OR instrument_type = '' OR instrument_type = 'electrical') ORDER BY is_default DESC, instrument_name ASC")
-        inst_ = cur_.fetchall()
+        inst_ = _get_instruments_for_verification(cur_, user, 'electrical')
         conn_.close()
         return dev_, prof_, inst_
 
@@ -5159,13 +7630,7 @@ def mobile_new_func_verification_form(device_uuid: str, request: Request,
             FROM functional_profiles WHERE is_deleted = FALSE ORDER BY name
         """)
         functional_profiles = cur.fetchall()
-        cur.execute("""
-            SELECT uuid, instrument_name, serial_number, calibration_date
-            FROM mti_instruments
-            WHERE is_deleted = FALSE AND instrument_type = 'functional'
-            ORDER BY is_default DESC, instrument_name ASC
-        """)
-        func_instruments = cur.fetchall()
+        func_instruments = _get_instruments_for_verification(cur, user, 'functional')
         conn.close()
     except HTTPException:
         raise
@@ -5386,8 +7851,7 @@ async def mobile_save_func_verification(device_uuid: str, request: Request,
         device = cur.fetchone()
         cur.execute("SELECT profile_key, name, device_type FROM functional_profiles WHERE is_deleted = FALSE ORDER BY name")
         functional_profiles = cur.fetchall()
-        cur.execute("SELECT uuid, instrument_name, serial_number, calibration_date FROM mti_instruments WHERE is_deleted = FALSE AND instrument_type = 'functional' ORDER BY is_default DESC, instrument_name ASC")
-        func_instruments = cur.fetchall()
+        func_instruments = _get_instruments_for_verification(cur, user, 'functional')
         conn.close()
         return mobile_templates.TemplateResponse("new_func_verification.html", {
             "request": request, "user": user,
@@ -5640,10 +8104,117 @@ def mobile_profile_page(request: Request, mobile_session: Optional[str] = Cookie
     user = _mobile_user_from_cookie(mobile_session)
     if not user:
         return _mobile_redirect_login()
+
+    has_signature = False
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT signature_data FROM signatures WHERE username = %s LIMIT 1", (user.username,))
+        sig_row = cur.fetchone()
+        has_signature = bool(sig_row and sig_row.get("signature_data"))
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] error checking signature: {e}")
+
+    sig_error = request.query_params.get("sig_error")
+    sig_success = request.query_params.get("sig_success")
+
     return mobile_templates.TemplateResponse("profile_page.html", {
         "request": request, "user": user, "active_nav": "profile",
+        "has_signature": has_signature,
+        "sig_error": sig_error, "sig_success": sig_success,
+        "timestamp": int(time.time()),
         "pending_assignments_count": _get_pending_assignments_count(user.username, user.role),
     })
+
+
+@app.get("/mobile/profile/signature")
+def mobile_get_my_signature(mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        raise HTTPException(status_code=401, detail="Non autorizzato")
+
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT signature_data FROM signatures WHERE username = %s LIMIT 1", (user.username,))
+        sig_row = cur.fetchone()
+        conn.close()
+        if not sig_row or not sig_row.get("signature_data"):
+            raise HTTPException(status_code=404, detail="Firma non trovata")
+        return Response(content=bytes(sig_row["signature_data"]), media_type="image/png")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[mobile] error loading signature: {e}", exc_info=True)
+        raise HTTPException(status_code=500)
+
+
+@app.post("/mobile/profile/signature", response_class=HTMLResponse)
+async def mobile_save_signature(request: Request, mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    form = await request.form()
+    b64_data = (form.get("signature_b64") or "").strip()
+    sig_file = form.get("signature_file")
+    sig_bytes = None
+
+    if b64_data and "," in b64_data:
+        try:
+            _, encoded = b64_data.split(",", 1)
+            sig_bytes = base64.b64decode(encoded)
+        except Exception as e:
+            logger.error(f"[mobile] error decoding canvas signature: {e}")
+    elif sig_file and hasattr(sig_file, "filename") and sig_file.filename:
+        try:
+            sig_bytes = await sig_file.read()
+        except Exception as e:
+            logger.error(f"[mobile] error reading uploaded signature: {e}")
+
+    if not sig_bytes or len(sig_bytes) < 10:
+        return RedirectResponse(url="/mobile/profile?sig_error=Traccia+o+seleziona+un'immagine+di+firma+valida", status_code=303)
+
+    now_ts = datetime.now(timezone.utc)
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("""
+            INSERT INTO signatures (username, signature_data, last_modified, is_synced)
+            VALUES (%s, %s, %s, TRUE)
+            ON CONFLICT (username) DO UPDATE SET
+                signature_data = EXCLUDED.signature_data,
+                last_modified = EXCLUDED.last_modified,
+                is_synced = TRUE
+        """, (user.username, sig_bytes, now_ts))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] error saving signature: {e}", exc_info=True)
+        return RedirectResponse(url="/mobile/profile?sig_error=Errore+durante+il+salvataggio+della+firma", status_code=303)
+
+    return RedirectResponse(url="/mobile/profile?sig_success=Firma+digitale+salvata+con+successo", status_code=303)
+
+
+@app.post("/mobile/profile/signature/delete", response_class=HTMLResponse)
+def mobile_delete_signature(mobile_session: Optional[str] = Cookie(None)):
+    user = _mobile_user_from_cookie(mobile_session)
+    if not user:
+        return _mobile_redirect_login()
+
+    now_ts = datetime.now(timezone.utc)
+    try:
+        conn = get_db_connection()
+        cur  = conn.cursor()
+        cur.execute("UPDATE signatures SET signature_data = NULL, is_synced = TRUE, last_modified = %s WHERE username = %s", (now_ts, user.username))
+        conn.commit()
+        conn.close()
+    except Exception as e:
+        logger.error(f"[mobile] error deleting signature: {e}", exc_info=True)
+        return RedirectResponse(url="/mobile/profile?sig_error=Errore+durante+l'eliminazione+della+firma", status_code=303)
+
+    return RedirectResponse(url="/mobile/profile?sig_success=Firma+digitale+rimossa", status_code=303)
 
 
 @app.post("/mobile/profile/change-password", response_class=HTMLResponse)
@@ -5658,9 +8229,21 @@ async def mobile_change_password(request: Request, mobile_session: Optional[str]
     confirm_pw  = (form.get("confirm_password") or "").strip()
 
     def _render(error=None, success=None):
+        has_signature = False
+        try:
+            conn = get_db_connection()
+            cur  = conn.cursor(cursor_factory=RealDictCursor)
+            cur.execute("SELECT signature_data FROM signatures WHERE username = %s LIMIT 1", (user.username,))
+            sig_row = cur.fetchone()
+            has_signature = bool(sig_row and sig_row.get("signature_data"))
+            conn.close()
+        except Exception:
+            pass
         return mobile_templates.TemplateResponse("profile_page.html", {
             "request": request, "user": user, "active_nav": "profile",
+            "has_signature": has_signature,
             "pw_error": error, "pw_success": success,
+            "timestamp": int(time.time()),
         })
 
     if not current_pw or not new_pw or not confirm_pw:
@@ -5785,28 +8368,52 @@ def _ensure_assignments_table(cur):
 
 
 def _ensure_unavailability_table(cur):
-    """Crea la tabella device_unavailability_reports su PostgreSQL se non esiste."""
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS device_unavailability_reports (
-            id                  SERIAL PRIMARY KEY,
-            uuid                TEXT        NOT NULL UNIQUE,
-            device_id           INTEGER     NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
-            destination_id      INTEGER     NOT NULL REFERENCES destinations(id) ON DELETE CASCADE,
-            period_start        TEXT        NOT NULL,
-            period_end          TEXT        NOT NULL,
-            report_date         TEXT        NOT NULL,
-            reason              TEXT        NOT NULL,
-            technician_name     TEXT,
-            technician_username TEXT,
-            created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            last_modified       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            is_deleted          INTEGER     NOT NULL DEFAULT 0,
-            is_synced           INTEGER     NOT NULL DEFAULT 0
-        )
-    """)
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_unavail_device  ON device_unavailability_reports(device_id)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_unavail_dest    ON device_unavailability_reports(destination_id)")
-    cur.execute("CREATE INDEX IF NOT EXISTS idx_unavail_period  ON device_unavailability_reports(period_start, period_end)")
+    """Crea la tabella device_unavailability_reports su PostgreSQL se non esiste e assicura tipi BOOLEAN."""
+    try:
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS device_unavailability_reports (
+                id                  SERIAL PRIMARY KEY,
+                uuid                TEXT        NOT NULL UNIQUE,
+                device_id           INTEGER     NOT NULL REFERENCES devices(id) ON DELETE CASCADE,
+                destination_id      INTEGER     NOT NULL REFERENCES destinations(id) ON DELETE CASCADE,
+                period_start        TEXT        NOT NULL,
+                period_end          TEXT        NOT NULL,
+                report_date         TEXT        NOT NULL,
+                reason              TEXT        NOT NULL,
+                technician_name     TEXT,
+                technician_username TEXT,
+                created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_modified       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                is_deleted          BOOLEAN     NOT NULL DEFAULT FALSE,
+                is_synced           BOOLEAN     NOT NULL DEFAULT TRUE
+            )
+        """)
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_unavail_device  ON device_unavailability_reports(device_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_unavail_dest    ON device_unavailability_reports(destination_id)")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_unavail_period  ON device_unavailability_reports(period_start, period_end)")
+
+        # Migrazione automatica se la colonna su PostgreSQL è stata creata come INTEGER
+        cur.execute("""
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'device_unavailability_reports' 
+                      AND column_name = 'is_deleted' 
+                      AND data_type IN ('smallint', 'integer', 'bigint')
+                ) THEN
+                    ALTER TABLE device_unavailability_reports ALTER COLUMN is_deleted DROP DEFAULT;
+                    ALTER TABLE device_unavailability_reports ALTER COLUMN is_deleted TYPE BOOLEAN USING (is_deleted <> 0);
+                    ALTER TABLE device_unavailability_reports ALTER COLUMN is_deleted SET DEFAULT FALSE;
+
+                    ALTER TABLE device_unavailability_reports ALTER COLUMN is_synced DROP DEFAULT;
+                    ALTER TABLE device_unavailability_reports ALTER COLUMN is_synced TYPE BOOLEAN USING (is_synced <> 0);
+                    ALTER TABLE device_unavailability_reports ALTER COLUMN is_synced SET DEFAULT FALSE;
+                END IF;
+            END $$;
+        """)
+    except Exception as e:
+        logger.warning(f"[db] _ensure_unavailability_table error: {e}")
 
 
 _ASSIGNMENT_SELECT = """

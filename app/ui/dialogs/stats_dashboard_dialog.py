@@ -76,25 +76,70 @@ class StatsDashboardDialog(QDialog):
         dashboard_tab = self._create_dashboard_tab()
         self.tabs.addTab(dashboard_tab, qta.icon('fa5s.clipboard-list'), " Dashboard Operativa")
         
+        self.tabs.currentChanged.connect(self._on_tab_switched)
         main_layout.addWidget(self.tabs)
 
         # Overlay di caricamento
         self._loading_overlay = _DashboardLoadingOverlay(self)
         self._loading_overlay.hide()
 
+        self._loaded_tabs = set()
+        self._is_loading = False
+
         self.setWindowState(Qt.WindowMaximized)
 
-        # Caricamento differito: mostra prima la finestra, poi carica i dati
-        QTimer.singleShot(100, self._deferred_load)
+        # Caricamento rapido on-demand: carica solo la prima scheda (Panoramica KPI)
+        QTimer.singleShot(20, self._initial_load)
 
-    def _deferred_load(self):
-        """Carica i dati dopo che la finestra è stata visualizzata."""
-        self._loading_overlay.show_message("Caricamento statistiche in corso...")
-        QApplication.processEvents()
+    def _initial_load(self):
+        """Carica velocemente solo la scheda attiva iniziale all'apertura."""
+        self._load_tab(self.tabs.currentIndex())
+
+    def _on_tab_switched(self, index: int):
+        """Carica on-demand i dati della scheda solo quando viene visualizzata."""
+        if index not in self._loaded_tabs and not self._is_loading:
+            self._load_tab(index)
+
+    def _load_tab(self, tab_idx: int):
+        """Carica i dati di uno specifico tab in modo mirato e istantaneo."""
+        if self._is_loading:
+            return
+        self._is_loading = True
+        
+        # Mostra overlay solo se il tab richiede elaborazioni grafiche/tabellari
+        show_overlay = tab_idx in (1, 2, 3, 4, 5, 6)
+        if show_overlay and hasattr(self, '_loading_overlay'):
+            tab_name = self.tabs.tabText(tab_idx).strip()
+            self._loading_overlay.show_message(f"Caricamento {tab_name} in corso...")
+            QApplication.processEvents()
+
+        selected_year = self.year_spinbox.value()
         try:
-            self.update_all_data()
+            if tab_idx == 0:  # Panoramica (solo KPI rapidi)
+                self._update_kpi()
+            elif tab_idx == 1:  # Conformità
+                self._update_pie_chart()
+                self._update_pie_func_chart()
+            elif tab_idx == 2:  # Andamento Mensile
+                self._update_monthly_chart(selected_year)
+            elif tab_idx == 3:  # Trend & Confronto
+                self._update_trend_chart(selected_year)
+                self._update_comparison_chart(selected_year)
+            elif tab_idx == 4:  # Produttività
+                self._update_productivity_chart(selected_year)
+            elif tab_idx == 5:  # Classifiche
+                self._update_rankings()
+            elif tab_idx == 6:  # Dashboard Operativa
+                self._update_dashboard_data()
+            
+            self._loaded_tabs.add(tab_idx)
+        except Exception as e:
+            logging.error(f"Errore durante il caricamento del tab {tab_idx}: {e}", exc_info=True)
+            QMessageBox.critical(self, "Errore", f"Impossibile caricare i dati della scheda:\n{str(e)}")
         finally:
-            self._loading_overlay.hide()
+            if show_overlay and hasattr(self, '_loading_overlay'):
+                self._loading_overlay.hide()
+            self._is_loading = False
 
     # =========================================================================
     # HEADER
@@ -657,38 +702,9 @@ class StatsDashboardDialog(QDialog):
     # UPDATE ALL
     # =========================================================================
     def update_all_data(self):
-        try:
-            QApplication.setOverrideCursor(Qt.WaitCursor)
-            
-            # Mostra overlay se disponibile (non durante __init__ iniziale)
-            if hasattr(self, '_loading_overlay') and not self._loading_overlay.isVisible():
-                self._loading_overlay.show_message("Aggiornamento statistiche in corso...")
-                QApplication.processEvents()
-            
-            selected_year = self.year_spinbox.value()
-            
-            self._update_kpi()
-            QApplication.processEvents()
-            self._update_pie_chart()
-            self._update_pie_func_chart()
-            QApplication.processEvents()
-            self._update_monthly_chart(selected_year)
-            QApplication.processEvents()
-            self._update_trend_chart(selected_year)
-            self._update_comparison_chart(selected_year)
-            QApplication.processEvents()
-            self._update_productivity_chart(selected_year)
-            QApplication.processEvents()
-            self._update_rankings()
-            self._update_dashboard_data()
-            
-        except Exception as e:
-            logging.error(f"Errore durante l'aggiornamento della dashboard: {e}", exc_info=True)
-            QMessageBox.critical(self, "Errore", f"Impossibile aggiornare la dashboard:\n{str(e)}")
-        finally:
-            QApplication.restoreOverrideCursor()
-            if hasattr(self, '_loading_overlay'):
-                self._loading_overlay.hide()
+        """Ricarica i dati invalidando la cache delle schede e aggiornando la scheda corrente."""
+        self._loaded_tabs.clear()
+        self._load_tab(self.tabs.currentIndex())
     
     # =========================================================================
     # KPI
@@ -696,7 +712,7 @@ class StatsDashboardDialog(QDialog):
     def _update_kpi(self):
         try:
             # Statistiche verifiche elettriche
-            ve_stats = services.get_verification_stats()
+            ve_stats = services.get_electrical_verification_stats()
             total_ve = ve_stats.get('totale', 0)
             conformi_ve = ve_stats.get('conformi', 0)
             non_conformi_ve = ve_stats.get('non_conformi', 0)
@@ -769,7 +785,7 @@ class StatsDashboardDialog(QDialog):
         """Grafico a torta verifiche elettriche."""
         try:
             self.pie_chart.removeAllSeries()
-            stats = services.get_verification_stats()
+            stats = services.get_electrical_verification_stats()
             
             conformi = stats.get('conformi', 0)
             non_conformi = stats.get('non_conformi', 0)

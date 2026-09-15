@@ -75,21 +75,29 @@ class TableExportWorker(QObject):
 
             # Definisci i formati per la formattazione condizionale CON text_wrap incluso
             green_format = workbook.add_format({
-                'bg_color': "#129E0D", 
-                'font_color': "#000000", 
+                'bg_color': "#D1FAE5", 
+                'font_color': "#065F46", 
+                'bold': True,
+                'text_wrap': True, 
+                'valign': 'top'
+            })
+            orange_format = workbook.add_format({
+                'bg_color': "#FEF3C7", 
+                'font_color': "#92400E", 
+                'bold': True,
                 'text_wrap': True, 
                 'valign': 'top'
             })
             red_format = workbook.add_format({
-                'bg_color': "#FF0000", 
-                'font_color': "#000000", 
+                'bg_color': "#FEE2E2", 
+                'font_color': "#991B1B", 
+                'bold': True,
                 'text_wrap': True, 
                 'valign': 'top'
             })
-
-            blue_format = workbook.add_format({
-                'bg_color': "#62A0D6",
-                'font_color': "#000000",
+            gray_format = workbook.add_format({
+                'bg_color': "#F3F4F6",
+                'font_color': "#6B7280",
                 'text_wrap': True,
                 'valign': 'top'
             })
@@ -106,41 +114,58 @@ class TableExportWorker(QObject):
             for col in range(num_cols):
                 worksheet.set_column(col, col, None, cell_format)
 
-            # Applica la formattazione condizionale (questo sovrascriverà il formato base dove applicabile)
-            # Formattazione per la colonna ESITO (L)
-            worksheet.conditional_format(f'A2:N{num_rows + 1}', {
-                'type': 'formula',
-                'criteria': '=SEARCH("CONFORME",$L2)',
+            # Formattazione per la colonna ESITO (Colonna L)
+            esito_col_range = f'L2:L{num_rows + 1}'
+            worksheet.conditional_format(esito_col_range, {
+                'type': 'cell',
+                'criteria': 'equal to',
+                'value': '"CONFORME"',
                 'format': green_format
             })
-
-            worksheet.conditional_format(f'A2:N{num_rows + 1}', {
-                'type': 'formula',
-                'criteria': '=SEARCH("NON CONFORME",$L2)',
+            worksheet.conditional_format(esito_col_range, {
+                'type': 'cell',
+                'criteria': 'equal to',
+                'value': '"CONFORME CON ANNOTAZIONE"',
+                'format': orange_format
+            })
+            worksheet.conditional_format(esito_col_range, {
+                'type': 'cell',
+                'criteria': 'equal to',
+                'value': '"NON CONFORME"',
                 'format': red_format
             })
-            worksheet.conditional_format(f'A2:N{num_rows + 1}', {
-                'type': 'formula',
-                'criteria': '=SEARCH("VERIFICA NON ESEGUITA",$L2)',
-                'format': blue_format
+            worksheet.conditional_format(esito_col_range, {
+                'type': 'cell',
+                'criteria': 'equal to',
+                'value': '"Nessuna verifica"',
+                'format': gray_format
             })
             
-            # Formattazione per la colonna ESITO VERIFICHE FUNZIONALI (M)
-            worksheet.conditional_format(f'A2:N{num_rows + 1}', {
-                'type': 'formula',
-                'criteria': '=OR(SEARCH("CONFORME",$M2),SEARCH("PASSATO",$M2))',
+            # Formattazione per la colonna ESITO VERIFICHE FUNZIONALI (Colonna M)
+            func_col_range = f'M2:M{num_rows + 1}'
+            worksheet.conditional_format(func_col_range, {
+                'type': 'cell',
+                'criteria': 'equal to',
+                'value': '"CONFORME"',
                 'format': green_format
             })
-
-            worksheet.conditional_format(f'A2:N{num_rows + 1}', {
-                'type': 'formula',
-                'criteria': '=OR(SEARCH("NON CONFORME",$M2),SEARCH("FALLITO",$M2))',
+            worksheet.conditional_format(func_col_range, {
+                'type': 'cell',
+                'criteria': 'equal to',
+                'value': '"CONFORME CON ANNOTAZIONE"',
+                'format': orange_format
+            })
+            worksheet.conditional_format(func_col_range, {
+                'type': 'cell',
+                'criteria': 'equal to',
+                'value': '"NON CONFORME"',
                 'format': red_format
             })
-            worksheet.conditional_format(f'A2:N{num_rows + 1}', {
-                'type': 'formula',
-                'criteria': '=SEARCH("CONFORME CON ANNOTAZIONE",$M2)',
-                'format': red_format
+            worksheet.conditional_format(func_col_range, {
+                'type': 'cell',
+                'criteria': 'equal to',
+                'value': '"Nessuna verifica"',
+                'format': gray_format
             })
 
             # Crea la tabella

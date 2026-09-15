@@ -16,10 +16,11 @@
     {% if instruments %}
     <div class="card overflow-hidden">
         {% for instr in instruments %}
-        {% set exp = instr.expiry_date | string if instr.expiry_date else '' %}
-        {% set cal = instr.calibration_date | string if instr.calibration_date else '' %}
-        {% set is_expired  = exp and exp < today %}
-        {% set is_expiring = exp and exp >= today and exp <= warn_threshold %}
+        {% set raw_exp = instr.expiry_date | string if instr.expiry_date else '' %}
+        {% set exp = instr.expiry_date | date_it %}
+        {% set cal = instr.calibration_date | date_it %}
+        {% set is_expired  = raw_exp and raw_exp < today %}
+        {% set is_expiring = raw_exp and raw_exp >= today and raw_exp <= warn_threshold %}
         <a href="/mobile/instruments/{{ instr.uuid }}/edit" class="list-item">
             <div style="width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-right:12px;
                 background:{% if is_expired %}#fef2f2{% elif is_expiring %}#fffbeb{% else %}#eef2ff{% endif %};">
@@ -30,6 +31,12 @@
                     <p class="text-sm font-semibold text-gray-900 truncate">{{ instr.instrument_name }}</p>
                     {% if instr.is_default %}
                     <span style="font-size:.65rem;font-weight:700;background:#dbeafe;color:#1d4ed8;border-radius:20px;padding:1px 7px;">default</span>
+                    {% endif %}
+                    {% if instr.sede %}
+                    <span style="font-size:.65rem;font-weight:700;background:#f1f5f9;color:#475569;border-radius:20px;padding:1px 7px;">{{ instr.sede }}</span>
+                    {% endif %}
+                    {% if instr.cert_count and instr.cert_count > 0 %}
+                    <span style="font-size:.65rem;font-weight:700;background:#ecfdf5;color:#047857;border-radius:20px;padding:1px 7px;" title="Certificato di calibrazione presente">📎 PDF</span>
                     {% endif %}
                 </div>
                 <p class="text-xs truncate mt-0.5" style="color:{% if is_expired %}#ef4444{% elif is_expiring %}#f59e0b{% else %}#94a3b8{% endif %};font-weight:{% if is_expired or is_expiring %}600{% else %}400{% endif %};">

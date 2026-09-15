@@ -269,6 +269,7 @@ class BulkAssignDialog(QDialog):
 
         self._build_ui()
         QTimer.singleShot(0, self._load_data)
+        self.showMaximized()
 
     # ── Build UI ──────────────────────────────────────────────────────────────
 

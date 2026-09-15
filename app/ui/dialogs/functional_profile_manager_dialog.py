@@ -1002,6 +1002,7 @@ class SectionEditorDialog(QDialog):
         self._update_stack(self.type_combo.currentIndex())
         self._refresh_fields()
         self._refresh_rows()
+        self.showMaximized()
 
     def _update_stack(self, index: int):
         """
@@ -1335,7 +1336,6 @@ class FunctionalProfileEditorDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Editor Profilo Funzionale")
         self.setMinimumSize(1000, 700)
-        self.resize(1180, 780)
         # Applica il tema corrente
         self.setStyleSheet(config.get_current_stylesheet())
         self.is_new = is_new
@@ -1602,6 +1602,7 @@ class FunctionalProfileEditorDialog(QDialog):
         # Default: editor strutturato avanzato (quello che l'utente preferisce)
         self._set_sections_mode(simple=False)
         self._update_preview()
+        self.showMaximized()
 
     # ─── Modalità documento: profilo scritto come testo ──────────────────
 

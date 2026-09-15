@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+
+{% block title %}{% if mode == 'edit' %}Modifica Profilo Funzionale{% else %}Nuovo Profilo Funzionale{% endif %} — STM Mobile{% endblock %}
+{% block header_title %}{% if mode == 'edit' %}Modifica Funzionale{% else %}Nuovo Profilo Funzionale{% endif %}{% endblock %}
+{% block header_subtitle %}<p class="text-blue-200 text-[11px] mt-0.5">Configurazione Scheda di Collaudo</p>{% endblock %}
+
+{% block content %}
+<div class="px-4 py-4" x-data="functionalProfileForm()" x-init="init()">
+
+    {% if error %}
+    <div style="background:#fef2f2;border:1.5px solid #fca5a5;color:#991b1b;border-radius:12px;padding:.75rem 1rem;margin-bottom:1rem;font-size:.875rem;display:flex;align-items:center;gap:.5rem;">
+        <i class="ti ti-alert-circle" style="flex-shrink:0;"></i> {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="POST" @submit="submitForm($event)" class="space-y-4">
+        <input type="hidden" name="schema_json" :value="JSON.stringify(sections)">
+
+        <!-- 1. Dati Principali -->
+        <div class="card p-4 space-y-3">
+            <h2 class="section-title" style="border-bottom:1px solid #f1f5f9;padding-bottom:.5rem;">1. Informazioni Scheda</h2>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">Nome Profilo <span class="text-red-500">*</span></label>
+                <input type="text" name="name" x-model="name" @input="onNameInput()" required class="form-input text-xs"
+                       placeholder="es. Defibrillatore Manuale / DAE">
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">Chiave Univoca <span class="text-red-500">*</span></label>
+                <input type="text" name="profile_key" x-model="profileKey" required class="form-input text-xs uppercase"
+                       placeholder="es. DEFIBRILLATORE">
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-1">Tipologia Dispositivo</label>
+                <input type="text" name="device_type" x-model="deviceType" class="form-input text-xs"
+                       placeholder="es. Defibrillatore, Elettrobisturi, Monitor">
+            </div>
+        </div>
+
+        <!-- 2. Builder Sezioni & Campi -->
+        <div class="card p-4 space-y-3">
+            <div class="flex items-center justify-between border-b pb-2 border-slate-100">
+                <h2 class="section-title" style="margin-bottom:0;">2. Sezioni & Campi di Prova (<span x-text="sections.length"></span>)</h2>
+                <button type="button" @click="addSection()" class="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-lg">
+                    <i class="ti ti-plus"></i> Nuova Sezione
+                </button>
+            </div>
+
+            <!-- Sections List -->
+            <div class="space-y-4 pt-1">
+                <template x-for="(sec, sIdx) in sections" :key="sIdx">
+                    <div class="p-3.5 bg-slate-50 border rounded-xl border-slate-200 space-y-3">
+                        <div class="flex items-center justify-between gap-2 border-b border-slate-200/80 pb-2">
+                            <span class="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                                <i class="ti ti-folder text-blue-600"></i>
+                                <span>Sezione <span x-text="sIdx + 1"></span></span>
+                            </span>
+                            <div class="flex items-center gap-1">
+                                <button type="button" @click="moveSectionUp(sIdx)" :disabled="sIdx === 0" class="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30">
+                                    <i class="ti ti-chevron-up"></i>
+                                </button>
+                                <button type="button" @click="moveSectionDown(sIdx)" :disabled="sIdx === sections.length - 1" class="p-1 text-gray-400 hover:text-gray-700 disabled:opacity-30">
+                                    <i class="ti ti-chevron-down"></i>
+                                </button>
+                                <button type="button" @click="removeSection(sIdx)" class="p-1 text-red-500 hover:text-red-700">
+                                    <i class="ti ti-trash"></i>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-[10px] font-bold text-gray-500 uppercase mb-0.5">Titolo Sezione <span class="text-red-500">*</span></label>
+                            <input type="text" x-model="sec.title" required class="form-input text-xs bg-white" placeholder="es. Controlli Funzionali e Prestazioni">
+                        </div>
+
+                        <!-- Fields inside section -->
+                        <div class="space-y-2.5 pl-2 border-l-2 border-blue-300">
+                            <div class="flex items-center justify-between">
+                                <span class="text-[11px] font-bold text-gray-600 uppercase">Campi di verifica (<span x-text="sec.fields ? sec.fields.length : 0"></span>)</span>
+                                <button type="button" @click="addField(sIdx)" class="text-[11px] font-bold text-blue-700 bg-white border border-blue-200 px-2 py-0.5 rounded shadow-sm">
+                                    + Aggiungi Campo
+                                </button>
+                            </div>
+
+                            <template x-for="(fld, fIdx) in sec.fields" :key="fIdx">
+                                <div class="p-2.5 bg-white border rounded-lg border-slate-200 space-y-2 shadow-xs">
+                                    <div class="flex items-center justify-between gap-1">
+                                        <span class="text-[11px] font-bold text-gray-800 flex items-center gap-1">
+                                            <span class="w-4 h-4 rounded-full bg-slate-100 text-slate-700 flex items-center justify-center text-[9px]" x-text="fIdx + 1"></span>
+                                            <span x-text="fld.label || 'Nuovo campo'"></span>
+                                        </span>
+                                        <button type="button" @click="removeField(sIdx, fIdx)" class="text-red-400 hover:text-red-600 p-0.5">
+                                            <i class="ti ti-x"></i>
+                                        </button>
+                                    </div>
+
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="block text-[9px] font-bold text-gray-500 uppercase">Etichetta Campo</label>
+                                            <input type="text" x-model="fld.label" @input="onFieldLabelInput(fld)" required class="form-input text-xs py-1" placeholder="es. Energia Erogata 200J">
+                                        </div>
+                                        <div>
+                                            <label class="block text-[9px] font-bold text-gray-500 uppercase">Tipo di Controllo</label>
+                                            <select x-model="fld.field_type" class="form-input text-xs py-1">
+                                                <option value="esito_pass_fail">Conforme / Non Conforme</option>
+                                                <option value="misura_numerica">Misura Numerica (con Limiti)</option>
+                                                <option value="menu_a_tendina">Menu a Tendina</option>
+                                                <option value="testo_libero">Testo Libero / Note</option>
+                                                <option value="checkbox">Checkbox (Sì/No)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <!-- Numeric Limits Details -->
+                                    <div x-show="fld.field_type === 'misura_numerica'" class="grid grid-cols-3 gap-1.5 bg-blue-50/50 p-1.5 rounded border border-blue-100">
+                                        <div>
+                                            <label class="block text-[8px] font-bold text-gray-500 uppercase">Valore Min</label>
+                                            <input type="text" x-model="fld.min_value" class="form-input text-xs py-0.5" placeholder="es. 180">
+                                        </div>
+                                        <div>
+                                            <label class="block text-[8px] font-bold text-gray-500 uppercase">Valore Max</label>
+                                            <input type="text" x-model="fld.max_value" class="form-input text-xs py-0.5" placeholder="es. 220">
+                                        </div>
+                                        <div>
+                                            <label class="block text-[8px] font-bold text-gray-500 uppercase">Unità Misura</label>
+                                            <input type="text" x-model="fld.unit" class="form-input text-xs py-0.5" placeholder="es. J, W, bpm">
+                                        </div>
+                                    </div>
+
+                                    <!-- Dropdown Options Details -->
+                                    <div x-show="fld.field_type === 'menu_a_tendina'" class="bg-amber-50/50 p-1.5 rounded border border-amber-100">
+                                        <label class="block text-[8px] font-bold text-gray-600 uppercase">Opzioni menu (separate da virgola)</label>
+                                        <input type="text" x-model="fld.options_str" @input="fld.options = fld.options_str.split(',').map(s => s.trim()).filter(Boolean)"
+                                               class="form-input text-xs py-0.5" placeholder="es. Ottimo, Buono, Da Revisionare">
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <!-- Submit & Back -->
+        <div class="space-y-2 pb-6">
+            <button type="submit" class="btn-primary">
+                <i class="ti ti-device-floppy mr-1"></i>Salva Profilo Funzionale
+            </button>
+            <a href="/mobile/profiles" class="btn-secondary block text-center">Annulla</a>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const initialSections = {{ initial_sections_json|safe }};
+
+function functionalProfileForm() {
+    return {
+        name: '{{ profile.name or "" }}',
+        profileKey: '{{ profile.profile_key or "" }}',
+        deviceType: '{{ profile.device_type or "" }}',
+        sections: initialSections || [],
+
+        init() {
+            if (this.sections.length === 0 && '{{ mode }}' === 'new') {
+                this.addSection('Ispezione Visiva e Meccanica');
+                this.addField(0, 'Integrità involucro e comandi', 'esito_pass_fail');
+                this.addField(0, 'Stato cavi e accessori', 'esito_pass_fail');
+
+                this.addSection('Prove Funzionali e Sicurezza');
+                this.addField(1, 'Autotest all\'avvio', 'esito_pass_fail');
+                this.addField(1, 'Allarmi acustici e visivi', 'esito_pass_fail');
+            }
+        },
+
+        onNameInput() {
+            if ('{{ mode }}' === 'new') {
+                this.profileKey = this.name.toUpperCase()
+                    .replace(/[^A-Z0-9]+/g, '_')
+                    .replace(/^_+|_+$/g, '');
+                if (!this.deviceType) {
+                    this.deviceType = this.name;
+                }
+            }
+        },
+
+        onFieldLabelInput(fld) {
+            if (!fld.key) {
+                fld.key = fld.label.toLowerCase()
+                    .replace(/[^a-z0-9]+/g, '_')
+                    .replace(/^_+|_+$/g, '');
+            }
+        },
+
+        addSection(title = '') {
+            const idx = this.sections.length + 1;
+            this.sections.push({
+                key: `sec_${idx}`,
+                title: title || `Sezione ${idx}`,
+                section_type: 'fields',
+                description: '',
+                show_in_summary: true,
+                fields: [],
+                rows: []
+            });
+        },
+
+        removeSection(index) {
+            this.sections.splice(index, 1);
+        },
+
+        moveSectionUp(index) {
+            if (index > 0) {
+                const item = this.sections.splice(index, 1)[0];
+                this.sections.splice(index - 1, 0, item);
+            }
+        },
+
+        moveSectionDown(index) {
+            if (index < this.sections.length - 1) {
+                const item = this.sections.splice(index, 1)[0];
+                this.sections.splice(index + 1, 0, item);
+            }
+        },
+
+        addField(sectionIdx, label = '', type = 'esito_pass_fail') {
+            const sec = this.sections[sectionIdx];
+            if (!sec.fields) sec.fields = [];
+            const fldIdx = sec.fields.length + 1;
+            const key = label ? label.toLowerCase().replace(/[^a-z0-9]+/g, '_') : `campo_${sectionIdx + 1}_${fldIdx}`;
+            sec.fields.push({
+                key: key,
+                label: label || `Campo ${fldIdx}`,
+                field_type: type,
+                unit: '',
+                min_value: '',
+                max_value: '',
+                options: [],
+                options_str: '',
+                required: false,
+                is_visual_inspection: sectionIdx === 0
+            });
+        },
+
+        removeField(sectionIdx, fieldIdx) {
+            this.sections[sectionIdx].fields.splice(fieldIdx, 1);
+        },
+
+        submitForm(e) {
+            if (this.sections.length === 0) {
+                alert('Inserisci almeno una sezione nel profilo.');
+                e.preventDefault();
+                return;
+            }
+            let totalFields = 0;
+            for (let s of this.sections) {
+                totalFields += (s.fields ? s.fields.length : 0);
+            }
+            if (totalFields === 0) {
+                alert('Inserisci almeno un campo di verifica nelle sezioni.');
+                e.preventDefault();
+                return;
+            }
+        }
+    };
+}
+</script>
+{% endblock %}

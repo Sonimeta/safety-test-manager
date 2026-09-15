@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="STM Mobile">
     <title>{% block title %}STM Mobile{% endblock %}</title>
-    <link rel="manifest" id="pwa-manifest" href="/mobile/static/manifest.json">
+    <link rel="manifest" id="pwa-manifest" href="/mobile/pwa-manifest">
     <script>
       // Capture beforeinstallprompt as early as possible
       window._pwaInstallEvent = null;
@@ -24,18 +24,14 @@
         var btn = document.getElementById('pwa-install-btn');
         if (btn) btn.style.display = 'none';
       });
-      // Fallback: if CF Access intercepts manifest, serve via blob URL
+      // PWA Manifest: inject direct Blob URL for 100% installability behind Cloudflare Zero Trust
       (function() {
-        var MANIFEST = {"id":"https://stm.amsapp.it/mobile/","name":"STM Mobile","short_name":"STM","description":"Safety Test Manager - Verifiche elettriche e funzionali","start_url":"https://stm.amsapp.it/mobile/","scope":"https://stm.amsapp.it/mobile/","display":"standalone","background_color":"#1e3a8a","theme_color":"#1e3a8a","orientation":"portrait","lang":"it","categories":["productivity","utilities"],"icons":[{"src":"https://stm.amsapp.it/mobile/static/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},{"src":"https://stm.amsapp.it/mobile/static/icon-192.png","sizes":"192x192","type":"image/png","purpose":"maskable"},{"src":"https://stm.amsapp.it/mobile/static/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},{"src":"https://stm.amsapp.it/mobile/static/icon-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}],"screenshots":[{"src":"https://stm.amsapp.it/mobile/static/screenshot-mobile.png","sizes":"390x844","type":"image/png","label":"STM Mobile - Dashboard"},{"src":"https://stm.amsapp.it/mobile/static/screenshot-desktop.png","sizes":"1280x800","type":"image/png","form_factor":"wide","label":"STM Mobile - Vista Desktop"}]};
-        fetch('/mobile/static/manifest.json', {method:'HEAD'}).then(function(r){
-          if(!r.ok || (r.headers.get('content-type')||'').indexOf('manifest')===-1){
-            var blob = new Blob([JSON.stringify(MANIFEST)],{type:'application/manifest+json'});
-            document.getElementById('pwa-manifest').href = URL.createObjectURL(blob);
-          }
-        }).catch(function(){
-          var blob = new Blob([JSON.stringify(MANIFEST)],{type:'application/manifest+json'});
-          document.getElementById('pwa-manifest').href = URL.createObjectURL(blob);
-        });
+        try {
+          var MANIFEST = {"id":"https://stm.amsapp.it/mobile/","name":"STM Mobile","short_name":"STM","description":"Safety Test Manager - Verifiche elettriche e funzionali","start_url":"https://stm.amsapp.it/mobile/dashboard","scope":"https://stm.amsapp.it/mobile/","display":"standalone","background_color":"#1e3a8a","theme_color":"#1e3a8a","orientation":"portrait","lang":"it","categories":["productivity","utilities"],"icons":[{"src":"https://stm.amsapp.it/mobile/static/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},{"src":"https://stm.amsapp.it/mobile/static/icon-192.png","sizes":"192x192","type":"image/png","purpose":"maskable"},{"src":"https://stm.amsapp.it/mobile/static/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"},{"src":"https://stm.amsapp.it/mobile/static/icon-512.png","sizes":"512x512","type":"image/png","purpose":"maskable"}],"screenshots":[{"src":"https://stm.amsapp.it/mobile/static/screenshot-mobile.png","sizes":"390x844","type":"image/png","label":"STM Mobile - Dashboard"},{"src":"https://stm.amsapp.it/mobile/static/screenshot-desktop.png","sizes":"1280x800","type":"image/png","form_factor":"wide","label":"STM Mobile - Vista Desktop"}]};
+          var blob = new Blob([JSON.stringify(MANIFEST)], {type: 'application/manifest+json'});
+          var link = document.getElementById('pwa-manifest');
+          if (link) link.href = URL.createObjectURL(blob);
+        } catch(e) {}
       })();
     </script>
     <link rel="apple-touch-icon" href="/mobile/static/icon-192.png">
@@ -100,12 +96,55 @@
         .stm-nav-item:not(.active) { color:#94a3b8; }
         .stm-nav-dot { width:4px;height:4px;border-radius:50%;background:#1e3a8a;margin-top:1px; }
 
+        /* ── Action Menu Bottom Sheet ─────────────────────────── */
+        .stm-drawer-backdrop {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            background: rgba(15, 23, 42, 0.65) !important;
+            -webkit-backdrop-filter: blur(6px) !important;
+            backdrop-filter: blur(6px) !important;
+            z-index: 9999 !important;
+            display: none;
+            align-items: flex-end !important;
+            justify-content: center !important;
+            opacity: 0;
+            transition: opacity 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .stm-drawer-backdrop.active {
+            display: flex !important;
+        }
+        .stm-drawer-backdrop.show {
+            opacity: 1 !important;
+        }
+        .stm-drawer-panel {
+            background: #ffffff !important;
+            width: 100% !important;
+            max-width: 500px !important;
+            border-top-left-radius: 24px !important;
+            border-top-right-radius: 24px !important;
+            padding: 1.25rem 1rem 2rem 1rem !important;
+            box-shadow: 0 -10px 35px rgba(0, 0, 0, 0.25) !important;
+            max-height: 85vh !important;
+            overflow-y: auto !important;
+            transform: translateY(100%) !important;
+            transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1) !important;
+            box-sizing: border-box !important;
+        }
+        .stm-drawer-backdrop.show .stm-drawer-panel {
+            transform: translateY(0) !important;
+        }
+
         /* ── Misc ────────────────────────────────────────────────── */
         @keyframes spin { to { transform: rotate(360deg); } }
         .animate-spin { animation: spin 1s linear infinite; }
     </style>
 </head>
-<body>
+<body class="antialiased">
 
     <!-- Top Header -->
     <header class="stm-header">
@@ -137,6 +176,104 @@
         {% block content %}{% endblock %}
     </main>
 
+    <!-- Action Menu Modal (Bottom Sheet) -->
+    {% if user %}
+    <div id="action-sheet-backdrop" class="stm-drawer-backdrop" onclick="if(event.target === this) closeActionDrawer()">
+        <div id="action-sheet-panel" class="stm-drawer-panel">
+            
+            <div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #f1f5f9;padding-bottom:.75rem;margin-bottom:1rem;">
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div style="width:36px;height:36px;border-radius:10px;background:#e0e7ff;color:#3730a3;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                        <i class="ti ti-layout-grid" style="font-size:1.3rem;"></i>
+                    </div>
+                    <div>
+                        <h3 style="margin:0;font-weight:700;color:#0f172a;font-size:.9rem;line-height:1.2;">Menu Azioni Rapide</h3>
+                        <p style="margin:2px 0 0 0;font-size:.72rem;color:#94a3b8;">Tutti i moduli e le funzioni STM</p>
+                    </div>
+                </div>
+                <button type="button" onclick="closeActionDrawer()" style="width:32px;height:32px;border-radius:50%;background:#f1f5f9;border:none;color:#64748b;display:flex;align-items:center;justify-content:center;cursor:pointer;">
+                    <i class="ti ti-x" style="font-size:1.1rem;"></i>
+                </button>
+            </div>
+
+            <!-- Grid Menu Links -->
+            <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
+                <!-- Fascicolo PDF -->
+                <a href="/mobile/dossier" style="display:flex;flex-direction:column;padding:.85rem;border-radius:14px;background:#ecfdf5;border:1px solid #a7f3d0;text-decoration:none;">
+                    <div style="width:36px;height:36px;border-radius:10px;background:#059669;color:#fff;display:flex;align-items:center;justify-content:center;margin-bottom:8px;box-shadow:0 2px 6px rgba(5,150,105,0.25);">
+                        <i class="ti ti-file-text" style="font-size:1.2rem;"></i>
+                    </div>
+                    <p style="margin:0;font-weight:700;color:#065f46;font-size:.8rem;">Fascicolo PDF</p>
+                    <p style="margin:2px 0 0 0;font-size:.68rem;color:#047857;">Genera e scarica dossier</p>
+                </a>
+
+                <!-- Profili di Verifica -->
+                <a href="/mobile/profiles" style="display:flex;flex-direction:column;padding:.85rem;border-radius:14px;background:#faf5ff;border:1px solid #e9d5ff;text-decoration:none;">
+                    <div style="width:36px;height:36px;border-radius:10px;background:#7e22ce;color:#fff;display:flex;align-items:center;justify-content:center;margin-bottom:8px;box-shadow:0 2px 6px rgba(126,34,206,0.25);">
+                        <i class="ti ti-adjustments-alt" style="font-size:1.2rem;"></i>
+                    </div>
+                    <p style="margin:0;font-weight:700;color:#581c87;font-size:.8rem;">Profili Verifica</p>
+                    <p style="margin:2px 0 0 0;font-size:.68rem;color:#6b21a8;">Editor VE e Funzionali</p>
+                </a>
+
+                <!-- Verifiche di Sistema -->
+                <a href="/mobile/system-verifications" style="display:flex;flex-direction:column;padding:.85rem;border-radius:14px;background:#eef2ff;border:1px solid #c7d2fe;text-decoration:none;">
+                    <div style="width:36px;height:36px;border-radius:10px;background:#4338ca;color:#fff;display:flex;align-items:center;justify-content:center;margin-bottom:8px;box-shadow:0 2px 6px rgba(67,56,202,0.25);">
+                        <i class="ti ti-link" style="font-size:1.2rem;"></i>
+                    </div>
+                    <p style="margin:0;font-weight:700;color:#312e81;font-size:.8rem;">Verifiche Sistema</p>
+                    <p style="margin:2px 0 0 0;font-size:.68rem;color:#3730a3;">Report CEI 62353 (-VS)</p>
+                </a>
+
+                <!-- CQ Sonde Ecografo -->
+                <a href="/mobile/ecografo-cq" style="display:flex;flex-direction:column;padding:.85rem;border-radius:14px;background:#eff6ff;border:1px solid #bfdbfe;text-decoration:none;">
+                    <div style="width:36px;height:36px;border-radius:10px;background:#1d4ed8;color:#fff;display:flex;align-items:center;justify-content:center;margin-bottom:8px;box-shadow:0 2px 6px rgba(29,78,216,0.25);">
+                        <i class="ti ti-activity-heartbeat" style="font-size:1.2rem;"></i>
+                    </div>
+                    <p style="margin:0;font-weight:700;color:#1e3a8a;font-size:.8rem;">CQ Sonde</p>
+                    <p style="margin:2px 0 0 0;font-size:.68rem;color:#1d4ed8;">Controlli ecografi (-EQ)</p>
+                </a>
+
+                <!-- Non a Disposizione -->
+                <a href="/mobile/unavailability" style="display:flex;flex-direction:column;padding:.85rem;border-radius:14px;background:#fffbeb;border:1px solid #fde68a;text-decoration:none;">
+                    <div style="width:36px;height:36px;border-radius:10px;background:#d97706;color:#fff;display:flex;align-items:center;justify-content:center;margin-bottom:8px;box-shadow:0 2px 6px rgba(217,119,6,0.25);">
+                        <i class="ti ti-alert-triangle" style="font-size:1.2rem;"></i>
+                    </div>
+                    <p style="margin:0;font-weight:700;color:#78350f;font-size:.8rem;">Non Disponibile</p>
+                    <p style="margin:2px 0 0 0;font-size:.68rem;color:#92400e;">Segnalazioni apparecchi</p>
+                </a>
+
+                <!-- Strumenti MTI -->
+                <a href="/mobile/instruments" style="display:flex;flex-direction:column;padding:.85rem;border-radius:14px;background:#f0f9ff;border:1px solid #bae6fd;text-decoration:none;">
+                    <div style="width:36px;height:36px;border-radius:10px;background:#0284c7;color:#fff;display:flex;align-items:center;justify-content:center;margin-bottom:8px;box-shadow:0 2px 6px rgba(2,132,199,0.25);">
+                        <i class="ti ti-ruler-2" style="font-size:1.2rem;"></i>
+                    </div>
+                    <p style="margin:0;font-weight:700;color:#0369a1;font-size:.8rem;">Strumenti MTI</p>
+                    <p style="margin:2px 0 0 0;font-size:.68rem;color:#0284c7;">Tarature e certificati</p>
+                </a>
+
+                <!-- Dispositivi in Scadenza -->
+                <a href="/mobile/expiring" style="display:flex;flex-direction:column;padding:.85rem;border-radius:14px;background:#fff1f2;border:1px solid #fecdd3;text-decoration:none;">
+                    <div style="width:36px;height:36px;border-radius:10px;background:#e11d48;color:#fff;display:flex;align-items:center;justify-content:center;margin-bottom:8px;box-shadow:0 2px 6px rgba(225,29,72,0.25);">
+                        <i class="ti ti-clock-exclamation" style="font-size:1.2rem;"></i>
+                    </div>
+                    <p style="margin:0;font-weight:700;color:#881337;font-size:.8rem;">Scadenze</p>
+                    <p style="margin:2px 0 0 0;font-size:.68rem;color:#be123c;">Scaduti o entro 30gg</p>
+                </a>
+
+                <!-- Clienti & Sedi -->
+                <a href="/mobile/customers" style="display:flex;flex-direction:column;padding:.85rem;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0;text-decoration:none;">
+                    <div style="width:36px;height:36px;border-radius:10px;background:#334155;color:#fff;display:flex;align-items:center;justify-content:center;margin-bottom:8px;box-shadow:0 2px 6px rgba(51,65,85,0.25);">
+                        <i class="ti ti-building" style="font-size:1.2rem;"></i>
+                    </div>
+                    <p style="margin:0;font-weight:700;color:#1e293b;font-size:.8rem;">Clienti & Sedi</p>
+                    <p style="margin:2px 0 0 0;font-size:.68rem;color:#475569;">Parco macchine</p>
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Bottom Navigation -->
     {% if user %}
     <nav class="stm-bottom-nav" style="padding-bottom:env(safe-area-inset-bottom,0)">
@@ -163,13 +300,6 @@
                 {% if active_nav == 'search' %}<div class="stm-nav-dot"></div>{% endif %}
             </a>
 
-            <a href="/mobile/instruments"
-               class="stm-nav-item {% if active_nav == 'instruments' %}active{% endif %}">
-                <i class="ti ti-ruler-2" style="font-size:1.4rem;"></i>
-                <span style="font-size:.62rem;font-weight:600;">Strumenti</span>
-                {% if active_nav == 'instruments' %}<div class="stm-nav-dot"></div>{% endif %}
-            </a>
-
             <a href="/mobile/assignments"
                class="stm-nav-item {% if active_nav == 'assignments' %}active{% endif %}"
                style="position:relative;">
@@ -183,6 +313,14 @@
                 {% endif %}
             </a>
 
+            <button type="button" onclick="openActionDrawer()"
+                    class="stm-nav-item" style="background:none;border:none;cursor:pointer;">
+                <div style="width:28px;height:28px;border-radius:8px;background:#eef2ff;color:#1e3a8a;display:flex;align-items:center;justify-content:center;">
+                    <i class="ti ti-layout-grid" style="font-size:1.25rem;"></i>
+                </div>
+                <span style="font-size:.62rem;font-weight:700;color:#1e3a8a;">Azioni</span>
+            </button>
+
             <a href="/mobile/profile"
                class="stm-nav-item {% if active_nav == 'profile' %}active{% endif %}">
                 <i class="ti ti-user-circle" style="font-size:1.4rem;"></i>
@@ -195,6 +333,35 @@
     {% endif %}
 
     <script>
+        function openActionDrawer() {
+            var backdrop = document.getElementById('action-sheet-backdrop');
+            var panel = document.getElementById('action-sheet-panel');
+            if (!backdrop) return;
+            backdrop.style.display = 'flex';
+            void backdrop.offsetHeight;
+            backdrop.classList.add('active');
+            backdrop.classList.add('show');
+            if (panel) panel.style.transform = 'translateY(0)';
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeActionDrawer() {
+            var backdrop = document.getElementById('action-sheet-backdrop');
+            var panel = document.getElementById('action-sheet-panel');
+            if (!backdrop) return;
+            backdrop.classList.remove('show');
+            if (panel) panel.style.transform = 'translateY(100%)';
+            setTimeout(function() {
+                backdrop.classList.remove('active');
+                backdrop.style.display = 'none';
+                document.body.style.overflow = '';
+            }, 280);
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') closeActionDrawer();
+        });
+
         if ('serviceWorker' in navigator) {
             // Remove rogue SW registered on /mobile/static/ scope
             navigator.serviceWorker.getRegistrations().then(function(regs) {

@@ -10,6 +10,9 @@
     <i class="ti ti-clipboard-plus"></i>
 </a>
 {% endif %}
+<a href="/mobile/devices/{{ device.uuid }}/unavailable" class="btn-sm" style="background:#f59e0b;color:#fff;" title="Segnala Non Messo a Disposizione">
+    <i class="ti ti-alert-triangle"></i>
+</a>
 <a href="/mobile/devices/{{ device.uuid }}/edit" class="btn-sm" style="background:rgba(255,255,255,.15);color:#fff;">
     <i class="ti ti-pencil"></i>
 </a>
@@ -20,6 +23,26 @@
 
 {% block content %}
 <div class="px-4 py-4 space-y-4" x-data="{ tab: 've' }">
+
+    {% if unavailability_reports %}
+    <div style="background:#fffbeb;border:1.5px solid #fcd34d;border-radius:12px;padding:.75rem 1rem;color:#92400e;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:.5rem;">
+            <div style="display:flex;align-items:flex-start;gap:.5rem;">
+                <i class="ti ti-alert-triangle" style="font-size:1.3rem;color:#d97706;flex-shrink:0;margin-top:2px;"></i>
+                <div>
+                    <p class="text-xs font-bold uppercase tracking-wide text-amber-900">Non Messo a Disposizione</p>
+                    <p class="text-xs text-amber-800 mt-0.5"><b>Data:</b> {{ unavailability_reports[0].period_start | date_it }} · <b>Motivo:</b> {{ unavailability_reports[0].reason }}</p>
+                    <p class="text-[10px] text-amber-600 mt-1">Segnalato da: {{ unavailability_reports[0].technician_name or 'N/D' }}</p>
+                </div>
+            </div>
+            <form method="POST" action="/mobile/unavailability/{{ unavailability_reports[0].uuid }}/delete" onsubmit="return confirm('Rimuovere questa segnalazione?');" style="flex-shrink:0;">
+                <button type="submit" class="btn-sm" style="background:#fee2e2;color:#dc2626;padding:3px 7px;font-size:10px;border-radius:6px;">
+                    <i class="ti ti-trash"></i> Rimuovi
+                </button>
+            </form>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Device info card -->
     <div class="card p-4 space-y-3">
@@ -84,7 +107,7 @@
                 {% if device.next_verification_date < today %}text-red-600
                 {% elif device.next_verification_date <= expiry_threshold %}text-yellow-600
                 {% else %}text-green-700{% endif %}">
-                {{ device.next_verification_date }}
+                {{ device.next_verification_date | date_it }}
             </span>
         </div>
         {% endif %}
@@ -108,12 +131,17 @@
         <button @click="tab = 've'"
                 :class="tab === 've' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-500'"
                 class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all">
-            Verifiche elettriche ({{ verifications|length }})
+            Elettriche ({{ verifications|length }})
         </button>
         <button @click="tab = 'vf'"
                 :class="tab === 'vf' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-500'"
                 class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all">
             Funzionali ({{ func_verifications|length }})
+        </button>
+        <button @click="tab = 'cq'"
+                :class="tab === 'cq' ? 'bg-white text-blue-900 shadow-sm' : 'text-gray-500'"
+                class="flex-1 py-2 text-xs font-semibold rounded-lg transition-all">
+            CQ Sonde ({{ ecografo_checks|length }})
         </button>
     </div>
 
@@ -132,7 +160,7 @@
             <a href="/mobile/verifications/{{ v.uuid }}" class="list-item">
                 <div class="flex-1 min-w-0">
                     <p class="text-sm font-semibold text-gray-800 truncate">{{ v.profile_name }}</p>
-                    <p class="text-xs text-gray-400">{{ v.verification_date }}
+                    <p class="text-xs text-gray-400">{{ v.verification_date | date_it }}
                         {% if v.technician_name %} · {{ v.technician_name }}{% endif %}
                         {% if v.verification_code %} · <span class="font-mono">{{ v.verification_code }}</span>{% endif %}
                     </p>
@@ -176,7 +204,7 @@
             <a href="/mobile/func-verifications/{{ fv.uuid }}" class="list-item">
                 <div class="flex-1 min-w-0">
                     <p class="text-sm font-semibold text-gray-800 truncate">{{ fv.profile_key }}</p>
-                    <p class="text-xs text-gray-400">{{ fv.verification_date }}
+                    <p class="text-xs text-gray-400">{{ fv.verification_date | date_it }}
                         {% if fv.technician_name %} · {{ fv.technician_name }}{% endif %}
                     </p>
                 </div>
@@ -200,6 +228,52 @@
             <p class="text-sm">Nessuna verifica funzionale</p>
             <a href="/mobile/devices/{{ device.uuid }}/new-func-verification"
                style="margin-top:.75rem;font-size:.75rem;font-weight:700;color:#7c3aed;background:#f5f3ff;padding:.375rem 1rem;border-radius:20px;text-decoration:none;">Registra prima verifica</a>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- CQ Sonde Ecografo -->
+    <div x-show="tab === 'cq'" x-cloak>
+        <div class="flex items-center justify-between mb-2 px-1">
+            <span class="text-xs text-gray-400">{{ ecografo_checks|length }} controllo/i qualità</span>
+            <a href="/mobile/devices/{{ device.uuid }}/new-ecografo-cq"
+               class="text-xs font-semibold text-blue-700 bg-blue-50 px-3 py-1 rounded-full">
+                + Nuovo CQ
+            </a>
+        </div>
+        {% if ecografo_checks %}
+        <div class="card overflow-hidden">
+            {% for c in ecografo_checks %}
+            <a href="/mobile/ecografo-cq/{{ c.uuid }}" class="list-item">
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-semibold text-gray-800 truncate">
+                        {% if c.verification_code %}{{ c.verification_code }}{% else %}Controllo Qualità Sonde{% endif %}
+                    </p>
+                    <p class="text-xs text-gray-400">{{ c.verification_date | date_it }}
+                        {% if c.technician_name %} · {{ c.technician_name }}{% endif %}
+                        · {{ c.probe_count }} sonde
+                    </p>
+                </div>
+                <div class="ml-3 flex-shrink-0">
+                    {% if c.overall_status == 'CONFORME CON ANNOTAZIONE' %}
+                    <span class="badge-warn">C.C.A.</span>
+                    {% elif c.overall_status in ('CONFORME', 'PASSATO', 'PASS', 'OK') %}
+                    <span class="badge-pass">CONF.</span>
+                    {% elif c.overall_status in ('NON PASSATO', 'FAIL', 'FALLITO', 'NON CONFORME') %}
+                    <span class="badge-fail">N.CONF.</span>
+                    {% else %}
+                    <span class="badge-gray">{{ c.overall_status[:6] }}</span>
+                    {% endif %}
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="card" style="display:flex;flex-direction:column;align-items:center;padding:2rem 1rem;color:#94a3b8;">
+            <i class="ti ti-activity-heartbeat" style="font-size:2.5rem;margin-bottom:.5rem;"></i>
+            <p class="text-sm">Nessun controllo qualità sonde</p>
+            <a href="/mobile/devices/{{ device.uuid }}/new-ecografo-cq"
+               style="margin-top:.75rem;font-size:.75rem;font-weight:700;color:#2563eb;background:#eff6ff;padding:.375rem 1rem;border-radius:20px;text-decoration:none;">Avvia primo controllo sonde</a>
         </div>
         {% endif %}
     </div>

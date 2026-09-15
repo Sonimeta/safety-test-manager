@@ -20,9 +20,9 @@ LOCK_FILE = config.LOCK_FILE_DIR
 
 SYNC_ORDER = [
     "customers", "mti_instruments", "signatures", "profiles", "profile_tests", "functional_profiles",
-    "destinations", "devices", "verifications", "functional_verifications", "verification_attachments",
-    "system_verifications", "system_verification_devices", "verification_assignments", "device_unavailability_reports",
-    "ecografo_quality_checks", "ecografo_quality_probes", "ecografo_quality_controls", "audit_log"
+    "applied_parts_presets", "destinations", "devices", "verifications", "functional_verifications",
+    "verification_attachments", "system_verifications", "system_verification_devices", "verification_assignments",
+    "device_unavailability_reports", "ecografo_quality_checks", "ecografo_quality_probes", "ecografo_quality_controls", "audit_log"
 ]
 
 # Timeout e retry configuration
@@ -323,6 +323,7 @@ class ConflictAnalyzer:
             'destinations': ['name', 'customer_id'],
             'profiles': ['profile_key', 'profile_name'],
             'functional_profiles': ['profile_key', 'profile_name'],
+            'applied_parts_presets': ['name', 'parts_json'],
             'signatures': ['username', 'signature_data'],
             'mti_instruments': ['name', 'serial_number', 'calibration_due_date'],
             'verification_attachments': ['filename', 'file_data', 'verification_id', 'uuid'],
@@ -639,6 +640,7 @@ def _get_unsynced_local_changes():
         "signatures": ("SELECT * FROM {table} WHERE is_synced = 0", []),
         "profiles": ("SELECT * FROM {table} WHERE is_synced = 0", []),
         "functional_profiles": ("SELECT * FROM {table} WHERE is_synced = 0", []),
+        "applied_parts_presets": ("SELECT * FROM {table} WHERE is_synced = 0", []),
         "destinations": (
             "SELECT d.*, c.uuid as customer_uuid FROM destinations d JOIN customers c ON d.customer_id = c.id WHERE d.is_synced = 0",
             ["customer_id"]
@@ -660,12 +662,13 @@ def _get_unsynced_local_changes():
             ["profile_id"]
         ),
         "verification_attachments": (
-            # Allegati: serve anche la UUID della verifica padre (VE o VFUN)
+            # Allegati: serve anche la UUID della verifica o dello strumento padre (VE, VFUN, MTI)
             "SELECT va.*, "
-            "COALESCE(fv.uuid, v.uuid) as verification_uuid "
+            "COALESCE(fv.uuid, v.uuid, mi.uuid) as verification_uuid "
             "FROM verification_attachments va "
             "LEFT JOIN functional_verifications fv ON va.verification_id = fv.id AND va.verification_type = 'functional' "
             "LEFT JOIN verifications v ON va.verification_id = v.id AND va.verification_type = 'electrical' "
+            "LEFT JOIN mti_instruments mi ON va.verification_id = mi.id AND va.verification_type = 'instrument' "
             "WHERE va.is_synced = 0",
             ["verification_id"]  # Rimuovi solo FK numerica; file_path serve per leggere il file da disco
         ),
@@ -868,12 +871,14 @@ def _apply_server_changes(conn, changes):
                     if verification_uuid:
                         if verification_type == 'functional':
                             v_row = cursor.execute("SELECT id FROM functional_verifications WHERE uuid = ?", (verification_uuid,)).fetchone()
+                        elif verification_type == 'instrument':
+                            v_row = cursor.execute("SELECT id FROM mti_instruments WHERE uuid = ?", (verification_uuid,)).fetchone()
                         else:
                             v_row = cursor.execute("SELECT id FROM verifications WHERE uuid = ?", (verification_uuid,)).fetchone()
                         if v_row:
                             record['verification_id'] = v_row[0]
                         else:
-                            logging.warning(f"Impossibile trovare verifica locale per allegato {record.get('uuid')} (uuid verifica: {verification_uuid})")
+                            logging.warning(f"Impossibile trovare genitore locale per allegato {record.get('uuid')} (tipo: {verification_type}, uuid: {verification_uuid})")
                             continue
                     else:
                         logging.warning(f"Allegato {record.get('uuid')} senza verification_uuid, saltato.")
@@ -884,14 +889,20 @@ def _apply_server_changes(conn, changes):
                         try:
                             decoded = base64.b64decode(file_data)
                             verification_id = record['verification_id']
-                            folder = os.path.join(config.ATTACHMENTS_DIR, str(verification_id))
+                            if verification_type == 'instrument':
+                                folder = os.path.join(config.ATTACHMENTS_DIR, "instruments", str(verification_id))
+                            else:
+                                folder = os.path.join(config.ATTACHMENTS_DIR, str(verification_id))
                             os.makedirs(folder, exist_ok=True)
-                            ext = os.path.splitext(record.get('filename', ''))[1] or '.jpg'
+                            ext = os.path.splitext(record.get('filename', ''))[1] or ('.pdf' if verification_type == 'instrument' else '.jpg')
                             safe_filename = f"{record['uuid']}{ext}"
                             abs_path = os.path.join(folder, safe_filename)
                             with open(abs_path, 'wb') as f:
                                 f.write(decoded)
-                            rel_path = os.path.join(str(verification_id), safe_filename)
+                            if verification_type == 'instrument':
+                                rel_path = os.path.join("instruments", str(verification_id), safe_filename)
+                            else:
+                                rel_path = os.path.join(str(verification_id), safe_filename)
                             record['file_path'] = rel_path
                             record['file_size'] = len(decoded)
                         except Exception as e:
@@ -1323,7 +1334,7 @@ def _apply_hard_deletes(conn, hard_deletes: dict) -> dict:
     allowed_tables = {
         'customers', 'destinations', 'devices', 'verifications',
         'functional_verifications', 'profiles', 'profile_tests',
-        'functional_profiles', 'mti_instruments', 'audit_log',
+        'functional_profiles', 'applied_parts_presets', 'mti_instruments', 'audit_log',
         'verification_attachments', 'system_verifications',
         'system_verification_devices', 'ecografo_quality_checks',
         'ecografo_quality_probes', 'ecografo_quality_controls'
@@ -1786,6 +1797,7 @@ def run_sync(full_sync=False):
                 "profiles": "profili di verifica VE",
                 "profile_tests": "test di profilo",
                 "functional_profiles": "profili funzionali",
+                "applied_parts_presets": "preset parti applicate",
                 "destinations": "destinazioni",
                 "devices": "dispositivi",
                 "verifications": "verifiche elettriche",
@@ -1805,6 +1817,7 @@ def run_sync(full_sync=False):
                 "profiles": "profilo di verifica VE",
                 "profile_tests": "test di profilo",
                 "functional_profiles": "profilo funzionale",
+                "applied_parts_presets": "preset parti applicate",
                 "destinations": "destinazione",
                 "devices": "dispositivo",
                 "verifications": "verifica elettrica",
